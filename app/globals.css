@@ -127,3 +127,10 @@
     @apply font-sans;
   }
 }
+
+.scrolling {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  cursor: pointer;
+  scroll-behavior: smooth;
+}

@@ -6,6 +6,8 @@ type RightPanelProps = {
     isGenerating: boolean
     onPromptChange: (value: string) => void
     onGenerate: () => void
+    conversation: Array<{ role: string; content: string }>
+    setConversation: React.Dispatch<React.SetStateAction<Array<{ role: string; content: string }>>>
 }
 
 const RightPanel = ({
@@ -13,6 +15,8 @@ const RightPanel = ({
     isGenerating,
     onPromptChange,
     onGenerate,
+    conversation,
+    setConversation,
 }: RightPanelProps) => {
     const quickPrompts = [
         'Board-ready KPI dashboard with quarterly trend blocks',
@@ -41,7 +45,19 @@ const RightPanel = ({
                         </button>
                     ))}
                 </div>
-
+                <div className='my-6 h-px w-full bg-zinc-700/50' />
+                <div className='flex-1 overflow-y-auto flex flex-col-reverse gap-3'>
+                    {conversation.length === 0 && (
+                        <div className='py-4 text-center text-sm text-zinc-500'>
+                            No conversation yet. Start by entering a prompt and generating a layout.
+                        </div>
+                    )}
+                    {conversation.map((message, index) => (
+                        <div key={index} id={`message-${index}`} className={`rounded-lg px-4 py-3 h-96 text-sm ${message.role === 'user' ? 'bg-zinc-800 text-zinc-100' : 'bg-zinc-700 text-zinc-200'} wrap-break-word overflow-y-auto scrolling`}>
+                            {message.content}
+                        </div>
+                    ))}
+                </div>
                 <div className='mt-auto space-y-3 pt-5'>
                     <p className='font-(family-name:--font-geist-mono) text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400'>Prompt Blueprint</p>
                     <textarea
@@ -52,7 +68,10 @@ const RightPanel = ({
                     />
 
                     <Button
-                        onClick={onGenerate}
+                        onClick={() => {
+                            setConversation(prev => [{ role: 'user', content: prompt }, ...prev])
+                            onGenerate()
+                        }}
                         disabled={!canGenerate}
                         className='h-11 rounded-xl border border-zinc-600 bg-zinc-100 text-zinc-950 hover:bg-white disabled:border-zinc-700 disabled:bg-zinc-700 disabled:text-zinc-300'
                     >

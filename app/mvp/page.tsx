@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import RightPanel from '@/components/RightPanel';
 import { TLComponents, type Editor, Tldraw, useEditor, useValue } from 'tldraw'
 import 'tldraw/tldraw.css'
@@ -60,54 +60,78 @@ const components: TLComponents = {
 
 const StudioPage = () => {
     const [editor, setEditor] = useState<Editor | null>(null)
-    const [prompt, setPrompt] = useState('Design a clean dashboard for analytics with cards and charts')
+    // const [prompt, setPrompt] = useState('Design a clean dashboard for analytics with cards and charts')
+    const [prompt, setPrompt] = useState('Why is the sky blue?')
     const [isGenerating, setIsGenerating] = useState(false)
-    
-    // const [zoomPercent, setZoomPercent] = useState('100%')
+    const [conversation, setConversation] = useState<Array<{ role: string; content: string }>>([])
 
-    // useEffect(() => {
-    //     if (!editor) return
-
-    //     const syncZoom = () => {
-    //         setZoomPercent(`${Math.round(editor.getZoomLevel() * 100)}%`)
-    //     }
-
-    //     syncZoom()
-    //     const interval = window.setInterval(syncZoom, 200)
-
-    //     return () => {
-    //         window.clearInterval(interval)
-    //     }
-    // }, [editor])
-
-    const handleGenerate = () => {
+    const handleGenerate = async () => {
         if (!prompt.trim()) return
 
         setIsGenerating(true)
+        try {
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ prompt }),
+            })
 
-        // Placeholder generation behavior until an AI endpoint is connected.
-        setTimeout(() => {
+            if (!response.ok || !response.body) {
+                const errorData = await response.json()
+                console.log("Error resposen: ", errorData)
+                throw new Error(errorData.message || 'Generation failed')
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let sseBuffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                sseBuffer += decoder.decode(value, { stream: true })
+                const lines = sseBuffer.split('\n')
+                sseBuffer = lines.pop() ?? ''
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue
+                    const raw = line.slice(6).trim()
+                    if (raw === '[DONE]') return
+
+                    const event = JSON.parse(raw)
+                    // console.log(event); // at minimum — until tldraw integration is wired
+                    handleEvent(event)
+                }
+            }
+
+        } catch (error) {
+            console.error('Error generating layout:', error)
+        } finally {
             setIsGenerating(false)
-        }, 900)
+        }
     }
 
-    // const handleZoomIn = () => {
-    //     if (!editor) return
-    //     editor.zoomIn()
-    //     setZoomPercent(`${Math.round(editor.getZoomLevel() * 100)}%`)
-    // }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function handleEvent(event: any) {
+        if (event.type === "chat") {
+            setConversation((prev) => {
+                const oldMessage = [...prev]
+                const lastMessage = oldMessage[0]
+                if (lastMessage) {
+                    lastMessage.content += event.text
+                }
 
-    // const handleZoomOut = () => {
-    //     if (!editor) return
-    //     editor.zoomOut()
-    //     setZoomPercent(`${Math.round(editor.getZoomLevel() * 100)}%`)
-    // }
+                return [lastMessage, ...oldMessage]
+            })
+            if (event.type === "error") {
+                console.error("Stream error:", event.message);
+            }
+        }
+    }
 
-    // const handleResetZoom = () => {
-    //     if (!editor) return
-    //     editor.resetZoom()
-    //     setZoomPercent(`${Math.round(editor.getZoomLevel() * 100)}%`)
-    // }
 
     const handleMount = (mountedEditor: Editor) => {
         setEditor(mountedEditor)
@@ -128,6 +152,8 @@ const StudioPage = () => {
                 isGenerating={isGenerating}
                 onPromptChange={setPrompt}
                 onGenerate={handleGenerate}
+                conversation={conversation}
+                setConversation={setConversation}
             />
         </div>
     )

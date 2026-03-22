@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
       // model = "qwen3.5:9b", // 47s
       // model = "llama3.2-vision:11b", // 33s, 46s
       // model = "llama3.1:8b", // 1.3m, 10.7s, 35.3s
-      model = "deepseek-v3.1:671b-cloud", // 20.7s, 13.7
+      // model = "deepseek-v3.1:671b-cloud", // 20.7s, 13.7
+      model = "minimax-m2.7:cloud", //
     } = await req.json();
     const platform = "web";
 
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
         // Stage 2 — component planner (non-streaming)
         logger.info("Starting Stage 2: Component Planner");
         const { text: rawTree } = await generateText({
-          model: ollama("llama3.2-vision:11b"),
+          model: ollama("qwen3.5:9b"),
           system: STAGE2_SYSTEM,
           prompt: `${platform}Spec: ${JSON.stringify(spec)}`,
         });

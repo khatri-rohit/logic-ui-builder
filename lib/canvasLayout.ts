@@ -3,7 +3,7 @@ import { Editor } from "tldraw";
 
 const FRAME_W = 200;
 const FRAME_H = 380;
-const H_GAP = 48; // gap between screens in same generation
+const H_GAP = 1500; // gap between screens in same generation
 const V_GAP = 120; // gap between generations (vertical breathing room)
 
 export function getGenerationLayout(

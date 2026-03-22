@@ -1,43 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeOllama } from "@/lib/ollama";
 
-import {
-  generateText,
-  streamText,
-  StreamObjectOnFinishCallback,
-  readUIMessageStream,
-} from "ai";
+import { generateText, streamText } from "ai";
 import {
   buildScreenPrompt,
-  MOBILE_SPEC_SCHEMA,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
   STAGE3_SYSTEM,
 } from "@/lib/prompts";
 import logger from "@/lib/logger";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const {
       prompt,
-      platform = "Mobile",
+      // Platform is intentionally fixed to web for current generation pipeline.
       // stylingLib,
       // model = "mistral:7b", // 82s, 41s
-      model = "qwen3.5:9b", // 47s
+      // model = "qwen3.5:9b", // 47s
       // model = "llama3.2-vision:11b", // 33s, 46s
       // model = "llama3.1:8b", // 1.3m, 10.7s, 35.3s
-      // model = "deepseek-v3.1:671b-cloud", // 20.7s, 13.7
+      model = "deepseek-v3.1:671b-cloud", // 20.7s, 13.7
     } = await req.json();
+    const platform = "web";
 
     const ollama = initializeOllama();
-
-    // const { textStream } = streamText({
-    //   model: ollama(model),
-    //   prompt,
-    //   providerOptions: {
-    //     ollama: { think: true }, // model reasons before outputting JSON
-    //   },
-    // });
 
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();

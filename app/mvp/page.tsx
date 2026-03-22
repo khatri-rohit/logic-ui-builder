@@ -1,12 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useLayoutEffect, useRef, useState } from 'react';
-import { createShapeId, TLComponents, type Editor, Tldraw, useEditor, useValue } from 'tldraw'
+import { createShapeId, TLComponents, type Editor, Tldraw, useEditor, useValue, TLShapeId } from 'tldraw'
 import 'tldraw/tldraw.css'
 
 import RightPanel from '@/components/RightPanel';
 import { PhoneFrameShapeUtil } from '@/components/shapes/PhoneFrameShapeUtil';
 import logger from '@/lib/logger';
+import { getGenerationLayout } from '@/lib/canvasLayout';
+import { useCompilerWorker } from '@/hooks/useCompilerWorker';
 
 const components: TLComponents = {
     Grid: ({ size, ...camera }) => {
@@ -69,6 +72,7 @@ const StudioPage = () => {
     const editorRef = useRef<Editor | null>(null)
     const shapeIdRef = useRef<ReturnType<typeof createShapeId> | null>(null)
     const accumulatedTextRef = useRef('')
+    const frameIdsRef = useRef<Map<string, TLShapeId>>(new Map())
 
     const [prompt, setPrompt] = useState('Design a clean dashboard for analytics with cards and charts')
     // const [prompt, setPrompt] = useState('Why is the sky blue?')
@@ -97,7 +101,7 @@ const StudioPage = () => {
 
             if (!response.ok || !response.body) {
                 const errorData = await response.json()
-                
+
                 logger.error("Error response: ", errorData)
                 throw new Error(errorData.message || 'Generation failed')
             }
@@ -131,85 +135,90 @@ const StudioPage = () => {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { compile } = useCompilerWorker(({ screenName, html, error }) => {
+        const editor = editorRef.current
+        const id = frameIdsRef.current.get(screenName)
+        if (!editor || !id) return
+
+        editor.updateShape({
+            id,
+            type: 'phone-frame',
+            props: {
+                state: error ? 'error' : 'done',
+                srcdoc: html ?? '',
+            }
+        })
+    })
+
+    // 2. handleEvent — screen_done triggers compile
     function handleEvent(event: any) {
         const editor = editorRef.current
         if (!editor) return
 
-        if (event.type === 'screen_start') {
-            const id = createShapeId()
-            shapeIdRef.current = id
-            accumulatedTextRef.current = ''
-            editor.createShape({
-                id,
-                type: 'phone-frame',
-                x: 100,
-                y: 100,
-                props: {
-                    w: 200,
-                    h: 380,
-                    screenName: event.screen,
-                    content: '',
-                    state: 'skeleton',
-                }
+        if (event.type === 'spec') {
+            const spec = event.spec
+            const positions = getGenerationLayout(editor, spec.screens.length)
+            frameIdsRef.current = new Map()
 
-            })
-            editor.zoomToFit({ animation: { duration: 300 } })
-        } else if (event.type === 'code_chunk') {
-            if (!shapeIdRef.current) {
+            spec.screens.forEach((screenName: string, i: number) => {
                 const id = createShapeId()
-                shapeIdRef.current = id
-                accumulatedTextRef.current = ''
+                frameIdsRef.current.set(screenName, id)
                 editor.createShape({
-                    id,
-                    type: 'phone-frame',
-                    x: 100,
-                    y: 100,
-                    props: {
-                        w: 200,
-                        h: 380,
-                        screenName: event.screen,
-                        content: '',
-                        state: 'skeleton',
-                    }
+                    id, type: 'phone-frame',
+                    x: positions[i].x,
+                    y: positions[i].y,
+                    props: { w: 1200, h: 720, screenName, content: '', state: 'skeleton', srcdoc: '' }
                 })
-            }
+            })
+            editor.zoomToFit({ animation: { duration: 400 } })
+        }
 
+        if (event.type === 'screen_start') {
+            const id = frameIdsRef.current.get(event.screen)
+            if (id) editor.updateShape({ id, type: 'phone-frame', props: { state: 'streaming' } })
+        }
+
+        if (event.type === 'code_chunk') {
+            const id = frameIdsRef.current.get(event.screen)
+            if (!id) return
             accumulatedTextRef.current += event.token
             editor.updateShape({
-                id: shapeIdRef.current,
-                type: 'phone-frame',
+                id, type: 'phone-frame',
                 props: {
-                    w: 200,
-                    h: 380,
-                    screenName: event.screen,
                     content: accumulatedTextRef.current,
-                    state: 'streaming',
+                    state: 'streaming'
                 }
-            })
-        } else if (event.type === 'screen_done') {
-            // TODO: finalize shape state if needed
-
-
-        } else if (event.type === 'chat' || event.type === 'spec') {
-            setConversation((prev) => {
-                const updated = [...prev]
-                const lastMessage = updated[updated.length - 1]
-
-                if (lastMessage && lastMessage.role === 'assistant') {
-                    updated[updated.length - 1] = {
-                        ...lastMessage,
-                        content: lastMessage.content + event.text,
-                    }
-                    return updated
-                }
-
-                return [...updated, { role: 'assistant', content: event.text }]
             })
         }
 
-        if (event.type === "error") {
-            logger.error("Stream error:", event.message);
+        if (event.type === 'screen_done') {
+            const id = frameIdsRef.current.get(event.screen)
+            if (!id) return
+
+            // Mark as compiling while worker runs
+            editor.updateShape({
+                id,
+                type: 'phone-frame',
+                props: {
+                    state: 'compiling'
+                }
+            })
+
+            // Send code to worker — result comes back via onResult callback above
+            compile(event.screen, accumulatedTextRef.current)
+            console.log(accumulatedTextRef.current)
+
+            // Reset accumulator for next screen
+            accumulatedTextRef.current = ''
+        }
+
+        if (event.type === 'done') {
+            const newIds = [...frameIdsRef.current.values()]
+            if (newIds.length > 0) {
+                editor.select(...newIds)
+                editor.zoomToSelection({ animation: { duration: 600 } })
+                editor.selectNone()
+            }
         }
     }
 

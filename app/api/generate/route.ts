@@ -13,12 +13,15 @@ import logger from "@/lib/logger";
 
 export const runtime = "nodejs";
 
-const STAGE1_MODELS = ["qwen3.5:9b", "llama3.2-vision:11b", "llama3.1:8b"];
-const STAGE2_MODELS = ["qwen3.5:9b", "llama3.1:8b", "mistral:7b"];
+const STAGE1_MODELS = ["llama3.2-vision:11b", "llama3.1:8b"];
+// const STAGE1_MODELS = ["gpt-oss:120b-cloud"];
+// const STAGE2_MODELS = ["gpt-oss:120b-cloud"];
+const STAGE2_MODELS = ["llama3.1:8b", "mistral:7b"];
 const STAGE3_MODELS = [
   // "minimax-m2.7:cloud",
   "deepseek-v3.1:671b-cloud",
   "qwen3.5:9b",
+  // "gpt-oss:120b-cloud",
   "llama3.2-vision:11b",
   "llama3.1:8b",
   "mistral:7b",
@@ -48,7 +51,7 @@ async function generateWithModelFallback(
         system,
         prompt,
       });
-      logger.info(`Raw output from model ${model}: ${text}`);
+      logger.info(`Model succeeded: ${model}`);
       return { text, model };
     } catch (err) {
       lastError = err;

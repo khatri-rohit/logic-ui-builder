@@ -54,15 +54,15 @@ const View = ({style, children, ...p}) => React.createElement('div', {style, ...
 const Text = ({style, children, ...p}) => React.createElement('span', {style:{display:'block',...style}, ...p}, children)
 const ScrollView = ({style, children, ...p}) => React.createElement('div', {style:{overflowY:'auto',...style}, ...p}, children)
 const TouchableOpacity = ({style, onPress, children, ...p}) => React.createElement('div', {style:{cursor:'pointer',...style}, onClick:onPress, ...p}, children)
-const Image = ({source, style, ...p}) => React.createElement('img', {src:source?.uri||source, style:{objectFit:'cover',...style}, ...p})
+const Image = ({source, style, ...p}) => React.createElement('img', {src:(source && source.uri) || source, style:{objectFit:'cover',...style}, ...p})
 const FlatList = ({data=[], renderItem, keyExtractor, style}) =>
   React.createElement('div', {style}, data.map((item,i) =>
-    React.createElement(React.Fragment, {key: keyExtractor?.(item,i) ?? i}, renderItem({item,index:i}))
+    React.createElement(React.Fragment, {key: keyExtractor ? keyExtractor(item,i) : i}, renderItem({item,index:i}))
   ))
 const StyleSheet = { create: s => s }
 const SafeAreaView = View
 const TextInput = ({style, placeholder, value, onChangeText, ...p}) =>
-  React.createElement('input', {style:{outline:'none',background:'transparent',...style}, placeholder, value, onChange: e => onChangeText?.(e.target.value), ...p})
+  React.createElement('input', {style:{outline:'none',background:'transparent',...style}, placeholder, value, onChange: e => onChangeText && onChangeText(e.target.value), ...p})
 
 try {
 ${js}
@@ -77,8 +77,7 @@ ReactDOM.render(React.createElement(Component), document.getElementById('root'))
 } catch(e) {
   document.getElementById('root').innerHTML = '<div id="error">Runtime error:\\n' + e.message + '</div>'
 }
-
-// Dimension reporter — runs after React renders
+  // Dimension reporter — runs after React renders
 (function() {
   function reportSize() {
     const body = document.body

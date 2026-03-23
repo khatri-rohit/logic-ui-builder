@@ -1,9 +1,34 @@
 import { ComponentTreeNode, WebAppSpec } from "./types";
 
+const CREATIVITY_DIRECTIVE = `
+Design quality bar (critical):
+- Avoid generic or templated layouts.
+- Build one clear visual concept per screen with intentional hierarchy.
+- Use distinctive typography pairings (no default/system-only look).
+- Use a cohesive color system with one dominant direction and sharp accents.
+- Add meaningful motion hints (entry/stagger/interaction), not random effects.
+- Build atmosphere with gradients, overlays, patterns, or depth layers.
+- Keep accessibility: readable text, semantic landmarks, visible states.
+- Keep responsiveness: mobile-first and desktop-ready structure.
+`.trim();
+
+const COMPILE_GUARDRAILS = `
+Compilation guardrails (must pass):
+- Output valid TSX only. No markdown, no prose.
+- Write one complete component function with balanced (), {}, and [].
+- Close every JSX tag and every string/template literal.
+- Avoid unsupported syntax and avoid trailing partial lines.
+- Use inline mock data inside the file if needed.
+- Do not import or export anything.
+- Before finishing, self-check syntax and then append: // === END ===
+`.trim();
+
 export const STAGE1_SYSTEM = `
 You are an Architecture Snapshot extractor for web applications.
 Given a user prompt, output ONLY valid JSON matching this schema exactly.
 No explanation. No markdown. Pure JSON only.
+
+${CREATIVITY_DIRECTIVE}
 
 Output this exact structure:
 {
@@ -24,6 +49,8 @@ You are a web UI component planner.
 Given a WebAppSpec JSON,
 output ONLY a JSON array. No explanation. No markdown.
 
+${CREATIVITY_DIRECTIVE}
+
 Each item: { "screen": "name", "components": ["list"], "canvasX": number, "canvasY": number }
 Space screens 240px apart horizontally starting at x=60, y=80.
 `.trim();
@@ -40,6 +67,9 @@ Rules (follow exactly):
 - Keep output self-contained in one file and include small inline mock data where useful
 - Return code only. No markdown fences. No explanations.
 - End your response with exactly: // === END ===
+
+${CREATIVITY_DIRECTIVE}
+${COMPILE_GUARDRAILS}
 `.trim();
 
 // JSON Schema for WebAppSpec — forces model output into a stable architecture snapshot.
@@ -95,11 +125,25 @@ This screen must include these components:
 ${components.map((c) => `- ${c}`).join("\n")}
 
 Requirements:
-- Component name must be exactly: ${screen}
+- Component name must be exactly: GeneratedScreen
 - No imports and no exports
 - Do not use React Native components/APIs
 - Use only web/DOM elements and browser-safe React patterns
 - Return code only (no markdown)
 - End with exactly: // === END ===
+
+Creative direction from design skill system:
+- Match the screen intent with a deliberate style direction.
+- Use typographic contrast and avoid default-looking combinations.
+- Build a color hierarchy with purpose (surface, primary, accent, muted).
+- Include hover/focus/active visual states on interactive UI.
+- Add subtle staged reveal patterns for key content blocks.
+- Avoid repetitive card-grid boilerplate unless the prompt explicitly asks for it.
+
+Syntax safety checklist:
+- Ensure all JSX tags are closed.
+- Ensure all delimiters are balanced: (), {}, [].
+- Ensure all quotes and template literals are closed.
+- Ensure the final line is exactly: // === END ===
 `.trim();
 }

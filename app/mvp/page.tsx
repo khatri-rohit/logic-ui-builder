@@ -8,7 +8,7 @@ import 'tldraw/tldraw.css'
 import RightPanel from '@/components/RightPanel';
 import { PhoneFrameShapeUtil } from '@/components/shapes/PhoneFrameShapeUtil';
 import logger from '@/lib/logger';
-import { getGenerationLayout } from '@/lib/canvasLayout';
+import { getGenerationLayout, getInitialDimensions } from '@/lib/canvasLayout';
 import { useCompilerWorker } from '@/hooks/useCompilerWorker';
 
 const components: TLComponents = {
@@ -71,7 +71,7 @@ const shapeUtils = [PhoneFrameShapeUtil]  // defined OUTSIDE component — never
 const StudioPage = () => {
     const editorRef = useRef<Editor | null>(null)
     const shapeIdRef = useRef<ReturnType<typeof createShapeId> | null>(null)
-    const accumulatedTextRef = useRef('')
+    const screenBuffersRef = useRef<Map<string, string>>(new Map())
     const frameIdsRef = useRef<Map<string, TLShapeId>>(new Map())
 
     const [prompt, setPrompt] = useState('Design a clean dashboard for analytics with cards and charts')
@@ -88,7 +88,7 @@ const StudioPage = () => {
 
             // 2. On each token — accumulate and update the shape
             shapeIdRef.current = null
-            accumulatedTextRef.current = ''
+            screenBuffersRef.current = new Map()
 
 
             const response = await fetch('/api/generate', {
@@ -157,35 +157,60 @@ const StudioPage = () => {
 
         if (event.type === 'spec') {
             const spec = event.spec
-            const positions = getGenerationLayout(editor, spec.screens.length)
+            const screensWithDims: Array<{ name: string; w: number; h: number }> = spec.screens.map((screenName: string) => ({
+                name: screenName,
+                ...getInitialDimensions(screenName),
+            }))
+            const positions = getGenerationLayout(editor, screensWithDims)
             frameIdsRef.current = new Map()
+            screenBuffersRef.current = new Map()
 
-            spec.screens.forEach((screenName: string, i: number) => {
+            screensWithDims.forEach((screen, i: number) => {
                 const id = createShapeId()
-                frameIdsRef.current.set(screenName, id)
+                frameIdsRef.current.set(screen.name, id)
+
                 editor.createShape({
                     id, type: 'phone-frame',
                     x: positions[i].x,
                     y: positions[i].y,
-                    props: { w: 1200, h: 720, screenName, content: '', state: 'skeleton', srcdoc: '' }
+                    props: {
+                        w: screen.w,
+                        h: screen.h,
+                        screenName: screen.name,
+                        content: '',
+                        state: 'skeleton',
+                        srcdoc: '',
+                    }
                 })
             })
+
             editor.zoomToFit({ animation: { duration: 400 } })
-        }
-
-        if (event.type === 'screen_start') {
+        } else if (event.type === 'screen_start') {
             const id = frameIdsRef.current.get(event.screen)
+            screenBuffersRef.current.set(event.screen, '')
             if (id) editor.updateShape({ id, type: 'phone-frame', props: { state: 'streaming' } })
-        }
-
-        if (event.type === 'code_chunk') {
+        } else if (event.type === 'screen_reset') {
             const id = frameIdsRef.current.get(event.screen)
             if (!id) return
-            accumulatedTextRef.current += event.token
+            screenBuffersRef.current.set(event.screen, '')
+            editor.updateShape({
+                id,
+                type: 'phone-frame',
+                props: {
+                    content: '',
+                    state: 'streaming'
+                }
+            })
+        } else if (event.type === 'code_chunk') {
+            const id = frameIdsRef.current.get(event.screen)
+            if (!id) return
+            const previous = screenBuffersRef.current.get(event.screen) ?? ''
+            const next = previous + event.token
+            screenBuffersRef.current.set(event.screen, next)
             editor.updateShape({
                 id, type: 'phone-frame',
                 props: {
-                    content: accumulatedTextRef.current,
+                    content: next,
                     state: 'streaming'
                 }
             })
@@ -194,6 +219,7 @@ const StudioPage = () => {
         if (event.type === 'screen_done') {
             const id = frameIdsRef.current.get(event.screen)
             if (!id) return
+            const compiledCode = screenBuffersRef.current.get(event.screen) ?? ''
 
             // Mark as compiling while worker runs
             editor.updateShape({
@@ -205,11 +231,8 @@ const StudioPage = () => {
             })
 
             // Send code to worker — result comes back via onResult callback above
-            compile(event.screen, accumulatedTextRef.current)
-            console.log(accumulatedTextRef.current)
-
-            // Reset accumulator for next screen
-            accumulatedTextRef.current = ''
+            compile(event.screen, compiledCode)
+            screenBuffersRef.current.delete(event.screen)
         }
 
         if (event.type === 'done') {

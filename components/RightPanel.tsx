@@ -26,6 +26,7 @@ const RightPanel = ({
         'Board-ready KPI dashboard with quarterly trend blocks',
         'Compliance-first admin console with audit timeline',
         'Operations cockpit with alerts, tasks, and status cards',
+        "Create a UGC agency website a landing page for content creation brand should reflect the brand identity and what they do. The website should have a modern and creative design that showcases the agency's portfolio and services. It should include sections for case studies, client testimonials, and a contact form for potential clients to get in touch. The color scheme should be vibrant and eye-catching, with a focus on visual storytelling to highlight the agency's expertise in content creation."
     ]
 
     const canGenerate = !!prompt.trim() && !isGenerating
@@ -52,7 +53,7 @@ const RightPanel = ({
                             key={item}
                             type='button'
                             onClick={() => onPromptChange(item)}
-                            className='rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 transition duration-150 hover:border-zinc-500 hover:bg-zinc-800 hover:text-white'
+                            className='rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 transition duration-150 hover:border-zinc-500 hover:bg-zinc-800 hover:text-white text-left'
                         >
                             {item}
                         </button>

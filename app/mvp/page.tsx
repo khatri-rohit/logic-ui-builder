@@ -178,6 +178,20 @@ const StudioPage = () => {
             if (id) editor.updateShape({ id, type: 'phone-frame', props: { state: 'streaming' } })
         }
 
+        if (event.type === 'screen_reset') {
+            const id = frameIdsRef.current.get(event.screen)
+            if (!id) return
+            accumulatedTextRef.current = ''
+            editor.updateShape({
+                id,
+                type: 'phone-frame',
+                props: {
+                    content: '',
+                    state: 'streaming'
+                }
+            })
+        }
+
         if (event.type === 'code_chunk') {
             const id = frameIdsRef.current.get(event.screen)
             if (!id) return

@@ -1,27 +1,35 @@
-importScripts('https://unpkg.com/@babel/standalone/babel.min.js')
+importScripts("https://unpkg.com/@babel/standalone/babel.min.js");
 
-self.onmessage = function({ data: { screenName, code } }) {
+self.onmessage = function ({ data: { screenName, code } }) {
   try {
     const cleaned = code
-      .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, '')
-      .replace(/^```$/gm, '')
-      .trim()
+      .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, "")
+      .replace(/^```$/gm, "")
+      .trim();
 
     // Babel.transform — same API shape as sucrase
     const { code: js } = Babel.transform(cleaned, {
       presets: [
-        ['react', { runtime: 'classic' }],
-        ['typescript', { allExtensions: true, isTSX: true }]
+        ["react", { runtime: "classic" }],
+        ["typescript", { allExtensions: true, isTSX: true }],
       ],
       filename: `${screenName}.tsx`,
-    })
+    });
 
-    self.postMessage({ screenName, html: buildHTML(screenName, js), error: null })
-
+    self.postMessage({
+      screenName,
+      html: buildHTML(screenName, js),
+      error: null,
+    });
   } catch (err) {
-    self.postMessage({ screenName, html: buildErrorHTML(screenName, err.message), error: err.message })
+    self.postMessage({
+      screenName,
+      html: buildErrorHTML(screenName, err.message),
+      error: err.message,
+    });
   }
-}
+};
+
 function buildHTML(screenName, js) {
   return `<!DOCTYPE html>
 <html>
@@ -34,6 +42,7 @@ function buildHTML(screenName, js) {
   #root { width:100vw; height:100vh; }
   #error { padding:12px; font-size:10px; color:#ff6b6b; font-family:monospace; white-space:pre-wrap; }
 </style>
+<script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 </head>
@@ -58,10 +67,11 @@ const TextInput = ({style, placeholder, value, onChangeText, ...p}) =>
 try {
 ${js}
 
-// Find the default export — the screen component
-const Component = (typeof ${screenName} !== 'undefined')
-  ? ${screenName}
-  : (() => React.createElement(View, {style:{padding:16}}, React.createElement(Text, null, '${screenName}')))
+// Resolve generated component by safe known names.
+const Component =
+  (typeof GeneratedScreen !== 'undefined' && GeneratedScreen) ||
+  (typeof Screen !== 'undefined' && Screen) ||
+  (() => React.createElement(View, {style:{padding:16}}, React.createElement(Text, null, '${screenName}')))
 
 ReactDOM.render(React.createElement(Component), document.getElementById('root'))
 } catch(e) {

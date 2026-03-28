@@ -8,55 +8,11 @@ export const SANDBOX_HTML = `<!DOCTYPE html>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; }
-    #root { width: 100%; }
+    #root { width: 100%; min-height: 100%; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-
-  <script>
-    // Auto-dimension reporter — injected by platform, invisible to generated code
-    (function() {
-      var lastW = 0, lastH = 0
-
-      function report() {
-        var el = document.documentElement
-        var w = Math.max(el.scrollWidth, el.offsetWidth, el.clientWidth)
-        var h = Math.max(el.scrollHeight, el.offsetHeight, el.clientHeight)
-
-        // Only post if meaningfully changed
-        if (Math.abs(w - lastW) < 4 && Math.abs(h - lastH) < 4) return
-        lastW = w
-        lastH = h
-
-        window.parent.postMessage({
-          type: 'frame-dimensions',
-          width: w,
-          height: h
-        }, '*')
-      }
-
-      // Fire after React mounts and paints
-      window.addEventListener('load', function() {
-        // Small delay — React root renders after load
-        setTimeout(report, 100)
-        setTimeout(report, 500)  // catch lazy images, fonts
-      })
-
-      // Watch for ANY content change
-      var ro = new ResizeObserver(report)
-      ro.observe(document.documentElement)
-
-      // Watch for dynamic content additions
-      var mo = new MutationObserver(report)
-      mo.observe(document.body || document.documentElement, {
-        childList: true,
-        subtree: true,
-        attributes: false,
-        characterData: false
-      })
-    })()
-  </script>
 </body>
 </html>`;
 
@@ -68,6 +24,71 @@ import App from './App'
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><App /></React.StrictMode>
 )
+
+// Auto-dimension reporter — mounted in runtime entry so it works regardless of template internals
+;(function () {
+  let lastW = 0
+  let lastH = 0
+
+  const report = () => {
+    const html = document.documentElement
+    const body = document.body
+    const root = document.getElementById('root')
+    const rootRect = root ? root.getBoundingClientRect() : { width: 0, height: 0 }
+
+    const width = Math.max(
+      html.scrollWidth,
+      html.offsetWidth,
+      html.clientWidth,
+      body ? body.scrollWidth : 0,
+      body ? body.offsetWidth : 0,
+      Math.ceil(rootRect.width)
+    )
+
+    const height = Math.max(
+      html.scrollHeight,
+      html.offsetHeight,
+      html.clientHeight,
+      body ? body.scrollHeight : 0,
+      body ? body.offsetHeight : 0,
+      Math.ceil(rootRect.height)
+    )
+
+    if (Math.abs(width - lastW) < 4 && Math.abs(height - lastH) < 4) return
+
+    lastW = width
+    lastH = height
+
+    window.parent.postMessage(
+      {
+        type: 'frame-dimensions',
+        width,
+        height,
+      },
+      '*'
+    )
+  }
+
+  window.addEventListener('load', () => {
+    setTimeout(report, 80)
+    setTimeout(report, 300)
+    setTimeout(report, 800)
+    setTimeout(report, 1400)
+  })
+
+  window.addEventListener('resize', report)
+
+  const ro = new ResizeObserver(report)
+  ro.observe(document.documentElement)
+
+  const mo = new MutationObserver(report)
+  mo.observe(document.body || document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: false,
+    characterData: false,
+  })
+})()
 `;
 
 export function buildSandpackFiles(
@@ -90,33 +111,3 @@ export function buildSandpackFiles(
     "/App.tsx": { code: cleaned },
   };
 }
-
-// export function buildSandpackFiles(
-//   code: string,
-// ): Record<string, { code: string }> {
-//   const cleaned = code
-//     .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, "")
-//     .replace(/^```$/gm, "")
-//     .trim();
-
-//   return {
-//     // Sandpack reads this to find the entry point
-//     "/package.json": {
-//       code: JSON.stringify(
-//         {
-//           main: "/index.tsx", // ← this is what the error says is missing
-//           dependencies: {
-//             react: "^18.0.0",
-//             "react-dom": "^18.0.0",
-//           },
-//         },
-//         null,
-//         2,
-//       ),
-//     },
-
-//     "/public/index.html": { code: SANDBOX_HTML },
-//     "/index.tsx": { code: SANDBOX_ENTRY },
-//     "/App.tsx": { code: cleaned },
-//   };
-// }

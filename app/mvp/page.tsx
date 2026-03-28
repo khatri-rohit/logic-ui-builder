@@ -25,7 +25,6 @@ import {
   getGenerationLayout,
   getInitialDimensionsForPlatform,
 } from "@/lib/canvasLayout";
-import { useCompilerWorker } from "@/hooks/useCompilerWorker";
 import { GenerationPlatform } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -170,24 +169,12 @@ const StudioPage = () => {
   );
   // const [prompt, setPrompt] = useState('Why is the sky blue?')
   const [isGenerating, setIsGenerating] = useState(false);
+  const [activeStreamingScreen, setActiveStreamingScreen] = useState<
+    string | null
+  >(null);
   const [selectedPlatform, setSelectedPlatform] =
     useState<GenerationPlatform>("web");
   const [model, setModel] = useState<string>("llama3.2-vision:11b");
-
-  const { compile } = useCompilerWorker(({ screenName, html, error }) => {
-    const editor = editorRef.current;
-    const id = frameIdsRef.current.get(screenName);
-    if (!editor || !id) return;
-
-    editor.updateShape({
-      id,
-      type: "phone-frame",
-      props: {
-        state: error ? "error" : "done",
-        srcdoc: html ?? "",
-      },
-    });
-  });
 
   const quickPrompts = [
     "UGC agency landing page with hero, social proof, pricing, and conversion-focused contact section",
@@ -206,6 +193,7 @@ const StudioPage = () => {
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
+    setActiveStreamingScreen(null);
     try {
       if (!editorRef.current) throw new Error("Editor not initialized");
 
@@ -252,6 +240,7 @@ const StudioPage = () => {
     } catch (error) {
       logger.error("Error generating layout:", error);
     } finally {
+      setActiveStreamingScreen(null);
       setIsGenerating(false);
     }
   };
@@ -299,6 +288,7 @@ const StudioPage = () => {
     } else if (event.type === "screen_start") {
       const id = frameIdsRef.current.get(event.screen);
       screenBuffersRef.current.set(event.screen, "");
+      setActiveStreamingScreen(event.screen);
       if (id)
         editor.updateShape({
           id,
@@ -309,6 +299,7 @@ const StudioPage = () => {
       const id = frameIdsRef.current.get(event.screen);
       if (!id) return;
       screenBuffersRef.current.set(event.screen, "");
+      setActiveStreamingScreen(event.screen);
       editor.updateShape({
         id,
         type: "phone-frame",
@@ -349,9 +340,13 @@ const StudioPage = () => {
       });
 
       screenBuffersRef.current.delete(event.screen);
+      setActiveStreamingScreen((current) =>
+        current === event.screen ? null : current,
+      );
     }
 
     if (event.type === "done") {
+      setActiveStreamingScreen(null);
       const newIds = [...frameIdsRef.current.values()];
       if (newIds.length > 0) {
         editor.select(...newIds);
@@ -435,9 +430,19 @@ const StudioPage = () => {
                 Mobile
               </Button>
             </div>
-            <span className="text-[11px] text-zinc-500">
-              Use Enter to generate and Shift+Enter for a new line
-            </span>
+            <div className="flex items-center gap-3">
+              {isGenerating && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" />
+                  {activeStreamingScreen
+                    ? `Generating: ${activeStreamingScreen}`
+                    : "Preparing generation..."}
+                </span>
+              )}
+              <span className="text-[11px] text-zinc-500">
+                Use Enter to generate and Shift+Enter for a new line
+              </span>
+            </div>
           </div>
 
           <div className="flex items-end gap-2">

@@ -15,7 +15,6 @@ import { GenerationPlatform } from "@/lib/types";
 import {
   loadSandpackClient,
   SandpackClient,
-  SandpackTemplate,
 } from "@codesandbox/sandpack-client";
 import { buildSandpackFiles } from "@/lib/sandpackTemplate";
 
@@ -83,11 +82,10 @@ export class PhoneFrameShapeUtil extends ShapeUtil<PhoneFrameShape> {
 }
 
 function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
-  const { state, content, screenName, w, h } = shape.props;
+  const { state, content, screenName, platform, w, h } = shape.props;
   const editor = useEditor();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const clientRef = useRef<SandpackClient | null>(null);
-  const mountedRef = useRef(false);
 
   // Passive dimension listener — shape-scoped, no Sandpack coupling
   useEffect(() => {
@@ -97,8 +95,19 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
       // Identify which iframe sent this by checking source
       if (e.source !== iframeRef.current?.contentWindow) return;
 
-      const newW = Math.min(Math.max(e.data.width, 200), 1920);
-      const newH = Math.min(Math.max(e.data.height, 100), 8000);
+      const reportedW = Number(e.data.width) || 0;
+      const reportedH = Number(e.data.height) || 0;
+
+      if (!reportedW || !reportedH) return;
+
+      const newW =
+        platform === "web"
+          ? Math.min(Math.max(Math.ceil(reportedW), 1440), 4096)
+          : w;
+      const newH =
+        platform === "web"
+          ? Math.min(Math.max(Math.ceil(reportedH), 220), 20000)
+          : Math.min(Math.max(Math.ceil(reportedH), 560), 2200);
 
       const wDiff = Math.abs(newW - w);
       const hDiff = Math.abs(newH - h);
@@ -108,7 +117,7 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
         id: shape.id,
         type: "phone-frame",
         props: {
-          ...(wDiff >= 4 && { w: newW }),
+          ...(platform === "web" && wDiff >= 4 && { w: newW }),
           ...(hDiff >= 4 && { h: newH }),
         },
       });
@@ -116,48 +125,34 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [w, h, shape.id, editor]);
+  }, [platform, w, h, shape.id, editor]);
 
   useEffect(() => {
     if (state !== "done" || !content || !iframeRef.current) return;
     console.log(content);
-    console.log(screenName);
-    console.log(mountedRef.current);
-
-    if (mountedRef.current) return;
-
-    mountedRef.current = true;
-
-    // console.log(clientRef.current);
-    // if (!clientRef.current) return;
-
     (async () => {
-      console.log(iframeRef.current);
+      const nextSandbox = {
+        files: buildSandpackFiles(content),
+        entry: "/index.tsx",
+        template: "create-react-app-typescript" as const,
+      };
 
-      clientRef.current?.destroy();
-      const client = await loadSandpackClient(
-        iframeRef.current!,
-        {
-          files: buildSandpackFiles(content),
-          entry: "/index.tsx",
-          template: "create-react-app-typescript",
-        },
-        {
-          showOpenInCodeSandbox: false,
-          showErrorScreen: true,
-          showLoadingScreen: true,
-          // Sandpack's own bundler — no manual compilation
-        },
-      );
-      console.log(client);
+      if (clientRef.current) {
+        clientRef.current.updateSandbox(nextSandbox);
+        return;
+      }
+
+      const client = await loadSandpackClient(iframeRef.current!, nextSandbox, {
+        showOpenInCodeSandbox: false,
+        showErrorScreen: true,
+        showLoadingScreen: true,
+        externalResources: [
+          "https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp,container-queries",
+        ],
+      });
 
       clientRef.current = client;
-      // No client.listen() — dimensions come through window message automatically
     })();
-
-    return () => {
-      mountedRef.current = false;
-    };
   }, [state, content]);
 
   useEffect(
@@ -177,82 +172,56 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
       style={{
         borderRadius: 10,
         border: "1px solid rgba(189, 199, 216, 0.58)",
-        // background: "#f8fafc",
         boxShadow: "0 18px 34px rgba(2, 8, 20, 0.22)",
         overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         position: "relative",
+        background: "#ffffff",
       }}
     >
       <div
         style={{
-          height: 28,
-          // background: "#eef2f8",
-          borderBottom: "1px solid rgba(186, 196, 213, 0.55)",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingInline: 10,
-          color: "#334155",
-        }}
-      >
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
-        >
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 3,
-              background: "linear-gradient(135deg,#7cc0ff,#3b82f6)",
-              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.55)",
-              flexShrink: 0,
-            }}
-          />
-          <span
-            title={screenName}
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {screenName || "Untitled Screen"}
-          </span>
-        </div>
-
-        <span
-          style={{
-            fontSize: 9,
-            lineHeight: "16px",
-            height: 16,
-            paddingInline: 6,
-            borderRadius: 999,
-            background: statusBg,
-            color: statusText,
-            textTransform: "capitalize",
-            fontWeight: 600,
-          }}
-        >
-          {state}
-        </span>
-      </div>
-
-      <div
-        style={{
-          flex: 1,
           overflow: "hidden",
           position: "relative",
-          // background: "#fff",
+          width: "100%",
+          height: "100%",
         }}
       >
         {state === "skeleton" && <SkeletonScreen />}
         {state === "streaming" && <StreamingScreen />}
+
+        {(state === "streaming" || state === "skeleton") && (
+          <div
+            style={{
+              position: "absolute",
+              top: 10,
+              left: 10,
+              zIndex: 2,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              border: "1px solid rgba(16,185,129,0.35)",
+              background: "rgba(16,185,129,0.12)",
+              color: "#065f46",
+              padding: "3px 8px",
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#10b981",
+                animation: "pulse 1.2s ease-in-out infinite",
+              }}
+            />
+            {state === "streaming"
+              ? `Generating ${screenName || "screen"}`
+              : "Preparing screen"}
+          </div>
+        )}
 
         {state === "compiling" && (
           <div
@@ -299,6 +268,26 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
             Compile failed
           </div>
         )}
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            right: 8,
+            fontSize: 9,
+            lineHeight: "14px",
+            height: 14,
+            paddingInline: 6,
+            borderRadius: 999,
+            background: statusBg,
+            color: statusText,
+            textTransform: "capitalize",
+            fontWeight: 600,
+            pointerEvents: "none",
+          }}
+        >
+          {state}
+        </div>
       </div>
     </HTMLContainer>
   );

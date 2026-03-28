@@ -2,9 +2,6 @@
 
 // Known package versions — curated list of what LLMs commonly generate
 const KNOWN_VERSIONS: Record<string, string> = {
-  // Animation
-  motion: "^12.0.0",
-
   // Charts
   recharts: "^2.10.0",
   "chart.js": "^4.4.0",

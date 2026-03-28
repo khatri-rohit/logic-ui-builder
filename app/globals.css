@@ -132,5 +132,5 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
   scroll-behavior: smooth;
-  scroll-margin-top: '2rem';
+  scroll-margin-top: "2rem";
 }

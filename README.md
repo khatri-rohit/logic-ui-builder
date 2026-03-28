@@ -1,4 +1,4 @@
-# UI/UX Builder (Enterprise Mobile UI Design Generator)
+# UI/UX Builder
 
 ## Vision & Project Goal
 

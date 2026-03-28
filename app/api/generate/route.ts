@@ -11,6 +11,7 @@ import {
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import logger from "@/lib/logger";
 import { buildEnhancedPrompt } from "@/lib/promptEnhancer";
+import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
 
 export const runtime = "nodejs";
 
@@ -182,10 +183,16 @@ export async function POST(req: NextRequest) {
       // model = "gpt-oss:120b-cloud",
     } = await req.json();
     const requestedPlatform = normalizePlatform(platform);
-    const enhancedPrompt = buildEnhancedPrompt({
+    const designContext = await buildDesignContext({
       prompt,
       platform: requestedPlatform,
     });
+    const enhancedPrompt = buildEnhancedPrompt({
+      prompt,
+      platform: requestedPlatform,
+      designContext,
+    });
+    const designContextText = toDesignContextText(designContext);
     const stage3ModelPriority = [
       model,
       ...STAGE3_MODELS.filter((m) => m !== model),
@@ -211,7 +218,7 @@ export async function POST(req: NextRequest) {
             ollama,
             STAGE1_MODELS,
             STAGE1_SYSTEM,
-            `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}`,
+            `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
           );
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
         const spec = splitMobileScreensIfNeeded(
@@ -219,6 +226,7 @@ export async function POST(req: NextRequest) {
           enhancedPrompt,
         );
         logger.info(`Stage 1 complete via model: ${stage1Model}`);
+        await write({ type: "design_context", designContext });
         await write({ type: "spec", spec });
 
         // Stage 2 — component planner (non-streaming)
@@ -228,7 +236,7 @@ export async function POST(req: NextRequest) {
             ollama,
             STAGE2_MODELS,
             STAGE2_SYSTEM,
-            `${requestedPlatform}Spec: ${JSON.stringify(spec)}`,
+            `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
           );
         const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         logger.info(`Stage 2 complete via model: ${stage2Model}`);
@@ -259,7 +267,13 @@ export async function POST(req: NextRequest) {
               const result = streamText({
                 model: ollama(candidateModel),
                 system: STAGE3_SYSTEM,
-                prompt: buildScreenPrompt(spec, tree, screen, enhancedPrompt),
+                prompt: buildScreenPrompt(
+                  spec,
+                  tree,
+                  screen,
+                  enhancedPrompt,
+                  designContext,
+                ),
                 temperature: 0.2,
               });
 

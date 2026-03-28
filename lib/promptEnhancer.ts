@@ -1,8 +1,9 @@
-import { GenerationPlatform } from "./types";
+import { DesignContext, GenerationPlatform } from "./types";
 
 type PromptEnhancerInput = {
   prompt: string;
   platform: GenerationPlatform;
+  designContext?: DesignContext;
 };
 
 const SKILL_SYSTEM_RULES = [
@@ -30,12 +31,28 @@ const PLATFORM_RULES: Record<GenerationPlatform, string[]> = {
 export function buildEnhancedPrompt({
   prompt,
   platform,
+  designContext,
 }: PromptEnhancerInput): string {
   const cleanedPrompt = prompt.trim();
+
+  const contextRules = designContext
+    ? [
+        `- Design direction: ${designContext.direction}`,
+        `- Recommended style: ${designContext.style.name} (${designContext.style.category})`,
+        `- Typography intent: ${designContext.style.typography}`,
+        `- Palette direction: ${designContext.palette.name} (${designContext.palette.primaryHex} / ${designContext.palette.accentHex})`,
+        `- Layout strategy: ${designContext.layout.name} with ${designContext.layout.visualTreatment}`,
+        "- Prioritize these UX checks before decorative choices:",
+        ...designContext.uxPriorities.map((line) => `  - ${line}`),
+      ]
+    : [];
 
   return [
     "USER INTENT:",
     cleanedPrompt,
+    ...(contextRules.length > 0
+      ? ["", "DESIGN CONTEXT:", ...contextRules]
+      : []),
     "",
     "EXECUTION RULES:",
     ...SKILL_SYSTEM_RULES.map((line) => `- ${line}`),

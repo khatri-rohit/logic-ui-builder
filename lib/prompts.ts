@@ -1,4 +1,4 @@
-import { ComponentTreeNode, WebAppSpec } from "./types";
+import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
 
 const CREATIVITY_DIRECTIVE = `
 Design quality bar (critical):
@@ -146,9 +146,30 @@ export function buildScreenPrompt(
   tree: ComponentTreeNode[],
   screen: string,
   userPrompt: string,
+  designContext?: DesignContext,
 ): string {
   const node = tree.find((n) => n.screen === screen);
   const components = node?.components ?? [];
+
+  const designContextBlock = designContext
+    ? `
+Skill-derived design guidance for this screen:
+- Product type: ${designContext.productType}
+- Direction: ${designContext.direction}
+- Style: ${designContext.style.name} (${designContext.style.category})
+- Style keywords: ${designContext.style.keywords}
+- Typography intent: ${designContext.style.typography}
+- Effects profile: ${designContext.style.effects}
+- Palette: ${designContext.palette.name}
+- Palette tokens: primary ${designContext.palette.primaryHex}, secondary ${designContext.palette.secondaryHex}, accent ${designContext.palette.accentHex}, bg ${designContext.palette.backgroundHex}, text ${designContext.palette.textHex}
+- Color psychology: ${designContext.palette.psychology}
+- Layout hint: ${designContext.layout.name} (${designContext.layout.cssStructure})
+- Visual treatment: ${designContext.layout.visualTreatment}
+- Typography scale hint: ${designContext.typography.contentType} with primary ${designContext.typography.primarySize}, secondary ${designContext.typography.secondarySize}, accent ${designContext.typography.accentSize}, line-height ${designContext.typography.lineHeight}
+- Top UX constraints:
+${designContext.uxPriorities.map((priority) => `  - ${priority}`).join("\n")}
+`
+    : "";
 
   return `
 Generate a React web screen component for: ${screen}
@@ -188,6 +209,8 @@ Creative direction from design skill system:
 - Build a color hierarchy with purpose (surface, primary, accent, muted).
 - Keep interactions visually clear without transition or animation effects.
 - Avoid repetitive card-grid boilerplate unless the prompt explicitly asks for it.
+
+${designContextBlock}
 
 Intent lock:
 - Do not add any product feature or section that is not implied by the prompt.

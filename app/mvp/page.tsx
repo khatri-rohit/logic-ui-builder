@@ -188,6 +188,8 @@ const StudioPage = () => {
     "gpt-oss:120b-cloud",
     "llama3.2-vision:11b",
     "deepseek-v3.1:671b-cloud",
+    "gemma3:27b-cloud",
+    "mistral-large-3:675b-cloud",
   ];
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -389,11 +391,11 @@ const StudioPage = () => {
             Canvas Generation Studio
           </p>
           <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-            3.0 Flash
+            {model}
           </span>
         </div>
 
-        <div className="pointer-events-auto absolute left-4 top-16 flex max-w-[70vw] flex-wrap gap-2">
+        {/* <div className="pointer-events-auto absolute left-4 top-16 flex max-w-[70vw] flex-wrap gap-2">
           {quickPrompts.map((item) => (
             <button
               key={item}
@@ -404,7 +406,7 @@ const StudioPage = () => {
               {item}
             </button>
           ))}
-        </div>
+        </div> */}
 
         <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-3xl border border-zinc-700/80 bg-zinc-950/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -458,7 +460,7 @@ const StudioPage = () => {
                 }
               }}
               placeholder="What would you like to change or create?"
-              className="scrolling h-11 min-h-11 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
+              className="scrolling h-15 min-h-11 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
             />
 
             <Button

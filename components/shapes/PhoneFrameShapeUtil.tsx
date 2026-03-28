@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/shapes/PhoneFrameShapeUtil.tsx
 import { useEffect, useRef } from "react";
 import {
   HTMLContainer,
@@ -13,6 +12,11 @@ import {
   useEditor,
 } from "tldraw";
 import { GenerationPlatform } from "@/lib/types";
+import {
+  loadSandpackClient,
+  SandpackClient,
+} from "@codesandbox/sandpack-client";
+import { buildSandpackFiles } from "@/lib/sandpackTemplate";
 
 const SHAPE_TYPE = "phone-frame";
 
@@ -30,7 +34,7 @@ declare module "tldraw" {
   }
 }
 
-type PhoneFrameShape = TLShape<typeof SHAPE_TYPE>;
+type PhoneFrameShape = TLShape<typeof SHAPE_TYPE> & any; // to allow extra props for now and remove error, can be removed later when we have a better shape schema solution
 
 export class PhoneFrameShapeUtil extends ShapeUtil<PhoneFrameShape> {
   static override type = SHAPE_TYPE;
@@ -78,52 +82,86 @@ export class PhoneFrameShapeUtil extends ShapeUtil<PhoneFrameShape> {
 }
 
 function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
-  const { state, srcdoc, screenName, platform, w, h } = shape.props;
-  const isMobile = platform === "mobile";
+  const { state, content, screenName, platform, w, h } = shape.props;
   const editor = useEditor();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const clientRef = useRef<SandpackClient | null>(null);
 
+  // Passive dimension listener — shape-scoped, no Sandpack coupling
   useEffect(() => {
-    if (state !== "done" || isMobile) return;
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type !== "frame-dimensions") return;
 
-    function handleMessage(e: MessageEvent) {
-      const iframeWindow = iframeRef.current?.contentWindow;
-      if (!iframeWindow || e.source !== iframeWindow) return;
-      if (e.data?.type !== "iframe-resize") return;
+      // Identify which iframe sent this by checking source
+      if (e.source !== iframeRef.current?.contentWindow) return;
 
-      const rawWidth = Number(e.data?.width);
-      const rawHeight = Number(e.data?.height);
-      if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return;
+      const reportedW = Number(e.data.width) || 0;
+      const reportedH = Number(e.data.height) || 0;
 
-      const newW = Math.min(Math.max(rawWidth, 620), 1920);
-      const newH = Math.min(Math.max(rawHeight, 420), 7000);
+      if (!reportedW || !reportedH) return;
 
-      if (Math.abs(newW - w) < 4 && Math.abs(newH - h) < 4) return;
+      const newW =
+        platform === "web"
+          ? Math.min(Math.max(Math.ceil(reportedW), 1440), 4096)
+          : w;
+      const newH =
+        platform === "web"
+          ? Math.min(Math.max(Math.ceil(reportedH), 220), 20000)
+          : Math.min(Math.max(Math.ceil(reportedH), 560), 2200);
+
+      const wDiff = Math.abs(newW - w);
+      const hDiff = Math.abs(newH - h);
+      if (wDiff < 4 && hDiff < 4) return;
 
       editor.updateShape({
         id: shape.id,
         type: "phone-frame",
-        props: { w: newW, h: newH },
+        props: {
+          ...(platform === "web" && wDiff >= 4 && { w: newW }),
+          ...(hDiff >= 4 && { h: newH }),
+        },
       });
     }
 
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [isMobile, state, w, h, editor, shape.id]);
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [platform, w, h, shape.id, editor]);
 
-  const frameStyle = isMobile
-    ? {
-        borderRadius: 16,
-        border: "1px solid rgba(191, 200, 217, 0.65)",
-        background: "#f8fafc",
-        boxShadow: "0 14px 28px rgba(2, 8, 20, 0.22)",
-      }
-    : {
-        borderRadius: 10,
-        border: "1px solid rgba(189, 199, 216, 0.58)",
-        background: "#f8fafc",
-        boxShadow: "0 18px 34px rgba(2, 8, 20, 0.22)",
+  useEffect(() => {
+    if (state !== "done" || !content || !iframeRef.current) return;
+    (async () => {
+      const nextSandbox = {
+        files: buildSandpackFiles(content),
+        entry: "/index.tsx",
+        template: "create-react-app-typescript" as const,
       };
+
+      if (clientRef.current) {
+        clientRef.current.updateSandbox(nextSandbox);
+        return;
+      }
+
+      const client = await loadSandpackClient(iframeRef.current!, nextSandbox, {
+        showOpenInCodeSandbox: false,
+        showErrorScreen: true,
+        showLoadingScreen: true,
+        externalResources: [
+          // Deliberately using Tailwind CDN only for Sandpack development/prototyping previews.
+          // This trades production guidance for reliable in-iframe preview rendering.
+          "https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,container-queries",
+        ],
+      });
+
+      clientRef.current = client;
+    })();
+  }, [state, content]);
+
+  useEffect(
+    () => () => {
+      clientRef.current?.destroy();
+    },
+    [],
+  );
 
   const statusBg =
     state === "done" ? "#dcfce7" : state === "error" ? "#fee2e2" : "#e2e8f0";
@@ -133,82 +171,58 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
   return (
     <HTMLContainer
       style={{
-        ...frameStyle,
+        borderRadius: 10,
+        border: "1px solid rgba(189, 199, 216, 0.58)",
+        boxShadow: "0 18px 34px rgba(2, 8, 20, 0.22)",
         overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         position: "relative",
+        background: "#ffffff",
       }}
     >
       <div
         style={{
-          height: 28,
-          background: "#eef2f8",
-          borderBottom: "1px solid rgba(186, 196, 213, 0.55)",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingInline: 10,
-          color: "#334155",
-        }}
-      >
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
-        >
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 3,
-              background: "linear-gradient(135deg,#7cc0ff,#3b82f6)",
-              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.55)",
-              flexShrink: 0,
-            }}
-          />
-          <span
-            title={screenName}
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              maxWidth: isMobile ? 130 : 280,
-            }}
-          >
-            {screenName || "Untitled Screen"}
-          </span>
-        </div>
-
-        <span
-          style={{
-            fontSize: 9,
-            lineHeight: "16px",
-            height: 16,
-            paddingInline: 6,
-            borderRadius: 999,
-            background: statusBg,
-            color: statusText,
-            textTransform: "capitalize",
-            fontWeight: 600,
-          }}
-        >
-          {state}
-        </span>
-      </div>
-
-      <div
-        style={{
-          flex: 1,
           overflow: "hidden",
           position: "relative",
-          background: "#fff",
+          width: "100%",
+          height: "100%",
         }}
       >
         {state === "skeleton" && <SkeletonScreen />}
         {state === "streaming" && <StreamingScreen />}
+
+        {(state === "streaming" || state === "skeleton") && (
+          <div
+            style={{
+              position: "absolute",
+              top: 10,
+              left: 10,
+              zIndex: 2,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              border: "1px solid rgba(16,185,129,0.35)",
+              background: "rgba(16,185,129,0.12)",
+              color: "#065f46",
+              padding: "3px 8px",
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#10b981",
+                animation: "pulse 1.2s ease-in-out infinite",
+              }}
+            />
+            {state === "streaming"
+              ? `Generating ${screenName || "screen"}`
+              : "Preparing screen"}
+          </div>
+        )}
 
         {state === "compiling" && (
           <div
@@ -227,18 +241,16 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
           </div>
         )}
 
-        {state === "done" && srcdoc && (
+        {state === "done" && (
           <iframe
             ref={iframeRef}
-            srcDoc={srcdoc}
-            sandbox="allow-scripts"
             style={{
               width: "100%",
               height: "100%",
               border: "none",
-              display: "block",
-              background: "#fff",
+              display: state === "done" ? "block" : "none",
             }}
+            allow="cross-origin-isolated"
           />
         )}
 
@@ -257,6 +269,26 @@ function PhoneFrameShapeComponent({ shape }: { shape: PhoneFrameShape }) {
             Compile failed
           </div>
         )}
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            right: 8,
+            fontSize: 9,
+            lineHeight: "14px",
+            height: 14,
+            paddingInline: 6,
+            borderRadius: 999,
+            background: statusBg,
+            color: statusText,
+            textTransform: "capitalize",
+            fontWeight: 600,
+            pointerEvents: "none",
+          }}
+        >
+          {state}
+        </div>
       </div>
     </HTMLContainer>
   );
@@ -271,6 +303,8 @@ function SkeletonScreen() {
         flexDirection: "column",
         gap: 10,
         background: "#fff",
+        width: "100%",
+        height: "100%",
       }}
     >
       {[96, 82, 100, 74, 88].map((w, i) => (
@@ -298,6 +332,8 @@ function StreamingScreen() {
         flexDirection: "column",
         gap: 7,
         background: "#fff",
+        width: "100%",
+        height: "100%",
       }}
     >
       <div

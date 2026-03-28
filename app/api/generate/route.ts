@@ -11,6 +11,7 @@ import {
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import logger from "@/lib/logger";
 import { buildEnhancedPrompt } from "@/lib/promptEnhancer";
+import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,55 @@ const STAGE3_MODELS = [
 
 function normalizePlatform(value: unknown): GenerationPlatform {
   return value === "mobile" ? "mobile" : "web";
+}
+
+const MOBILE_COMPLEXITY_KEYWORDS = [
+  "landing",
+  "dashboard",
+  "analytics",
+  "pricing",
+  "testimonials",
+  "features",
+  "faq",
+  "checkout",
+  "catalog",
+  "profile",
+  "settings",
+  "feed",
+  "timeline",
+  "workflow",
+  "step",
+  "multi",
+  "campaign",
+  "onboarding",
+  "portfolio",
+  "case study",
+];
+
+function splitMobileScreensIfNeeded(
+  spec: WebAppSpec,
+  prompt: string,
+): WebAppSpec {
+  if (spec.platform !== "mobile") return spec;
+  if (spec.screens.length > 1) return spec;
+
+  const normalizedPrompt = prompt.toLowerCase();
+  const keywordHits = MOBILE_COMPLEXITY_KEYWORDS.reduce(
+    (count, keyword) => count + (normalizedPrompt.includes(keyword) ? 1 : 0),
+    0,
+  );
+  const longPromptBoost = prompt.length >= 180 ? 1 : 0;
+  const complexityScore = keywordHits + longPromptBoost;
+
+  if (complexityScore < 2) return spec;
+
+  const parts = complexityScore >= 4 ? 3 : 2;
+  const baseName = spec.screens[0]?.trim() || "Mobile Screen";
+
+  return {
+    ...spec,
+    screens: Array.from({ length: parts }, (_, i) => `${baseName} - ${i + 1}`),
+  };
 }
 
 function coerceSpec(
@@ -122,7 +172,7 @@ export async function POST(req: NextRequest) {
   try {
     const {
       prompt,
-      platform: rawPlatform,
+      platform,
       model, // optional preferred model for stage 3
       // model = "mistral:7b", // 82s, 41s
       // model = "qwen3.5:9b", // 47s
@@ -132,8 +182,17 @@ export async function POST(req: NextRequest) {
       // model = "minimax-m2.7:cloud", // feels slow generation of code_chunk
       // model = "gpt-oss:120b-cloud",
     } = await req.json();
-    const platform = normalizePlatform(rawPlatform);
-    const enhancedPrompt = buildEnhancedPrompt({ prompt, platform });
+    const requestedPlatform = normalizePlatform(platform);
+    const designContext = await buildDesignContext({
+      prompt,
+      platform: requestedPlatform,
+    });
+    const enhancedPrompt = buildEnhancedPrompt({
+      prompt,
+      platform: requestedPlatform,
+      designContext,
+    });
+    const designContextText = toDesignContextText(designContext);
     const stage3ModelPriority = [
       model,
       ...STAGE3_MODELS.filter((m) => m !== model),
@@ -159,11 +218,15 @@ export async function POST(req: NextRequest) {
             ollama,
             STAGE1_MODELS,
             STAGE1_SYSTEM,
-            `User prompt: ${enhancedPrompt}\nPlatform: ${platform}`,
+            `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
           );
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
-        const spec = coerceSpec(rawParsedSpec, platform);
+        const spec = splitMobileScreensIfNeeded(
+          coerceSpec(rawParsedSpec, requestedPlatform),
+          enhancedPrompt,
+        );
         logger.info(`Stage 1 complete via model: ${stage1Model}`);
+        await write({ type: "design_context", designContext });
         await write({ type: "spec", spec });
 
         // Stage 2 — component planner (non-streaming)
@@ -173,7 +236,7 @@ export async function POST(req: NextRequest) {
             ollama,
             STAGE2_MODELS,
             STAGE2_SYSTEM,
-            `${platform}Spec: ${JSON.stringify(spec)}`,
+            `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
           );
         const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         logger.info(`Stage 2 complete via model: ${stage2Model}`);
@@ -204,7 +267,13 @@ export async function POST(req: NextRequest) {
               const result = streamText({
                 model: ollama(candidateModel),
                 system: STAGE3_SYSTEM,
-                prompt: buildScreenPrompt(spec, tree, screen, enhancedPrompt),
+                prompt: buildScreenPrompt(
+                  spec,
+                  tree,
+                  screen,
+                  enhancedPrompt,
+                  designContext,
+                ),
                 temperature: 0.2,
               });
 

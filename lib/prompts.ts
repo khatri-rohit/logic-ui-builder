@@ -1,4 +1,4 @@
-import { ComponentTreeNode, WebAppSpec } from "./types";
+import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
 
 const CREATIVITY_DIRECTIVE = `
 Design quality bar (critical):
@@ -6,7 +6,7 @@ Design quality bar (critical):
 - Build one clear visual concept per screen with intentional hierarchy.
 - Use distinctive typography pairings (no default/system-only look).
 - Use a cohesive color system with one dominant direction and sharp accents.
-- Add meaningful motion hints (entry/stagger/interaction), not random effects.
+- Keep output purely static: no animations, transitions, or motion effects.
 - Build atmosphere with gradients, overlays, patterns, or depth layers.
 - Keep accessibility: readable text, semantic landmarks, visible states.
 - Keep responsiveness: mobile-first and desktop-ready structure.
@@ -23,8 +23,14 @@ const SKILL_DIRECTIVE = `
 Skill-guided UI system:
 - Use design-system token logic: clear primitive -> semantic -> component styling structure.
 - Prefer shadcn-style component composition patterns when stylingLib is "shadcn".
-- Keep interactive states explicit (hover, focus-visible, active, disabled) for controls.
+- Keep visual states explicit for controls without animation-driven behavior.
 - Avoid repetitive card-grid boilerplate unless explicitly requested.
+`.trim();
+
+const STATIC_LAYOUT_DIRECTIVE = `
+Static layout mode (critical):
+- Generate static design layouts only.
+- Do not use animations, transitions, keyframes, or motion libraries.
 `.trim();
 
 const COMPILE_GUARDRAILS = `
@@ -34,8 +40,15 @@ Compilation guardrails (must pass):
 - Close every JSX tag and every string/template literal.
 - Avoid unsupported syntax and avoid trailing partial lines.
 - Use inline mock data inside the file if needed.
-- Do not import or export anything.
-- Before finishing, self-check syntax and then append: // === END ===
+- imports allowed; but export the component at the end with: export default GeneratedScreen;
+`.trim();
+
+const MOBILE_SPLIT_DIRECTIVE = `
+Mobile segmentation (critical):
+- For platform = mobile, avoid forcing long, desktop-like pages into one screen.
+- If requested content is taller than a typical phone viewport, split into multiple screens.
+- Use clear screen names with sequence suffixes, e.g. "Home - 1", "Home - 2", "Checkout - 1", "Checkout - 2".
+- Keep each mobile screen focused and scroll length realistic for a handheld UI.
 `.trim();
 
 export const STAGE1_SYSTEM = `
@@ -46,6 +59,8 @@ No explanation. No markdown. Pure JSON only.
 ${CREATIVITY_DIRECTIVE}
 ${INTENT_LOCK_DIRECTIVE}
 ${SKILL_DIRECTIVE}
+${MOBILE_SPLIT_DIRECTIVE}
+${STATIC_LAYOUT_DIRECTIVE}
 
 Output this exact structure:
 {
@@ -68,29 +83,32 @@ output ONLY a JSON array. No explanation. No markdown.
 
 ${CREATIVITY_DIRECTIVE}
 ${INTENT_LOCK_DIRECTIVE}
+${MOBILE_SPLIT_DIRECTIVE}
+${STATIC_LAYOUT_DIRECTIVE}
 
 Each item: { "screen": "name", "components": ["list"], "canvasX": number, "canvasY": number }
 Space screens 240px apart horizontally starting at x=60, y=80.
 `.trim();
 
 export const STAGE3_SYSTEM = `
-You are a React web developer. Generate a single TSX screen component.
-Rules (follow exactly):
-- Web only. Use HTML elements (div, header, nav, main, section, button, input, img, table, etc.)
-- Do NOT use React Native or Expo APIs/components (View, Text, ScrollView, TouchableOpacity, FlatList, SafeAreaView)
-- Do NOT import from any package
-- Do NOT export anything
-- TypeScript + TSX only
-- Use inline styles or simple className strings that do not rely on external CSS frameworks
-- Do not include external script tags (especially cdn.tailwindcss.com)
-- Do not put CSS at-rules like @media inside React style objects; use responsive layout logic or plain CSS blocks instead
-- Keep output self-contained in one file and include small inline mock data where useful
-- Return code only. No markdown fences. No explanations.
-- End your response with exactly: // === END ===
+You are a frontend developer. Generate a React TypeScript component.
+Rules:
+- Standard React + TypeScript only
+- Output TSX source code only. Do not include any explanation text, headings, or markdown before or after code.
+- The first non-whitespace token must be a valid TypeScript token (import, type, interface, const, function, or export).
+- You MAY import from: recharts, lucide-react, clsx
+- Use Tailwind CSS classes for styling (CDN available)
+- Apply explicit Tailwind className values on major layout, spacing, and typography elements; avoid browser-default presentation.
+- No React Native imports
+- No local file imports of any kind (forbidden: ./, ../, /, @/)
+- No UI component library imports; compose UI using only HTML elements and Tailwind utility classes
+- Do not use shadcn-specific patterns or components even if stylingLib is "shadcn" — just apply Tailwind classes with the same design intent
+- Generate static layout only: do not add animations, transitions, keyframes, or motion-library usage
 
 ${CREATIVITY_DIRECTIVE}
 ${INTENT_LOCK_DIRECTIVE}
 ${SKILL_DIRECTIVE}
+${STATIC_LAYOUT_DIRECTIVE}
 ${COMPILE_GUARDRAILS}
 `.trim();
 
@@ -128,9 +146,30 @@ export function buildScreenPrompt(
   tree: ComponentTreeNode[],
   screen: string,
   userPrompt: string,
+  designContext?: DesignContext,
 ): string {
   const node = tree.find((n) => n.screen === screen);
   const components = node?.components ?? [];
+
+  const designContextBlock = designContext
+    ? `
+Skill-derived design guidance for this screen:
+- Product type: ${designContext.productType}
+- Direction: ${designContext.direction}
+- Style: ${designContext.style.name} (${designContext.style.category})
+- Style keywords: ${designContext.style.keywords}
+- Typography intent: ${designContext.style.typography}
+- Effects profile: ${designContext.style.effects}
+- Palette: ${designContext.palette.name}
+- Palette tokens: primary ${designContext.palette.primaryHex}, secondary ${designContext.palette.secondaryHex}, accent ${designContext.palette.accentHex}, bg ${designContext.palette.backgroundHex}, text ${designContext.palette.textHex}
+- Color psychology: ${designContext.palette.psychology}
+- Layout hint: ${designContext.layout.name} (${designContext.layout.cssStructure})
+- Visual treatment: ${designContext.layout.visualTreatment}
+- Typography scale hint: ${designContext.typography.contentType} with primary ${designContext.typography.primarySize}, secondary ${designContext.typography.secondarySize}, accent ${designContext.typography.accentSize}, line-height ${designContext.typography.lineHeight}
+- Top UX constraints:
+${designContext.uxPriorities.map((priority) => `  - ${priority}`).join("\n")}
+`
+    : "";
 
   return `
 Generate a React web screen component for: ${screen}
@@ -150,21 +189,28 @@ ${components.map((c) => `- ${c}`).join("\n")}
 
 Requirements:
 - Component name must be exactly: GeneratedScreen
-- No imports and no exports
+- imports allowed; but export the component at the end with: export default GeneratedScreen;
+- Output TSX source code only. Do not prepend lines like "Here is the code".
 - Do not use React Native components/APIs
 - Use only web/DOM elements and browser-safe React patterns
+- Generate static layout only: do not add animations, transitions, keyframes, or motion-library usage
+- Do not import local files of any kind (forbidden: ./, ../, /, @/)
+- Build UI with HTML + Tailwind classes only; do not import UI components from local or external UI kits
 - If platform is mobile, use compact spacing, touch-friendly hit areas, and phone-like content proportions
+- If platform is mobile, keep this screen scoped as one mobile step; do not include an entire long-form app flow in one screen
 - If platform is web, design for desktop width and natural full-page vertical flow
+- If platform is web, the outermost layout wrapper must be desktop-width (w-full, min-h-screen) and must not use narrow width caps such as max-w-sm, max-w-md, or max-w-lg
+- If platform is web, prefer multi-column composition at desktop breakpoints (lg:) instead of a single narrow centered column
 - Return code only (no markdown)
-- End with exactly: // === END ===
 
 Creative direction from design skill system:
 - Match the screen intent with a deliberate style direction.
 - Use typographic contrast and avoid default-looking combinations.
 - Build a color hierarchy with purpose (surface, primary, accent, muted).
-- Include hover/focus/active visual states on interactive UI.
-- Add subtle staged reveal patterns for key content blocks.
+- Keep interactions visually clear without transition or animation effects.
 - Avoid repetitive card-grid boilerplate unless the prompt explicitly asks for it.
+
+${designContextBlock}
 
 Intent lock:
 - Do not add any product feature or section that is not implied by the prompt.
@@ -174,6 +220,5 @@ Syntax safety checklist:
 - Ensure all JSX tags are closed.
 - Ensure all delimiters are balanced: (), {}, [].
 - Ensure all quotes and template literals are closed.
-- Ensure the final line is exactly: // === END ===
 `.trim();
 }

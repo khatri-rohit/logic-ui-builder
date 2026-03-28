@@ -25,7 +25,6 @@ import {
   getGenerationLayout,
   getInitialDimensionsForPlatform,
 } from "@/lib/canvasLayout";
-import { useCompilerWorker } from "@/hooks/useCompilerWorker";
 import { GenerationPlatform } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -170,24 +169,12 @@ const StudioPage = () => {
   );
   // const [prompt, setPrompt] = useState('Why is the sky blue?')
   const [isGenerating, setIsGenerating] = useState(false);
+  const [activeStreamingScreen, setActiveStreamingScreen] = useState<
+    string | null
+  >(null);
   const [selectedPlatform, setSelectedPlatform] =
     useState<GenerationPlatform>("web");
   const [model, setModel] = useState<string>("llama3.2-vision:11b");
-
-  const { compile } = useCompilerWorker(({ screenName, html, error }) => {
-    const editor = editorRef.current;
-    const id = frameIdsRef.current.get(screenName);
-    if (!editor || !id) return;
-
-    editor.updateShape({
-      id,
-      type: "phone-frame",
-      props: {
-        state: error ? "error" : "done",
-        srcdoc: html ?? "",
-      },
-    });
-  });
 
   const quickPrompts = [
     "UGC agency landing page with hero, social proof, pricing, and conversion-focused contact section",
@@ -201,11 +188,14 @@ const StudioPage = () => {
     "gpt-oss:120b-cloud",
     "llama3.2-vision:11b",
     "deepseek-v3.1:671b-cloud",
+    "gemma3:27b-cloud",
+    "mistral-large-3:675b-cloud",
   ];
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
+    setActiveStreamingScreen(null);
     try {
       if (!editorRef.current) throw new Error("Editor not initialized");
 
@@ -252,6 +242,7 @@ const StudioPage = () => {
     } catch (error) {
       logger.error("Error generating layout:", error);
     } finally {
+      setActiveStreamingScreen(null);
       setIsGenerating(false);
     }
   };
@@ -299,6 +290,7 @@ const StudioPage = () => {
     } else if (event.type === "screen_start") {
       const id = frameIdsRef.current.get(event.screen);
       screenBuffersRef.current.set(event.screen, "");
+      setActiveStreamingScreen(event.screen);
       if (id)
         editor.updateShape({
           id,
@@ -309,6 +301,7 @@ const StudioPage = () => {
       const id = frameIdsRef.current.get(event.screen);
       if (!id) return;
       screenBuffersRef.current.set(event.screen, "");
+      setActiveStreamingScreen(event.screen);
       editor.updateShape({
         id,
         type: "phone-frame",
@@ -336,23 +329,26 @@ const StudioPage = () => {
     if (event.type === "screen_done") {
       const id = frameIdsRef.current.get(event.screen);
       if (!id) return;
-      const compiledCode = screenBuffersRef.current.get(event.screen) ?? "";
-      // console.log(compiledCode)
-      // Mark as compiling while worker runs
+
+      // Pass the full code and flip to done
+      // The shape's useEffect watches these props and mounts Sandpack
       editor.updateShape({
         id,
         type: "phone-frame",
         props: {
-          state: "compiling",
+          state: "done",
+          content: screenBuffersRef.current.get(event.screen),
         },
       });
 
-      // Send code to worker — result comes back via onResult callback above
-      compile(event.screen, compiledCode);
       screenBuffersRef.current.delete(event.screen);
+      setActiveStreamingScreen((current) =>
+        current === event.screen ? null : current,
+      );
     }
 
     if (event.type === "done") {
+      setActiveStreamingScreen(null);
       const newIds = [...frameIdsRef.current.values()];
       if (newIds.length > 0) {
         editor.select(...newIds);
@@ -395,11 +391,11 @@ const StudioPage = () => {
             Canvas Generation Studio
           </p>
           <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-            3.0 Flash
+            {model}
           </span>
         </div>
 
-        <div className="pointer-events-auto absolute left-4 top-16 flex max-w-[70vw] flex-wrap gap-2">
+        {/* <div className="pointer-events-auto absolute left-4 top-16 flex max-w-[70vw] flex-wrap gap-2">
           {quickPrompts.map((item) => (
             <button
               key={item}
@@ -410,7 +406,7 @@ const StudioPage = () => {
               {item}
             </button>
           ))}
-        </div>
+        </div> */}
 
         <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-3xl border border-zinc-700/80 bg-zinc-950/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -436,9 +432,19 @@ const StudioPage = () => {
                 Mobile
               </Button>
             </div>
-            <span className="text-[11px] text-zinc-500">
-              Use Enter to generate and Shift+Enter for a new line
-            </span>
+            <div className="flex items-center gap-3">
+              {isGenerating && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" />
+                  {activeStreamingScreen
+                    ? `Generating: ${activeStreamingScreen}`
+                    : "Preparing generation..."}
+                </span>
+              )}
+              <span className="text-[11px] text-zinc-500">
+                Use Enter to generate and Shift+Enter for a new line
+              </span>
+            </div>
           </div>
 
           <div className="flex items-end gap-2">
@@ -454,7 +460,7 @@ const StudioPage = () => {
                 }
               }}
               placeholder="What would you like to change or create?"
-              className="scrolling h-11 min-h-11 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
+              className="scrolling h-15 min-h-11 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
             />
 
             <Button

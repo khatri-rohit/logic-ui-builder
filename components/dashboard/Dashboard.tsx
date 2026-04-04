@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { JetBrains_Mono } from "next/font/google";
+import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUp,
@@ -23,6 +24,7 @@ import {
   Smartphone,
   TerminalSquare,
   UserRound,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -45,8 +47,8 @@ const mono = JetBrains_Mono({
 
 const titleWords = ["Welcome", "to", "Stitch."];
 
-const navItems: Array<{ label: string; icon: LucideIcon; active?: boolean }> = [
-  { label: "Recent", icon: History, active: true },
+const navItems: Array<{ label: string; icon: LucideIcon }> = [
+  { label: "Recent", icon: History },
   { label: "Yesterday", icon: CalendarDays },
   { label: "Last 30 Days", icon: CalendarDays },
   { label: "Examples", icon: FolderKanban },
@@ -70,15 +72,83 @@ const projectFeed: Array<{ name: string; time: string; detail: string }> = [
   },
 ];
 
-const quickActions: Array<{ label: string; icon: LucideIcon }> = [
-  { label: "Mobile friendly home...", icon: Smartphone },
-  { label: "Layered dashboard...", icon: Layers },
-  { label: "React structure scaffold...", icon: Code2 },
-  { label: "System logs display...", icon: TerminalSquare },
+type DashboardPlatform = "web" | "mobile";
+
+const quickActions: Array<{
+  label: string;
+  icon: LucideIcon;
+  prompt: string;
+  platform: DashboardPlatform;
+}> = [
+  {
+    label: "Mobile friendly home...",
+    icon: Smartphone,
+    prompt:
+      "Design a mobile-first homepage with onboarding, social proof, and a clear CTA section.",
+    platform: "mobile",
+  },
+  {
+    label: "Layered dashboard...",
+    icon: Layers,
+    prompt:
+      "Build a layered analytics dashboard with KPI cards, trend charts, and a filter sidebar.",
+    platform: "web",
+  },
+  {
+    label: "React structure scaffold...",
+    icon: Code2,
+    prompt:
+      "Generate a clean React app scaffold with reusable components, routes, and design tokens.",
+    platform: "web",
+  },
+  {
+    label: "System logs display...",
+    icon: TerminalSquare,
+    prompt:
+      "Create an operations log screen with severity filters, search, and timeline grouping.",
+    platform: "web",
+  },
 ];
 
 const Dashboard = () => {
+  const router = useRouter();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [activeNavItem, setActiveNavItem] = useState(
+    navItems[0]?.label ?? "Recent",
+  );
+  const [platform, setPlatform] = useState<DashboardPlatform>("web");
+  const [command, setCommand] = useState("");
+  const [selectedModel, setSelectedModel] = useState("flash");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const canSubmit = command.trim().length > 0;
+
+  const handleQuickAction = (action: (typeof quickActions)[number]) => {
+    setCommand(action.prompt);
+    setPlatform(action.platform);
+
+    requestAnimationFrame(() => {
+      commandInputRef.current?.focus();
+    });
+  };
+
+  const handleSubmit = () => {
+    const normalizedPrompt = command.trim();
+
+    if (!normalizedPrompt) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      prompt: normalizedPrompt,
+      platform,
+      model: selectedModel,
+    });
+
+    router.push(`/studio?${params.toString()}`);
+  };
 
   useGSAP(
     () => {
@@ -99,6 +169,13 @@ const Dashboard = () => {
       gsap.set(animatedTargets, { willChange: "transform,opacity" });
 
       const timeline = gsap.timeline();
+      const chipRevealFallback = window.setTimeout(() => {
+        gsap.set(".logic-chip", {
+          opacity: 1,
+          y: 0,
+          clearProps: "transform,opacity",
+        });
+      }, 1200);
 
       timeline
         .from(".logic-topbar", {
@@ -131,15 +208,20 @@ const Dashboard = () => {
           },
           "<0.06",
         )
-        .from(
+        .fromTo(
           ".logic-chip",
           {
-            y: 18,
+            y: 16,
             opacity: 0,
-            stagger: 0.05,
+          },
+          {
+            y: 0,
+            opacity: 1,
+            stagger: 0.06,
             duration: 0.2,
             ease: "power4.out",
             force3D: true,
+            immediateRender: false,
           },
           "<0.03",
         )
@@ -190,8 +272,13 @@ const Dashboard = () => {
           "<0.08",
         )
         .add(() => {
+          window.clearTimeout(chipRevealFallback);
           gsap.set(animatedTargets, { clearProps: "willChange" });
         });
+
+      return () => {
+        window.clearTimeout(chipRevealFallback);
+      };
     },
     { scope: rootRef },
   );
@@ -260,9 +347,13 @@ const Dashboard = () => {
                     <button
                       key={item.label}
                       type="button"
+                      onClick={() => setActiveNavItem(item.label)}
+                      aria-current={
+                        activeNavItem === item.label ? "page" : undefined
+                      }
                       className={cn(
                         "flex items-center gap-3 px-4 py-2 text-left transition-colors duration-75",
-                        item.active
+                        activeNavItem === item.label
                           ? "border-l-4 border-primary bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
@@ -342,8 +433,7 @@ const Dashboard = () => {
           </div>
         </aside>
 
-        <main className="relative flex flex-1 flex-col bg-background">
-          
+        <main className="relative flex flex-1 flex-col overflow-y-auto bg-background">
           <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-30">
             <div className="logic-image-card absolute top-20 right-8 hidden h-64 w-48 rotate-3 border border-border bg-card md:block">
               <div className="h-full w-full bg-[linear-gradient(145deg,#1d1d1d_0%,#101010_42%,#262626_100%)]" />
@@ -369,10 +459,10 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <section className="relative flex flex-1 flex-col items-center justify-center px-8 text-center">
-            <Bolt className="mb-6 size-10 text-muted-foreground" />
+          <section className="relative flex flex-1 w-full flex-col items-center justify-center gap-6 px-8 py-6 text-center">
+            <Bolt className="mb-2 size-10 text-muted-foreground" />
 
-            <h1 className="logic-hero-title flex flex-wrap justify-center gap-x-3 gap-y-1 text-5xl font-black tracking-tight text-foreground md:text-7xl">
+            <h1 className="logic-hero-title flex flex-wrap justify-center gap-x-3 gap-y-1 text-4xl font-black tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl">
               {titleWords.map((word) => (
                 <span key={word} className="overflow-hidden">
                   <span className="logic-word inline-block">{word}</span>
@@ -380,7 +470,7 @@ const Dashboard = () => {
               ))}
             </h1>
 
-            <div className="mt-8 flex max-w-3xl flex-wrap justify-center gap-3">
+            <div className="mt-4 flex max-w-3xl flex-wrap justify-center gap-3">
               {quickActions.map((action) => {
                 const Icon = action.icon;
 
@@ -389,6 +479,7 @@ const Dashboard = () => {
                     key={action.label}
                     variant="outline"
                     size="sm"
+                    onClick={() => handleQuickAction(action)}
                     className="logic-chip h-10 border-border bg-card/70 px-4"
                   >
                     <Icon data-icon="inline-start" />
@@ -404,132 +495,254 @@ const Dashboard = () => {
                 );
               })}
             </div>
-          </section>
-
-          {/* Prompt Box */}
-          <section className="logic-console w-full max-w-4xl px-6 pb-8">
-            <div className="border border-input bg-card/80 shadow-2xl shadow-black/30">
-              <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-                <Button variant="secondary" size="xs" className="h-7 px-2">
-                  <Monitor data-icon="inline-start" />
-                  <span
+            {/* Prompt Box */}
+            <section className="logic-console mt-6 w-full max-w-4xl text-left sm:px-6">
+              <div className="border border-input bg-card/80 shadow-2xl shadow-black/30">
+                <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+                  <Button
+                    variant={platform === "web" ? "secondary" : "ghost"}
+                    size="xs"
                     className={cn(
-                      "text-[10px] tracking-[0.18em] uppercase",
-                      mono.className,
+                      "h-7 px-2",
+                      platform === "mobile" && "text-muted-foreground",
                     )}
+                    onClick={() => setPlatform("web")}
+                    aria-pressed={platform === "web"}
                   >
-                    Web
-                  </span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="h-7 px-2 text-muted-foreground"
-                >
-                  <Smartphone data-icon="inline-start" />
-                  <span
-                    className={cn(
-                      "text-[10px] tracking-[0.18em] uppercase",
-                      mono.className,
-                    )}
-                  >
-                    App
-                  </span>
-                </Button>
-              </div>
-
-              <div className="flex min-h-16 items-center gap-1 p-2">
-                <Button variant="ghost" size="icon-sm" aria-label="Add source">
-                  <Plus />
-                </Button>
-
-                <input
-                  aria-label="Command input"
-                  className={cn(
-                    "h-10 w-full border-none bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-muted-foreground",
-                    mono.className,
-                  )}
-                  placeholder="COMMAND: INPUT_NEW_DESIGN_PARAMETERS..."
-                  type="text"
-                  autoComplete="off"
-                />
-
-                <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
-                  <Select defaultValue="flash">
-                    <SelectTrigger
-                      size="sm"
+                    <Monitor data-icon="inline-start" />
+                    <span
                       className={cn(
-                        "h-8 min-w-32 border-input bg-muted text-[10px] tracking-[0.16em] uppercase",
+                        "text-[10px] tracking-[0.18em] uppercase",
                         mono.className,
                       )}
                     >
-                      <SelectValue placeholder="3.0 FLASH" />
-                    </SelectTrigger>
-                    <SelectContent className="border border-input bg-card text-foreground">
-                      <SelectGroup>
-                        <SelectItem value="flash">3.0 FLASH</SelectItem>
-                        <SelectItem value="pro">3.0 PRO</SelectItem>
-                        <SelectItem value="ultra">4.0 ULTRA</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                      Web
+                    </span>
+                  </Button>
+                  <Button
+                    variant={platform === "mobile" ? "secondary" : "ghost"}
+                    size="xs"
+                    className={cn(
+                      "h-7 px-2",
+                      platform === "web" && "text-muted-foreground",
+                    )}
+                    onClick={() => setPlatform("mobile")}
+                    aria-pressed={platform === "mobile"}
+                  >
+                    <Smartphone data-icon="inline-start" />
+                    <span
+                      className={cn(
+                        "text-[10px] tracking-[0.18em] uppercase",
+                        mono.className,
+                      )}
+                    >
+                      App
+                    </span>
+                  </Button>
+                </div>
 
+                <div className="flex min-h-16 items-center gap-1 p-2">
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Voice input"
+                    aria-label="Add source"
                   >
-                    <Mic />
+                    <Plus />
                   </Button>
 
-                  <Button size="icon-sm" aria-label="Submit command">
-                    <ArrowUp />
-                  </Button>
+                  <input
+                    ref={commandInputRef}
+                    aria-label="Command input"
+                    className={cn(
+                      "h-10 w-full border-none bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-muted-foreground",
+                      mono.className,
+                    )}
+                    placeholder="COMMAND: INPUT_NEW_DESIGN_PARAMETERS..."
+                    type="text"
+                    value={command}
+                    onChange={(event) => setCommand(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleSubmit();
+                      }
+                    }}
+                    autoComplete="off"
+                  />
+
+                  <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+                    <Select
+                      value={selectedModel}
+                      onValueChange={setSelectedModel}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className={cn(
+                          "h-8 min-w-32 border-input bg-muted text-[10px] tracking-[0.16em] uppercase",
+                          mono.className,
+                        )}
+                      >
+                        <SelectValue placeholder="3.0 FLASH" />
+                      </SelectTrigger>
+                      <SelectContent className="mt-10 min-w-32 border border-input bg-muted text-foreground">
+                        <SelectGroup>
+                          <SelectItem value="flash">3.0 FLASH</SelectItem>
+                          <SelectItem value="pro">3.0 PRO</SelectItem>
+                          <SelectItem value="ultra">4.0 ULTRA</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Voice input"
+                    >
+                      <Mic />
+                    </Button>
+
+                    <Button
+                      size="icon-sm"
+                      aria-label="Submit command"
+                      onClick={handleSubmit}
+                      disabled={!canSubmit}
+                    >
+                      <ArrowUp />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="logic-status mt-4 flex items-center justify-between gap-4 px-2">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="size-1.5 bg-primary" />
+              <div className="logic-status mt-4 flex items-center justify-between gap-4 px-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="size-1.5 bg-primary" />
+                    <span
+                      className={cn(
+                        "text-[9px] uppercase tracking-[0.2em] text-muted-foreground",
+                        mono.className,
+                      )}
+                    >
+                      {canSubmit ? "Prompt Ready" : "System Ready"}
+                    </span>
+                  </div>
                   <span
                     className={cn(
-                      "text-[9px] uppercase tracking-[0.2em] text-muted-foreground",
+                      "text-[9px] uppercase tracking-[0.2em] text-muted-foreground/75",
                       mono.className,
                     )}
                   >
-                    System Ready
+                    Latency: 14ms
                   </span>
                 </div>
+
                 <span
                   className={cn(
                     "text-[9px] uppercase tracking-[0.2em] text-muted-foreground/75",
                     mono.className,
                   )}
                 >
-                  Latency: 14ms
+                  Tokens: 4.2k available
                 </span>
               </div>
-
-              <span
-                className={cn(
-                  "text-[9px] uppercase tracking-[0.2em] text-muted-foreground/75",
-                  mono.className,
-                )}
-              >
-                Tokens: 4.2k available
-              </span>
-            </div>
+            </section>
           </section>
         </main>
       </div>
+
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation menu backdrop"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="absolute inset-0 bg-black/60"
+          />
+
+          <aside className="absolute right-0 top-0 flex h-full w-[85vw] max-w-sm flex-col border-l border-border bg-background">
+            <div className="flex items-center justify-between border-b border-border px-4 py-4">
+              <span
+                className={cn(
+                  "text-[11px] uppercase tracking-[0.18em]",
+                  mono.className,
+                )}
+              >
+                Navigation
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close navigation menu"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                <X />
+              </Button>
+            </div>
+
+            <nav className="flex flex-col gap-1 px-3 py-4">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <button
+                    key={`mobile-${item.label}`}
+                    type="button"
+                    onClick={() => {
+                      setActiveNavItem(item.label);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 text-left",
+                      activeNavItem === item.label
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    <span
+                      className={cn(
+                        "text-[11px] uppercase tracking-[0.16em]",
+                        mono.className,
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="border-t border-border px-3 py-4">
+              {projectFeed.map((project) => (
+                <button
+                  key={`mobile-feed-${project.name}`}
+                  type="button"
+                  className="mb-2 flex w-full flex-col border border-border p-3 text-left"
+                >
+                  <span className="truncate text-xs font-bold">
+                    {project.name}
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-1 text-[10px] text-muted-foreground",
+                      mono.className,
+                    )}
+                  >
+                    {project.time} - {project.detail}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
 
       <Button
         variant="default"
         size="icon-lg"
         aria-label="Open navigation menu"
         className="fixed right-6 bottom-6 z-50 md:hidden"
+        onClick={() => setIsMobileMenuOpen(true)}
       >
         <Menu />
       </Button>

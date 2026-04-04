@@ -1,0 +1,49 @@
+.logicRoot {
+  --logic-bg: #f9f9f9;
+  --logic-surface-muted: #f4f3f3;
+  --logic-surface-subtle: #eeeeee;
+  --logic-border: #c6c6c6;
+  --logic-border-soft: #eeeeee;
+  --logic-muted: #777777;
+  background: var(--logic-bg);
+  color: #1a1c1c;
+}
+
+.logicRoot :global(.mono) {
+  font-family: var(--font-logic-mono), monospace;
+}
+
+.gridBg {
+  background-image:
+    linear-gradient(var(--logic-surface-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--logic-surface-subtle) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+:global(html.logic-scroll-theme),
+:global(body.logic-scroll-theme) {
+  scrollbar-width: thin;
+  scrollbar-color: #1a1a1a #f4f3f3;
+}
+
+:global(html.logic-scroll-theme::-webkit-scrollbar),
+:global(body.logic-scroll-theme::-webkit-scrollbar) {
+  width: 12px;
+}
+
+:global(html.logic-scroll-theme::-webkit-scrollbar-track),
+:global(body.logic-scroll-theme::-webkit-scrollbar-track) {
+  background: #f4f3f3;
+}
+
+:global(html.logic-scroll-theme::-webkit-scrollbar-thumb),
+:global(body.logic-scroll-theme::-webkit-scrollbar-thumb) {
+  background: linear-gradient(90deg, #111111 0%, #575757 50%, #111111 100%);
+  border: 3px solid #f4f3f3;
+  border-radius: 999px;
+}
+
+:global(html.logic-scroll-theme::-webkit-scrollbar-thumb:hover),
+:global(body.logic-scroll-theme::-webkit-scrollbar-thumb:hover) {
+  background: linear-gradient(90deg, #000000 0%, #424242 50%, #000000 100%);
+}

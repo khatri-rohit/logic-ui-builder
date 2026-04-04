@@ -53,7 +53,7 @@ The platform is currently in its Phase 1 MVP status, focusing on the core genera
    ```bash
    npm run dev
    ```
-   The application will be accessible at `http://localhost:3000/`. You can proceed to `http://localhost:3000/mvp` (or the root page) to access the canvas.
+   The application will be accessible at `http://localhost:3000/`. You can proceed to `http://localhost:3000/studio` (or the root page) to access the canvas.
 
 ## Enterprise Roadmap
 

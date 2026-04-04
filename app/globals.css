@@ -129,8 +129,33 @@
 }
 
 .scrolling {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
-  scroll-behavior: smooth;
   scroll-margin-top: 2rem;
+}
+
+html.logic-scroll-theme,
+body.logic-scroll-theme {
+  scrollbar-width: thin;
+  scrollbar-color: #1a1a1a #f4f3f3;
+}
+
+html.logic-scroll-theme::-webkit-scrollbar,
+body.logic-scroll-theme::-webkit-scrollbar {
+  width: 12px;
+}
+
+html.logic-scroll-theme::-webkit-scrollbar-track,
+body.logic-scroll-theme::-webkit-scrollbar-track {
+  background: #f4f3f3;
+}
+
+html.logic-scroll-theme::-webkit-scrollbar-thumb,
+body.logic-scroll-theme::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #111111 0%, #575757 50%, #111111 100%);
+  border: 3px solid #f4f3f3;
+  border-radius: 999px;
+}
+
+html.logic-scroll-theme::-webkit-scrollbar-thumb:hover,
+body.logic-scroll-theme::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #000000 0%, #424242 50%, #000000 100%);
 }

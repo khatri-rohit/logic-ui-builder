@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 gsap.registerPlugin(useGSAP);
 
@@ -298,9 +299,9 @@ const Dashboard = () => {
     >
       <header className="logic-topbar fixed top-0 z-40 flex h-14 w-full items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur-[1px]">
         <div className="flex items-center gap-4">
-          <span className="text-xl font-black tracking-[0.35em] text-primary">
+          <Link href="/" className="text-xl font-black tracking-[0.35em] text-primary">
             LOGIC
-          </span>
+          </Link>
           <div className="h-4 w-px bg-border" />
           <span
             className={cn(

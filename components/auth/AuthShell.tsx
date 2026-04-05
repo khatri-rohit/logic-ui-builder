@@ -58,9 +58,9 @@ export default function AuthShell({
       <header className="relative z-20 border-b border-white/10 bg-black/35 backdrop-blur-sm">
         <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-10">
           <div className="flex items-center gap-3">
-            <span className="text-[20px] font-black tracking-[0.32em]">
+            <Link href="/" className="text-[20px] font-black tracking-[0.32em]">
               LOGIC
-            </span>
+            </Link>
             <span
               className={cn(
                 "text-[10px] uppercase tracking-[0.2em] text-zinc-500",

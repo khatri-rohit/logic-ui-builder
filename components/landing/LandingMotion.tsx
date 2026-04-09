@@ -16,18 +16,12 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
     document.body.classList.add("logic-scroll-theme");
 
     const initMotion = async () => {
-      const [{ default: gsap }, { ScrollTrigger }, { default: Lenis }] =
-        await Promise.all([
-          import("gsap"),
-          import("gsap/ScrollTrigger"),
-          import("lenis"),
-        ]);
+      const [{ animate, inView, scroll, stagger }, { default: Lenis }] =
+        await Promise.all([import("motion"), import("lenis")]);
 
       if (disposed) {
         return;
       }
-
-      gsap.registerPlugin(ScrollTrigger);
 
       const root = document.querySelector<HTMLElement>("[data-logic-root]");
       if (!root) {
@@ -60,7 +54,6 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
         };
 
         frame = window.requestAnimationFrame(raf);
-        lenis.on("scroll", ScrollTrigger.update);
 
         cleanupLenis = () => {
           window.cancelAnimationFrame(frame);
@@ -75,148 +68,264 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
         return;
       }
 
-      const context = gsap.context(() => {
-        gsap.set(
+      const animationControls: Array<{
+        stop?: () => void;
+        cancel?: () => void;
+      }> = [];
+      const cleanupTasks: Array<() => void> = [];
+
+      const trackAnimation = (
+        control: { stop?: () => void; cancel?: () => void } | undefined,
+      ) => {
+        if (!control) {
+          return;
+        }
+
+        animationControls.push(control);
+      };
+
+      const setInlineStyle = (
+        element: HTMLElement,
+        property: string,
+        value: string,
+      ) => {
+        const previousValue = element.style.getPropertyValue(property);
+
+        cleanupTasks.push(() => {
+          if (previousValue) {
+            element.style.setProperty(property, previousValue);
+            return;
+          }
+
+          element.style.removeProperty(property);
+        });
+
+        element.style.setProperty(property, value);
+      };
+
+      const powerThreeOut: [number, number, number, number] = [
+        0.22, 1, 0.36, 1,
+      ];
+      const powerTwoOut: [number, number, number, number] = [0.25, 1, 0.5, 1];
+
+      const lineSweeps = Array.from(
+        root.querySelectorAll<HTMLElement>(".line-sweep"),
+      );
+      const scrollItems = Array.from(
+        root.querySelectorAll<HTMLElement>(".scroll-item"),
+      );
+      const lineFills = Array.from(
+        root.querySelectorAll<HTMLElement>(".line-fill"),
+      );
+
+      const perfTargets = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          ".hero-canvas, .stagger-card, .scroll-item, .line-fill, .line-sweep",
+        ),
+      );
+
+      perfTargets.forEach((element) => {
+        setInlineStyle(element, "will-change", "transform, opacity");
+      });
+
+      lineSweeps.forEach((line) => {
+        setInlineStyle(line, "transform-origin", "left center");
+        setInlineStyle(line, "transform", "scaleX(0)");
+      });
+
+      scrollItems.forEach((item) => {
+        setInlineStyle(item, "opacity", "0");
+        setInlineStyle(item, "transform", "translateY(36px)");
+      });
+
+      lineFills.forEach((line) => {
+        setInlineStyle(line, "transform-origin", "left center");
+        setInlineStyle(line, "transform", "scaleX(0)");
+      });
+
+      const lineSweepStart = 0.95;
+      const lineSweepEnd =
+        lineSweeps.length > 0
+          ? lineSweepStart + 0.6 + 0.08 * (lineSweeps.length - 1)
+          : lineSweepStart + 0.6;
+      const heroCanvasStart = lineSweepEnd - 0.35;
+      const cardStart = heroCanvasStart + 0.5;
+
+      trackAnimation(
+        animate([
+          [
+            ".logic-nav",
+            { y: [-24, 0], opacity: [0, 1] },
+            { at: 0, duration: 0.45, ease: powerThreeOut },
+          ],
+          [
+            ".hero-kicker, .hero-title, .hero-description, .hero-terminal",
+            { y: [30, 0], opacity: [0, 1] },
+            {
+              at: 0.35,
+              duration: 0.6,
+              delay: stagger(0.1),
+              ease: powerThreeOut,
+            },
+          ],
+          [
+            lineSweeps,
+            { transform: ["scaleX(0)", "scaleX(1)"] },
+            {
+              at: lineSweepStart,
+              duration: 0.6,
+              delay: stagger(0.08),
+              ease: powerTwoOut,
+            },
+          ],
           [
             ".hero-canvas",
-            ".stagger-card",
-            ".scroll-item",
-            ".line-fill",
-            ".line-sweep",
+            { y: [40, 0], scale: [0.98, 1], opacity: [0, 1] },
+            { at: heroCanvasStart, duration: 0.8, ease: powerThreeOut },
           ],
-          {
-            willChange: "transform, opacity",
-          },
-        );
-
-        gsap.set([".line-fill", ".line-sweep"], {
-          transformOrigin: "left center",
-          scaleX: 0,
-        });
-
-        const heroTimeline = gsap.timeline({
-          defaults: { ease: "power3.out" },
-        });
-
-        heroTimeline
-          .from(".logic-nav", {
-            y: -24,
-            opacity: 0,
-            duration: 0.45,
-            force3D: true,
-          })
-          .from(
-            [
-              ".hero-kicker",
-              ".hero-title",
-              ".hero-description",
-              ".hero-terminal",
-            ],
-            {
-              y: 30,
-              opacity: 0,
-              duration: 0.6,
-              stagger: 0.1,
-              force3D: true,
-            },
-            "-=0.1",
-          )
-          .to(
-            ".line-sweep",
-            {
-              scaleX: 1,
-              duration: 0.6,
-              stagger: 0.08,
-              ease: "power2.out",
-            },
-            "-=0.3",
-          )
-          .from(
-            ".hero-canvas",
-            {
-              y: 40,
-              scale: 0.98,
-              opacity: 0,
-              duration: 0.8,
-              force3D: true,
-            },
-            "-=0.35",
-          )
-          .from(
+          [
             ".stagger-card",
+            { y: [24, 0], opacity: [0, 1] },
             {
-              y: 24,
-              opacity: 0,
-              //   duration: 0.45,
-              stagger: 0.08,
-              force3D: true,
+              at: cardStart,
+              duration: 0.5,
+              delay: stagger(0.08),
+              ease: powerThreeOut,
             },
-            "-=0.3",
-          );
+          ],
+        ]),
+      );
 
-        const typedState = { count: 0 };
-        gsap.to(typedState, {
-          count: typingText.length,
+      trackAnimation(
+        animate(0, typingText.length, {
           duration: 2.6,
-          ease: "none",
-          onUpdate: () => {
+          ease: "linear",
+          onUpdate: (latest) => {
             if (!typingTarget) {
               return;
             }
 
-            typingTarget.textContent = typingText.slice(
-              0,
-              Math.floor(typedState.count),
+            typingTarget.textContent = typingText.slice(0, Math.floor(latest));
+          },
+        }),
+      );
+
+      trackAnimation(
+        animate(
+          "[data-typing-cursor]",
+          { opacity: [1, 0] },
+          {
+            duration: 0.5,
+            repeat: Number.POSITIVE_INFINITY,
+            repeatType: "reverse",
+            ease: "linear",
+          },
+        ),
+      );
+
+      const heroGridLayer = root.querySelector<HTMLElement>(".hero-grid-layer");
+      const heroSection = root.querySelector<HTMLElement>(".hero-section");
+
+      if (heroGridLayer && heroSection) {
+        let parallaxTarget = 0;
+        let parallaxCurrent = 0;
+        let parallaxFrame = 0;
+
+        setInlineStyle(heroGridLayer, "transform", "translateY(0%)");
+
+        const syncParallax = () => {
+          parallaxCurrent += (parallaxTarget - parallaxCurrent) * 0.12;
+          heroGridLayer.style.setProperty(
+            "transform",
+            `translateY(${-8 * parallaxCurrent}%)`,
+          );
+          parallaxFrame = window.requestAnimationFrame(syncParallax);
+        };
+
+        parallaxFrame = window.requestAnimationFrame(syncParallax);
+
+        cleanupTasks.push(
+          scroll(
+            (progress: number) => {
+              parallaxTarget = progress;
+            },
+            {
+              target: heroSection,
+              offset: ["start start", "end start"],
+              axis: "y",
+            },
+          ),
+        );
+
+        cleanupTasks.push(() => {
+          window.cancelAnimationFrame(parallaxFrame);
+        });
+      }
+
+      const revealedItems = new WeakSet<Element>();
+      cleanupTasks.push(
+        inView(
+          scrollItems,
+          (element) => {
+            if (revealedItems.has(element)) {
+              return;
+            }
+
+            revealedItems.add(element);
+            trackAnimation(
+              animate(
+                element,
+                { opacity: 1, transform: "translateY(0px)" },
+                { duration: 0.7, ease: powerThreeOut },
+              ),
             );
           },
-        });
-
-        gsap.to("[data-typing-cursor]", {
-          opacity: 0,
-          duration: 0.5,
-          repeat: -1,
-          yoyo: true,
-          ease: "none",
-        });
-
-        gsap.to(".hero-grid-layer", {
-          yPercent: -8,
-          ease: "none",
-          scrollTrigger: {
-            trigger: ".hero-section",
-            start: "top top",
-            end: "bottom top",
-            scrub: 1,
+          {
+            margin: "0px 0px -18% 0px",
           },
+        ),
+      );
+
+      const filledLines = new WeakSet<Element>();
+      cleanupTasks.push(
+        inView(
+          lineFills,
+          (element) => {
+            if (filledLines.has(element)) {
+              return;
+            }
+
+            filledLines.add(element);
+            trackAnimation(
+              animate(
+                element,
+                { transform: "scaleX(1)" },
+                {
+                  duration: 0.9,
+                  ease: powerTwoOut,
+                },
+              ),
+            );
+          },
+          {
+            margin: "0px 0px -12% 0px",
+          },
+        ),
+      );
+
+      cleanupAnimation = () => {
+        animationControls.forEach((control) => {
+          control.stop?.();
+          control.cancel?.();
         });
 
-        gsap.utils.toArray<HTMLElement>(".scroll-item").forEach((element) => {
-          gsap.from(element, {
-            y: 36,
-            opacity: 0,
-            duration: 0.7,
-            ease: "power3.out",
-            scrollTrigger: {
-              trigger: element,
-              start: "top 82%",
-            },
+        cleanupTasks
+          .slice()
+          .reverse()
+          .forEach((cleanup) => {
+            cleanup();
           });
-        });
-
-        gsap.utils.toArray<HTMLElement>(".line-fill").forEach((line) => {
-          gsap.to(line, {
-            scaleX: 1,
-            duration: 0.9,
-            ease: "power2.out",
-            scrollTrigger: {
-              trigger: line,
-              start: "top 88%",
-            },
-          });
-        });
-      }, root);
-
-      cleanupAnimation = () => context.revert();
+      };
     };
 
     void initMotion();

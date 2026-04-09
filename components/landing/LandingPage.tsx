@@ -69,36 +69,38 @@ const LandingPage = () => {
             </div>
 
             <div
-              className={`hero-grid-layer hero-canvas relative flex min-h-104 items-center justify-center overflow-hidden bg-white p-6 md:p-8 lg:col-span-7 ${styles.gridBg}`}
+              className={`hero-grid-layer relative flex min-h-104 items-center justify-center overflow-hidden bg-white p-6 md:p-8 lg:col-span-7 ${styles.gridBg}`}
             >
-              <div className="w-full 2xl:max-w-5xl lg:max-w-2xl 2xl:h-100 xl:h-105 border border-black bg-(--logic-bg) shadow-[20px_20px_0px_0px_rgba(0,0,0,0.05)]">
-                <div className="flex h-8 items-center gap-2 border-b border-(--logic-border) bg-(--logic-surface-muted) px-4">
-                  <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                  <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                  <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                  <span className="mono ml-4 text-xs text-(--logic-muted)">
-                    CANVAS_ACTIVE [0.0ms]
-                  </span>
-                </div>
+              <div className="hero-canvas flex w-full items-center justify-center">
+                <div className="w-full 2xl:max-w-5xl lg:max-w-2xl 2xl:h-100 xl:h-105 border border-black bg-(--logic-bg) shadow-[20px_20px_0px_0px_rgba(0,0,0,0.05)]">
+                  <div className="flex h-8 items-center gap-2 border-b border-(--logic-border) bg-(--logic-surface-muted) px-4">
+                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
+                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
+                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
+                    <span className="mono ml-4 text-xs text-(--logic-muted)">
+                      CANVAS_ACTIVE [0.0ms]
+                    </span>
+                  </div>
 
-                <div className="grid grid-cols-3 gap-4 p-8">
-                  <div className="stagger-card flex xl:h-40 h-24 flex-col justify-between border border-(--logic-border) bg-white p-4">
-                    <div className="line-sweep h-1 w-1/2 bg-(--logic-border)" />
-                    <div className="h-8 w-8 rounded-full border border-(--logic-border)" />
-                  </div>
-                  <div className="stagger-card translate-y-4 border border-black bg-black p-4">
-                    <div className="line-sweep h-1 w-2/3 bg-white/20" />
-                  </div>
-                  <div className="stagger-card -translate-x-4 border border-(--logic-border) bg-white p-4">
-                    <div className="line-sweep h-4 w-full bg-(--logic-surface-subtle)" />
-                  </div>
-                  <div className="stagger-card col-span-2 -translate-y-8 translate-x-12 scale-95 border border-(--logic-border) bg-white p-6">
-                    <div className="line-sweep h-1 w-full bg-(--logic-border)" />
-                    <div className="line-sweep mt-2 h-1 w-3/4 bg-(--logic-border)" />
-                    <div className="line-sweep mt-2 h-1 w-1/2 bg-(--logic-border)" />
-                  </div>
-                  <div className="stagger-card flex h-32 items-center justify-center border border-black bg-(--logic-surface-subtle) p-4">
-                    <span className="mono text-3xl">METRICS</span>
+                  <div className="grid grid-cols-3 gap-4 p-8">
+                    <div className="stagger-card flex xl:h-40 h-24 flex-col justify-between border border-(--logic-border) bg-white p-4">
+                      <div className="line-sweep h-1 w-1/2 bg-(--logic-border)" />
+                      <div className="h-8 w-8 rounded-full border border-(--logic-border)" />
+                    </div>
+                    <div className="stagger-card translate-y-4 border border-black bg-black p-4">
+                      <div className="line-sweep h-1 w-2/3 bg-white/20" />
+                    </div>
+                    <div className="stagger-card -translate-x-4 border border-(--logic-border) bg-white p-4">
+                      <div className="line-sweep h-4 w-full bg-(--logic-surface-subtle)" />
+                    </div>
+                    <div className="stagger-card col-span-2 -translate-y-8 translate-x-12 scale-95 border border-(--logic-border) bg-white p-6">
+                      <div className="line-sweep h-1 w-full bg-(--logic-border)" />
+                      <div className="line-sweep mt-2 h-1 w-3/4 bg-(--logic-border)" />
+                      <div className="line-sweep mt-2 h-1 w-1/2 bg-(--logic-border)" />
+                    </div>
+                    <div className="stagger-card flex h-32 items-center justify-center border border-black bg-(--logic-surface-subtle) p-4">
+                      <span className="mono text-3xl">METRICS</span>
+                    </div>
                   </div>
                 </div>
               </div>

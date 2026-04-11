@@ -1,8 +1,10 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { JetBrains_Mono } from "next/font/google";
 import {
   createShapeId,
   TLComponents,
@@ -29,7 +31,6 @@ import {
 import { GenerationPlatform } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
-  Bot,
   Monitor,
   Smartphone,
   Sparkles,
@@ -38,25 +39,20 @@ import {
   ZoomOut,
 } from "lucide-react";
 import SelectModel from "@/components/SelectModel";
+import { cn } from "@/lib/utils";
 
 const STUDIO_PROMPT_STORAGE_KEY = "uiuxbuilder:studioPrompt";
 
-const DASHBOARD_MODEL_ALIASES: Record<string, string> = {
-  flash: "gemma4:31b-cloud",
-  pro: "gpt-oss:120b-cloud",
-  ultra: "deepseek-v3.1:671b-cloud",
-};
-
-const AVAILABLE_MODELS = [
+const DASHBOARD_MODEL_ALIASES: string[] = [
   "gemma4:31b-cloud",
-  "llama3.1:8b",
-  "mistral:7b",
   "gpt-oss:120b-cloud",
-  "llama3.2-vision:11b",
   "deepseek-v3.1:671b-cloud",
-  "gemma3:27b-cloud",
-  "mistral-large-3:675b-cloud",
-] as const;
+];
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+});
 
 const components: TLComponents = {
   Background: () => (
@@ -64,7 +60,7 @@ const components: TLComponents = {
       className="tl-background"
       style={{
         background:
-          "radial-gradient(circle at 18% 12%, rgba(255,140,43,0.08), transparent 22%), radial-gradient(circle at 82% 84%, rgba(66, 157, 255, 0.08), transparent 26%), #10141d",
+          "radial-gradient(circle at 18% 12%, rgba(255,255,255,0.05), transparent 22%), radial-gradient(circle at 82% 84%, rgba(255,255,255,0.04), transparent 26%), var(--background)",
       }}
     />
   ),
@@ -108,7 +104,7 @@ const components: TLComponents = {
       const numRows = Math.round((endPageY - startPageY) / size);
       const numCols = Math.round((endPageX - startPageX) / size);
 
-      const majorDot = "#2d3442";
+      const majorDot = "#2f2f2f";
       const majorStep = 2;
       const majorRadius = 2 * devicePixelRatio;
 
@@ -179,76 +175,60 @@ const components: TLComponents = {
 const shapeUtils = [PhoneFrameShapeUtil]; // defined OUTSIDE component — never recreate in render
 
 const StudioPage = () => {
-  const searchParams = useSearchParams();
   const editorRef = useRef<Editor | null>(null);
   const shapeIdRef = useRef<ReturnType<typeof createShapeId> | null>(null);
   const screenBuffersRef = useRef<Map<string, string>>(new Map());
   const frameIdsRef = useRef<Map<string, TLShapeId>>(new Map());
 
-  const [prompt, setPrompt] = useState(
-    "Design a clean dashboard for analytics with cards and charts",
-  );
-  // const [prompt, setPrompt] = useState('Why is the sky blue?')
+  const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeStreamingScreen, setActiveStreamingScreen] = useState<
     string | null
   >(null);
   const [selectedPlatform, setSelectedPlatform] =
     useState<GenerationPlatform>("web");
-  const [model, setModel] = useState<string>("gemma4:31b-cloud");
-  const models = [...AVAILABLE_MODELS];
 
-  useEffect(() => {
-    const promptFromStorage =
-      typeof window !== "undefined"
-        ? window.sessionStorage.getItem(STUDIO_PROMPT_STORAGE_KEY)?.trim()
-        : null;
-    const promptFromQuery = searchParams.get("prompt")?.trim();
-    if (promptFromStorage) {
-      setPrompt(promptFromStorage);
-      window.sessionStorage.removeItem(STUDIO_PROMPT_STORAGE_KEY);
-    } else if (promptFromQuery) {
-      setPrompt(promptFromQuery);
-    }
+  const [model, setModel] = useState<string>(DASHBOARD_MODEL_ALIASES[0]);
+  const canGenerate = !!prompt.trim() && !isGenerating;
 
-    const platformFromQuery = searchParams.get("platform")?.trim();
-    if (platformFromQuery === "web" || platformFromQuery === "mobile") {
-      setSelectedPlatform(platformFromQuery);
-    }
+  const models = [...DASHBOARD_MODEL_ALIASES];
 
-    const modelFromQuery = searchParams.get("model")?.trim();
-    const normalizedModel = modelFromQuery
-      ? (DASHBOARD_MODEL_ALIASES[modelFromQuery] ?? modelFromQuery)
-      : null;
-
-    if (
-      normalizedModel &&
-      AVAILABLE_MODELS.includes(
-        normalizedModel as (typeof AVAILABLE_MODELS)[number],
-      )
-    ) {
-      setModel(normalizedModel);
-    }
-  }, [searchParams]);
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
     setActiveStreamingScreen(null);
     try {
+      logger.info(
+        "Initiating generation with prompt:",
+        prompt,
+        "and model:",
+        model,
+      );
       if (!editorRef.current) throw new Error("Editor not initialized");
 
       // 2. On each token — accumulate and update the shape
       shapeIdRef.current = null;
       screenBuffersRef.current = new Map();
+      logger.info("Sending generation request with prompt:", prompt);
 
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ model, prompt, platform: selectedPlatform }),
+        body: JSON.stringify({
+          model,
+          prompt: prompt,
+          platform: selectedPlatform,
+        }),
       });
+
+      sessionStorage.removeItem(STUDIO_PROMPT_STORAGE_KEY); // Clear stored prompt on new generation attempt
+      sessionStorage.removeItem("uiuxbuilder:selectedModel");
+      setPrompt("");
+
+      logger.info("Generation request sent. Awaiting response...");
 
       if (!response.ok || !response.body) {
         const errorData = await response.json();
@@ -402,10 +382,33 @@ const StudioPage = () => {
     mountedEditor.updateInstanceState({ isGridMode: true });
   };
 
-  const canGenerate = !!prompt.trim() && !isGenerating;
+  useEffect(() => {
+    if (!editorRef.current) return;
+    if (typeof window !== "undefined") {
+      const storedPrompt = sessionStorage.getItem(STUDIO_PROMPT_STORAGE_KEY);
+      if (storedPrompt && storedPrompt.trim().length !== 0) {
+        setModel(
+          sessionStorage.getItem("uiuxbuilder:selectedModel") ??
+            DASHBOARD_MODEL_ALIASES[0],
+        );
+        setPrompt(storedPrompt);
+        handleGenerate();
+      }
+    }
+  }, [window, editorRef.current, handleMount]); // run once on mount, and whenever the stored prompt changes (e.g., from another tab)
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-[#0d1017] text-zinc-100">
+    <div
+      className={cn(
+        "dark relative h-screen w-full overflow-hidden bg-background text-foreground",
+        "selection:bg-primary selection:text-primary-foreground",
+        "[--radius:2px] [--background:#111111] [--foreground:#e2e2e2]",
+        "[--card:#1a1a1a] [--card-foreground:#e2e2e2] [--popover:#1a1a1a] [--popover-foreground:#f9f9f9]",
+        "[--primary:#ffffff] [--primary-foreground:#000000] [--secondary:#1a1a1a] [--secondary-foreground:#f1f1f1]",
+        "[--muted:#1a1a1a] [--muted-foreground:#777777] [--accent:#222222] [--accent-foreground:#f9f9f9]",
+        "[--destructive:#ba1a1a] [--border:#222222] [--input:#333333] [--ring:#777777]",
+      )}
+    >
       {/* Tldraw Infinite Canvas */}
       <div className="absolute inset-0">
         <Tldraw
@@ -424,50 +427,70 @@ const StudioPage = () => {
       </div>
 
       <div className="pointer-events-none absolute inset-0">
-        <div className="pointer-events-auto absolute left-4 top-4 flex items-center gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/90 px-3 py-2 backdrop-blur-md">
-          <Bot className="size-4 text-amber-300" />
-          <p className="text-xs font-semibold tracking-wide text-zinc-200">
-            Canvas Generation Studio
-          </p>
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-            {model}
-          </span>
-        </div>
-
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-3xl border border-zinc-700/80 bg-zinc-950/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-md">
+        <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-md border border-input bg-card/90 p-2.5 shadow-2xl shadow-black/30 backdrop-blur-[1px]">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1">
+            <div className="flex items-center gap-1 border border-input bg-muted p-1">
               <Button
                 type="button"
-                size="sm"
-                variant={selectedPlatform === "web" ? "outline" : "ghost"}
+                size="xs"
+                variant={selectedPlatform === "web" ? "secondary" : "ghost"}
                 onClick={() => setSelectedPlatform("web")}
-                className={`h-8 rounded-lg ${selectedPlatform === "web" ? "text-black" : ""}`}
+                className={cn(
+                  "h-7 px-2",
+                  selectedPlatform === "mobile" && "text-muted-foreground",
+                )}
               >
-                <Monitor className="size-4" />
-                Web
+                <Monitor data-icon="inline-start" className="size-4" />
+                <span
+                  className={cn(
+                    "text-[10px] uppercase tracking-[0.18em]",
+                    mono.className,
+                  )}
+                >
+                  Web
+                </span>
               </Button>
               <Button
                 type="button"
-                size="sm"
-                variant={selectedPlatform === "mobile" ? "outline" : "ghost"}
+                size="xs"
+                variant={selectedPlatform === "mobile" ? "secondary" : "ghost"}
                 onClick={() => setSelectedPlatform("mobile")}
-                className={`h-8 rounded-lg ${selectedPlatform === "mobile" ? "text-black" : ""}`}
+                className={cn(
+                  "h-7 px-2",
+                  selectedPlatform === "web" && "text-muted-foreground",
+                )}
               >
-                <Smartphone className="size-4" />
-                Mobile
+                <Smartphone data-icon="inline-start" className="size-4" />
+                <span
+                  className={cn(
+                    "text-[10px] uppercase tracking-[0.18em]",
+                    mono.className,
+                  )}
+                >
+                  Mobile
+                </span>
               </Button>
             </div>
             <div className="flex items-center gap-3">
               {isGenerating && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" />
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-md border border-border bg-muted px-2 py-1 text-[10px] text-muted-foreground",
+                    mono.className,
+                  )}
+                >
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary" />
                   {activeStreamingScreen
                     ? `Generating: ${activeStreamingScreen}`
                     : "Preparing generation..."}
                 </span>
               )}
-              <span className="text-[11px] text-zinc-500">
+              <span
+                className={cn(
+                  "text-[10px] uppercase tracking-[0.16em] text-muted-foreground",
+                  mono.className,
+                )}
+              >
                 Use Enter to generate and Shift+Enter for a new line
               </span>
             </div>
@@ -486,13 +509,18 @@ const StudioPage = () => {
                 }
               }}
               placeholder="What would you like to change or create?"
-              className="scrolling h-15 min-h-11 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
+              className={cn(
+                "scrolling h-15 min-h-11 flex-1 resize-none rounded-md border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none transition",
+                "placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30",
+                isGenerating && "cursor-not-allowed opacity-80",
+                mono.className,
+              )}
             />
 
             <Button
               onClick={handleGenerate}
               disabled={!canGenerate}
-              className="h-11 rounded-2xl bg-zinc-100 px-4 text-zinc-950 hover:bg-white disabled:bg-zinc-700 disabled:text-zinc-300"
+              className="h-11 rounded-md px-4"
             >
               <Sparkles
                 className={`size-4 ${isGenerating ? "animate-spin" : ""}`}

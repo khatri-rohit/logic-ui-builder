@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    logger.info("Created new project from prompt", newProject);
+    // logger.info("Created new project from prompt", newProject);
 
     return NextResponse.json(
       {

@@ -112,7 +112,7 @@ const SideBar = ({
   }, [projects, selectedTimeframe]);
 
   const handleOpenProject = (projectId: string) => {
-    router.push(`/studio/${projectId}`);
+    router.push(`/projects/${projectId}`);
   };
 
   useEffect(() => {

@@ -140,6 +140,8 @@ const Dashboard = () => {
 
     try {
       mutate({ prompt: normalizedPrompt, platform: spec });
+      sessionStorage.setItem(STUDIO_PROMPT_STORAGE_KEY, normalizedPrompt);
+      sessionStorage.setItem("uiuxbuilder:selectedModel", selectedModel);
     } catch {
       // Ignore storage failures; studio still has URL fallbacks for minimal state.
       setError(
@@ -151,7 +153,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (status === "success" && data) {
       const projectId = data.projectId;
-      router.push(`/studio/${projectId}`);
+      router.push(`/projects/${projectId}`);
     }
   }, [status, data, router]);
 

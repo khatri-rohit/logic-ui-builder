@@ -185,13 +185,6 @@ export async function POST(req: NextRequest) {
       prompt,
       platform,
       model, // optional preferred model for stage 3
-      // model = "mistral:7b", // 82s, 41s
-      // model = "qwen3.5:9b", // 47s
-      // model = "llama3.2-vision:11b", // 33s, 46s
-      // model = "llama3.1:8b", // 1.3m, 10.7s, 35.3s
-      // model = "deepseek-v3.1:671b-cloud", // 20.7s, 13.7
-      // model = "minimax-m2.7:cloud", // feels slow generation of code_chunk
-      // model = "gpt-oss:120b-cloud",
     } = await req.json();
     const requestedPlatform = normalizePlatform(platform);
     const designContext = await buildDesignContext({

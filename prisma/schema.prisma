@@ -21,7 +21,7 @@ model User {
     auditEvents      AuthAuditEvent[]
     createdAt        DateTime         @default(now())
     updatedAt        DateTime         @updatedAt
-    Projects         Project[]
+    projects         Project[]
 }
 
 model AppSession {

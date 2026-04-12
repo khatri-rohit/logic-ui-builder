@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateText } from "ai";
+import { Client } from "@upstash/qstash";
 
 import prisma from "@/lib/prisma";
-import { initializeOllama } from "@/lib/ollama";
-import logger from "@/lib/logger";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+
+import logger from "@/lib/logger";
+
+const client = new Client({
+  token: process.env.QSTASH_TOKEN,
+  retry: {
+    retries: 3,
+    backoff: (retry_count) => 2 ** retry_count * 20,
+  },
+});
 
 // This API route will handle project creation based on user prompts from the landing page.
 export async function POST(req: NextRequest) {
@@ -27,8 +35,6 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json()) as { prompt?: unknown; platform?: unknown };
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-    const platform =
-      typeof body.platform === "string" ? body.platform.trim() : "";
 
     if (!prompt) {
       return NextResponse.json(
@@ -41,42 +47,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const spec = getSpecForPrompt(prompt);
-    const ollama = initializeOllama();
-    const { text: projectTitle } = await generateText({
-      model: ollama("gemma4:31b-cloud"),
-      system:
-        "Generate exactly one concise, descriptive project title from the user's prompt. Return only the title text as a single line. Do not provide options, explanations, discussion, quotes, numbering, labels, or any extra text.",
-      prompt,
-    });
-
-    const { text: projectDescription } = await generateText({
-      model: ollama("gemma4:31b-cloud"),
-      system:
-        "You are a helpful assistant that generates a very short description for a design project based on the user's prompt. The description should be concise and descriptive.",
-      prompt,
-    });
-
     const newProject = await prisma.project.create({
       data: {
         userId: authContext.appUserId,
-        title: projectTitle || "Untitled Project",
-        description: projectDescription || "",
+        title: "Untitled Project",
+        description: "",
         initialPrompt: prompt,
-        platform: platform ?? spec,
+        status: "PENDING",
       },
     });
 
-    // logger.info("Created new project from prompt", newProject);
+    try {
+      const queueBaseUrl = process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
+      if (!queueBaseUrl)
+        throw new Error("Missing BACKGROUND_TASK_QUEUE_PUBLIC_URL");
+
+      const result = await client.publishJSON({
+        url: `${queueBaseUrl}/api/projects/${newProject.id}/meta-data`,
+        body: { projectId: newProject.id, prompt },
+      });
+
+      logger.info("Published project meta-data task to QStash", {
+        projectId: newProject.id,
+        qstashResult: result,
+      });
+    } catch (queueError) {
+      logger.error("Project created but failed to enqueue meta-data task", {
+        projectId: newProject.id,
+        error:
+          queueError instanceof Error ? queueError.message : String(queueError),
+      });
+      // Do not fail creation after successful DB write.
+    }
 
     return NextResponse.json(
       {
         error: false,
         data: {
           projectId: newProject.id,
-          // title: newProject.title,
-          // description: newProject.description,
-          // spec,
         },
         message: "New project created successfully.",
       },
@@ -103,30 +111,9 @@ export async function POST(req: NextRequest) {
         error: true,
         message: "An error occurred while creating the project.",
         data: null,
+        details: error,
       },
       { status: 500 },
     );
   }
-}
-
-function getSpecForPrompt(prompt: string) {
-  const lowerPrompt = prompt.toLowerCase();
-
-  if (
-    lowerPrompt.includes("web") ||
-    lowerPrompt.includes("website") ||
-    lowerPrompt.includes("web app")
-  ) {
-    return "web";
-  } else if (
-    lowerPrompt.includes("mobile") ||
-    lowerPrompt.includes("ios") ||
-    lowerPrompt.includes("iphone") ||
-    lowerPrompt.includes("android") ||
-    lowerPrompt.includes("app")
-  ) {
-    return "mobile";
-  }
-
-  return "web";
 }

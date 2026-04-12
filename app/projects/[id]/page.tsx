@@ -1,9 +1,15 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import * as htmlToImage from "html-to-image";
 import { JetBrains_Mono } from "next/font/google";
 import {
   createShapeId,
@@ -41,13 +47,21 @@ import {
 import SelectModel from "@/components/SelectModel";
 import { cn } from "@/lib/utils";
 import ProjectMenuPanel from "@/components/projects/TopMenu";
-
-const STUDIO_PROMPT_STORAGE_KEY = "uiuxbuilder:studioPrompt";
+import { useParams, useRouter } from "next/navigation";
+import {
+  useProjectDeleteMutation,
+  useProjectThumbnailUpdateMutation,
+  useProjectQuery,
+  useProjectStatusUpdateMutation,
+} from "@/lib/projects/queries";
+import { useUserActivityStore } from "@/providers/zustand-provider";
 
 const DASHBOARD_MODEL_ALIASES: string[] = [
-  "gemma4:31b-cloud",
-  "gpt-oss:120b-cloud",
-  "deepseek-v3.1:671b-cloud",
+  "gemma4:31b",
+  "gpt-oss:120b",
+  "deepseek-v3.1:671b",
+  "qwen3.5",
+  "deepseek-v3.2:cloud",
 ];
 
 const mono = JetBrains_Mono({
@@ -174,44 +188,143 @@ const components: TLComponents = {
 };
 
 const shapeUtils = [PhoneFrameShapeUtil]; // defined OUTSIDE component — never recreate in render
+type ProjectActionId =
+  | "all-projects"
+  | "share"
+  | "download"
+  | "edit"
+  | "delete";
 
 const StudioPage = () => {
+  const { id: projectId } = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const {
+    data: project,
+    isLoading: projectLoading,
+    isError,
+    error: projectError,
+  } = useProjectQuery(projectId);
+
+  const { mutate: updateProjectStatus } = useProjectStatusUpdateMutation();
+  const {
+    mutate: deleteProject,
+    data: deleteProjectData,
+    error: deleteError,
+    isSuccess: isDeleteSuccess,
+  } = useProjectDeleteMutation();
+  const { mutateAsync: updateProjectThumbnail } =
+    useProjectThumbnailUpdateMutation();
+
+  const model = useUserActivityStore((state) => state.model);
+  const setModel = useUserActivityStore((state) => state.setModel);
+  const spec = useUserActivityStore((state) => state.spec);
+  const setSpec = useUserActivityStore((state) => state.setSpec);
+
   const editorRef = useRef<Editor | null>(null);
   const shapeIdRef = useRef<ReturnType<typeof createShapeId> | null>(null);
   const screenBuffersRef = useRef<Map<string, string>>(new Map());
   const frameIdsRef = useRef<Map<string, TLShapeId>>(new Map());
+  const domRef = useRef<HTMLDivElement | null>(null);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUploadingThumbnailRef = useRef(false);
 
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeStreamingScreen, setActiveStreamingScreen] = useState<
     string | null
   >(null);
-  const [selectedPlatform, setSelectedPlatform] =
-    useState<GenerationPlatform>("web");
 
-  const [model, setModel] = useState<string>(DASHBOARD_MODEL_ALIASES[0]);
   const canGenerate = !!prompt.trim() && !isGenerating;
-
   const models = [...DASHBOARD_MODEL_ALIASES];
 
+  const onCapture = useCallback(
+    async (shapeIds: TLShapeId[]) => {
+      const editor = editorRef.current;
+
+      if (!editor || isUploadingThumbnailRef.current || shapeIds.length === 0) {
+        return;
+      }
+
+      isUploadingThumbnailRef.current = true;
+      try {
+        let thumbnailBlob: Blob | null = null;
+
+        try {
+          const imageExport = await editor.toImage(shapeIds, {
+            format: "png",
+            background: true,
+            padding: 24,
+            pixelRatio: 1,
+          });
+          thumbnailBlob = imageExport.blob;
+        } catch (error) {
+          logger.warn(
+            "Editor image export failed, falling back to html-to-image",
+            error,
+          );
+        }
+
+        if (!thumbnailBlob && domRef.current) {
+          const canvasElement = domRef.current.querySelector(".tl-canvas");
+          const captureTarget =
+            (canvasElement as unknown as HTMLElement | null) ?? domRef.current;
+
+          thumbnailBlob = await htmlToImage.toBlob(captureTarget, {
+            // cacheBust appends query strings to blob: URLs and can break iframe-backed previews
+            cacheBust: false,
+            pixelRatio: 1,
+            backgroundColor: "#111111",
+            filter: (node) => node.tagName !== "IFRAME",
+          });
+        }
+
+        if (!thumbnailBlob) {
+          logger.warn("Thumbnail capture returned an empty blob.");
+          return;
+        }
+
+        await updateProjectThumbnail({
+          id: projectId,
+          thumbnail: thumbnailBlob,
+        });
+        logger.info("Project thumbnail updated.", { projectId });
+      } catch (error) {
+        if (error instanceof Event) {
+          const failedTargetSrc =
+            error.target instanceof HTMLImageElement ? error.target.src : null;
+
+          logger.error("Failed to capture and upload project thumbnail:", {
+            type: error.type,
+            failedTargetSrc,
+          });
+        } else {
+          logger.error(
+            "Failed to capture and upload project thumbnail:",
+            error,
+          );
+        }
+      } finally {
+        isUploadingThumbnailRef.current = false;
+      }
+    },
+    [projectId, updateProjectThumbnail],
+  );
+
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!project) {
+      logger.error("Project not found");
+      return;
+    }
 
     setIsGenerating(true);
     setActiveStreamingScreen(null);
     try {
-      logger.info(
-        "Initiating generation with prompt:",
-        prompt,
-        "and model:",
-        model,
-      );
       if (!editorRef.current) throw new Error("Editor not initialized");
 
       // 2. On each token — accumulate and update the shape
       shapeIdRef.current = null;
       screenBuffersRef.current = new Map();
-      logger.info("Sending generation request with prompt:", prompt);
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -219,14 +332,12 @@ const StudioPage = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model,
-          prompt: prompt,
-          platform: selectedPlatform,
+          model: model,
+          prompt: project.status === "PENDING" ? project.initialPrompt : prompt,
+          platform: spec ?? "web",
         }),
       });
 
-      sessionStorage.removeItem(STUDIO_PROMPT_STORAGE_KEY); // Clear stored prompt on new generation attempt
-      sessionStorage.removeItem("uiuxbuilder:selectedModel"); // Clear stored model selection
       setPrompt("");
 
       logger.info("Generation request sent. Awaiting response...");
@@ -237,6 +348,8 @@ const StudioPage = () => {
         logger.error("Error response: ", errorData);
         throw new Error(errorData.message || "Generation failed");
       }
+
+      updateProjectStatus({ id: projectId, status: "GENERATING" });
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -260,6 +373,7 @@ const StudioPage = () => {
         }
       }
     } catch (error) {
+      updateProjectStatus({ id: projectId, status: "ARCHIVED" });
       logger.error("Error generating layout:", error);
     } finally {
       setActiveStreamingScreen(null);
@@ -267,7 +381,6 @@ const StudioPage = () => {
     }
   };
 
-  // 2. handleEvent — screen_done triggers compile
   function handleEvent(event: any) {
     const editor = editorRef.current;
     if (!editor) return;
@@ -319,6 +432,7 @@ const StudioPage = () => {
         });
     } else if (event.type === "screen_reset") {
       const id = frameIdsRef.current.get(event.screen);
+
       if (!id) return;
       screenBuffersRef.current.set(event.screen, "");
       setActiveStreamingScreen(event.screen);
@@ -349,8 +463,6 @@ const StudioPage = () => {
     if (event.type === "screen_done") {
       const id = frameIdsRef.current.get(event.screen);
       if (!id) return;
-
-      // Pass the full code and flip to done
       // The shape's useEffect watches these props and mounts Sandpack
       editor.updateShape({
         id,
@@ -369,60 +481,93 @@ const StudioPage = () => {
 
     if (event.type === "done") {
       setActiveStreamingScreen(null);
+      updateProjectStatus({ id: projectId, status: "ACTIVE" });
       const newIds = [...frameIdsRef.current.values()];
       if (newIds.length > 0) {
         editor.select(...newIds);
         editor.zoomToSelection({ animation: { duration: 600 } });
         editor.selectNone();
+
+        if (captureTimeoutRef.current) {
+          clearTimeout(captureTimeoutRef.current);
+        }
+
+        captureTimeoutRef.current = setTimeout(() => {
+          void onCapture(newIds);
+          captureTimeoutRef.current = null;
+        }, 2000);
       }
     }
   }
 
   const handleMount = (mountedEditor: Editor) => {
-    if (!mountedEditor) return;
     editorRef.current = mountedEditor; // always current, never stale
     mountedEditor.updateInstanceState({ isGridMode: true });
   };
 
-  useEffect(() => {
-    if (!editorRef.current) return;
-    if (typeof window !== "undefined") {
-      const storedPrompt = sessionStorage.getItem(STUDIO_PROMPT_STORAGE_KEY);
-      if (storedPrompt && storedPrompt.trim().length !== 0) {
-        setModel(
-          sessionStorage.getItem("uiuxbuilder:selectedModel") ??
-            DASHBOARD_MODEL_ALIASES[0],
+  function handleMenuClick(action: ProjectActionId) {
+    switch (action) {
+      case "all-projects":
+        router.push("/");
+        break;
+      case "share":
+        // Implement share functionality
+        alert("Share functionality is not implemented yet.");
+        break;
+      case "download":
+        // Implement download functionality
+        alert("Download functionality is not implemented yet.");
+        break;
+      case "edit":
+        // Implement edit functionality
+        alert("Edit functionality is not implemented yet.");
+        break;
+      case "delete":
+        // Implement delete functionality
+        const confirmed = confirm(
+          "Are you sure you want to delete this project? This action cannot be undone.",
         );
-        setPrompt(storedPrompt);
-        handleGenerate();
-      }
+        if (confirmed) {
+          // Implement delete logic here
+          deleteProject({ id: projectId });
+        }
+        break;
+      default:
+        alert("Unknown action: " + action);
+        break;
     }
-  }, [editorRef.current, handleMount]); // run once on mount, and whenever the stored prompt changes (e.g., from another tab)
+  }
+  const hasInitiatedGenerationRef = useRef(false);
 
-  // useLayoutEffect(() => {
-  //   handleMount(editorRef.current!);
-  //   if (editorRef.current) {
-  //     if (typeof window !== "undefined") {
-  //       const storedPrompt = sessionStorage.getItem(STUDIO_PROMPT_STORAGE_KEY);
-  //       if (storedPrompt && storedPrompt.trim().length !== 0) {
-  //         setModel(
-  //           sessionStorage.getItem("uiuxbuilder:selectedModel") ??
-  //             DASHBOARD_MODEL_ALIASES[0],
-  //         );
-  //         setPrompt(storedPrompt);
-  //         handleGenerate();
+  useEffect(() => {
+    if (projectLoading || isError) return;
+    logger.info("Project info:", project);
+    logger.warn("Project error:", projectError);
+    if (!project) {
+      logger.error("Project not found");
+      return;
+    }
+    if (project.status === "PENDING" && !hasInitiatedGenerationRef.current) {
+      hasInitiatedGenerationRef.current = true;
+      handleGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, projectLoading, isError]);
 
-  //         sessionStorage.removeItem(STUDIO_PROMPT_STORAGE_KEY); // Clear stored prompt on new generation attempt
-  //         sessionStorage.removeItem("uiuxbuilder:selectedModel"); // Clear stored model selection
-  //       }
-  //     }
-  //   }
-  //   return () => {
-  //     if (editorRef.current) {
-  //       editorRef.current.updateInstanceState({ isGridMode: false });
-  //     }
-  //   };
-  // }, [editorRef.current]); // ensure editor is ready before any updates
+  useEffect(() => {
+    if (deleteProjectData?.error === false) {
+      logger.info("Project deleted successfully:", deleteProjectData);
+      router.push("/");
+    }
+  }, [deleteProjectData, deleteError, router, isDeleteSuccess]);
+
+  useEffect(() => {
+    return () => {
+      if (captureTimeoutRef.current) {
+        clearTimeout(captureTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -437,7 +582,7 @@ const StudioPage = () => {
       )}
     >
       {/* Tldraw Infinite Canvas */}
-      <div className="absolute inset-0 z-40">
+      <div className="absolute inset-0 z-40" ref={domRef}>
         <Tldraw
           shapeUtils={shapeUtils}
           components={components}
@@ -453,7 +598,10 @@ const StudioPage = () => {
         />
       </div>
 
-      <ProjectMenuPanel />
+      <ProjectMenuPanel
+        title={project?.title || "Untitled Project"}
+        handleMenuClick={handleMenuClick}
+      />
 
       {/* Prompt Input */}
       <div className="pointer-events-none absolute inset-0 z-50">
@@ -463,11 +611,11 @@ const StudioPage = () => {
               <Button
                 type="button"
                 size="xs"
-                variant={selectedPlatform === "web" ? "secondary" : "ghost"}
-                onClick={() => setSelectedPlatform("web")}
+                variant={spec === "web" ? "secondary" : "ghost"}
+                onClick={() => setSpec("web")}
                 className={cn(
                   "h-7 px-2",
-                  selectedPlatform === "mobile" && "text-muted-foreground",
+                  spec === "mobile" && "text-muted-foreground",
                 )}
               >
                 <Monitor data-icon="inline-start" className="size-4" />
@@ -483,11 +631,11 @@ const StudioPage = () => {
               <Button
                 type="button"
                 size="xs"
-                variant={selectedPlatform === "mobile" ? "secondary" : "ghost"}
-                onClick={() => setSelectedPlatform("mobile")}
+                variant={spec === "mobile" ? "secondary" : "ghost"}
+                onClick={() => setSpec("mobile")}
                 className={cn(
                   "h-7 px-2",
-                  selectedPlatform === "web" && "text-muted-foreground",
+                  spec === "web" && "text-muted-foreground",
                 )}
               >
                 <Smartphone data-icon="inline-start" className="size-4" />
@@ -548,7 +696,7 @@ const StudioPage = () => {
             />
 
             <Button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={!canGenerate}
               className="h-11 rounded-md px-4"
             >

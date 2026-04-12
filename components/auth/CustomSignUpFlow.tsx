@@ -257,12 +257,12 @@ export default function CustomSignUpFlow() {
       return;
     }
 
-    void createProjectFromPrompt({ prompt: initialPrompt, platform: "web" })
+    void createProjectFromPrompt({ prompt: initialPrompt })
       .then((project) => {
         sessionStorage.removeItem("initialPrompt");
 
         if (project.projectId) {
-          router.replace(`/studio/${project.projectId}`);
+          router.replace(`/projects/${project.projectId}`);
           return;
         }
 

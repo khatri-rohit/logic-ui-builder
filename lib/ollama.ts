@@ -1,12 +1,14 @@
 import { createOllama } from "ollama-ai-provider-v2";
 
 export const OLLAMA_BASE =
-  process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+  process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/api";
 
 export function initializeOllama() {
   const ollama = createOllama({
-    baseURL: `${OLLAMA_BASE}/api`,
-    // compatibility: "strict",
+    baseURL: OLLAMA_BASE,
+    headers: {
+      Authorization: `Bearer ${process.env.AI_GATEWAY_API_KEY}`,
+    },
   });
 
   return ollama;

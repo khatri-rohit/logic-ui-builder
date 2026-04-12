@@ -37,8 +37,6 @@ import SideBar from "./SideBar";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 
-const STUDIO_PROMPT_STORAGE_KEY = "uiuxbuilder:studioPrompt";
-
 const mono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -80,15 +78,16 @@ const quickActions: Array<{
 const Dashboard = () => {
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
+  const selectedModel = useUserActivityStore((state) => state.model);
+  const setSelectedModel = useUserActivityStore((state) => state.setModel);
 
-  const { mutate, status, data } = useCreateProjectMutation();
+  const { mutate: createProject, status, data } = useCreateProjectMutation();
   const router = useRouter();
 
   const shouldReduceMotion = useReducedMotion();
 
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gemma4:31b-cloud");
 
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -139,9 +138,9 @@ const Dashboard = () => {
     }
 
     try {
-      mutate({ prompt: normalizedPrompt, platform: spec });
-      sessionStorage.setItem(STUDIO_PROMPT_STORAGE_KEY, normalizedPrompt);
-      sessionStorage.setItem("uiuxbuilder:selectedModel", selectedModel);
+      createProject({
+        prompt: normalizedPrompt,
+      });
     } catch {
       // Ignore storage failures; studio still has URL fallbacks for minimal state.
       setError(
@@ -371,9 +370,9 @@ const Dashboard = () => {
                     </SelectTrigger>
                     <SelectContent className="mt-10 min-w-35 border border-input bg-muted text-foreground">
                       <SelectGroup>
-                        <SelectItem value="gemma4:31b-cloud">gemma4</SelectItem>
+                        <SelectItem value="gemma4:31b">gemma4</SelectItem>
                         <SelectItem value="llama3.1:8b">llama3.1</SelectItem>
-                        <SelectItem value="deepseek-v3.1:671b-cloud">
+                        <SelectItem value="deepseek-v3.1:671b">
                           deepseek-v3.1
                         </SelectItem>
                       </SelectGroup>

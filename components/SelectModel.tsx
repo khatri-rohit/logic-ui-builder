@@ -6,11 +6,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dispatch, SetStateAction } from "react";
 
 interface SelectModelProps {
   list: string[];
-  setModel: Dispatch<SetStateAction<string>>;
+  setModel: (model: string) => void;
   model: string;
 }
 

@@ -67,16 +67,16 @@ model ClerkWebhookEvent {
 }
 
 model Project {
-    id            String   @id @default(cuid())
+    id            String        @id @default(cuid())
     userId        String
     title         String?
     description   String?
-    platform      String?
-    initialPrompt String?
+    initialPrompt String
+    status        ProjectStatus @default(PENDING)
     canvasState   Json?
     thumbnailUrl  String?
-    createdAt     DateTime @default(now())
-    updatedAt     DateTime @updatedAt
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
 
     user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
     generations Generation[]
@@ -123,4 +123,11 @@ enum AuditEventSource {
     REQUEST
     WEBHOOK
     SYSTEM
+}
+
+enum ProjectStatus {
+    PENDING // Just created, initial generation not yet started
+    GENERATING // Generation pipeline is running
+    ACTIVE // Has at least one completed generation
+    ARCHIVED // Soft-deleted or hidden
 }

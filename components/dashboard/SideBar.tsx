@@ -182,7 +182,7 @@ const SideBar = ({
         className="logic-sidebar hidden w-full max-w-72 pt-14 shrink-0 border-r border-border bg-background md:flex"
         {...fadeLeft(0.06)}
       >
-        <div className="flex h-full flex-col py-6">
+        <div className="flex h-full flex-col py-6 w-full">
           <div className="px-4">
             <p
               className={cn(
@@ -240,7 +240,7 @@ const SideBar = ({
                 <div className="flex items-start gap-3">
                   <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
                     <Image
-                      src="/thumbnail.jpg"
+                      src={project.thumbnailUrl || "/thumbnail.jpg"}
                       alt={project.title}
                       width={64}
                       height={64}
@@ -376,7 +376,7 @@ const SideBar = ({
                     <div className="flex items-start gap-3">
                       <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
                         <Image
-                          src="/thumbnail.jpg"
+                          src={project.thumbnailUrl || "/thumbnail.jpg"}
                           alt={project.title}
                           width={56}
                           height={56}

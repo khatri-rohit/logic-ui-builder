@@ -110,6 +110,28 @@ DIRECT_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase
 If direct host access is not available (for example on IPv4-only environments),
 you can use the Supabase session pooler on port `5432` as a fallback `DIRECT_URL`.
 
+### Supabase Storage S3 (Project Thumbnails)
+
+Project thumbnails are uploaded from the API route to Supabase Storage through the
+S3-compatible endpoint.
+
+Required environment variables:
+
+```env
+SUPABASE_STORAGE_S3_ENDPOINT="https://[YOUR-PROJECT-REF].storage.supabase.co/storage/v1/s3"
+SUPABASE_STORAGE_S3_REGION="[YOUR-PROJECT-REGION]"
+SUPABASE_STORAGE_S3_ACCESS_KEY_ID="[SUPABASE-S3-ACCESS-KEY-ID]"
+SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY="[SUPABASE-S3-SECRET-ACCESS-KEY]"
+SUPABASE_STORAGE_BUCKET="[YOUR-PUBLIC-BUCKET]"
+SUPABASE_STORAGE_PUBLIC_BASE_URL="https://[YOUR-PROJECT-REF].supabase.co/storage/v1/object/public"
+```
+
+Notes:
+
+- Generate S3 access keys from Supabase Dashboard: Storage -> Settings -> S3 access keys.
+- Use a public bucket for direct thumbnail rendering via `thumbnailUrl`.
+- Keep S3 credentials server-only and never expose them in client-side code.
+
 ### Prisma Commands
 
 ```bash

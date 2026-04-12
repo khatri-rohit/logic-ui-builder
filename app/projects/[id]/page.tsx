@@ -1,8 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import * as htmlToImage from 'html-to-image';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import * as htmlToImage from "html-to-image";
 import { JetBrains_Mono } from "next/font/google";
 import {
   createShapeId,
@@ -43,6 +50,7 @@ import ProjectMenuPanel from "@/components/projects/TopMenu";
 import { useParams, useRouter } from "next/navigation";
 import {
   useProjectDeleteMutation,
+  useProjectThumbnailUpdateMutation,
   useProjectQuery,
   useProjectStatusUpdateMutation,
 } from "@/lib/projects/queries";
@@ -199,6 +207,8 @@ const StudioPage = () => {
     error: deleteError,
     isSuccess: isDeleteSuccess,
   } = useProjectDeleteMutation();
+  const { mutateAsync: updateProjectThumbnail } =
+    useProjectThumbnailUpdateMutation();
 
   const model = useUserActivityStore((state) => state.model);
   const setModel = useUserActivityStore((state) => state.setModel);
@@ -209,7 +219,9 @@ const StudioPage = () => {
   const shapeIdRef = useRef<ReturnType<typeof createShapeId> | null>(null);
   const screenBuffersRef = useRef<Map<string, string>>(new Map());
   const frameIdsRef = useRef<Map<string, TLShapeId>>(new Map());
-  const domRef = useRef(null);
+  const domRef = useRef<HTMLDivElement | null>(null);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUploadingThumbnailRef = useRef(false);
 
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -219,6 +231,37 @@ const StudioPage = () => {
 
   const canGenerate = !!prompt.trim() && !isGenerating;
   const models = [...DASHBOARD_MODEL_ALIASES];
+
+  const onCapture = useCallback(async () => {
+    if (!domRef.current || isUploadingThumbnailRef.current) {
+      return;
+    }
+
+    const canvasElement = domRef.current.querySelector(".tl-canvas");
+    const captureTarget =
+      (canvasElement as unknown as HTMLElement | null) ?? domRef.current;
+
+    isUploadingThumbnailRef.current = true;
+    try {
+      const thumbnailBlob = await htmlToImage.toBlob(captureTarget, {
+        cacheBust: true,
+        pixelRatio: 1,
+        backgroundColor: "#111111",
+      });
+
+      if (!thumbnailBlob) {
+        logger.warn("Thumbnail capture returned an empty blob.");
+        return;
+      }
+
+      await updateProjectThumbnail({ id: projectId, thumbnail: thumbnailBlob });
+      logger.info("Project thumbnail updated.", { projectId });
+    } catch (error) {
+      logger.error("Failed to capture and upload project thumbnail:", error);
+    } finally {
+      isUploadingThumbnailRef.current = false;
+    }
+  }, [projectId, updateProjectThumbnail]);
 
   const handleGenerate = async () => {
     if (!project) {
@@ -395,7 +438,15 @@ const StudioPage = () => {
         editor.select(...newIds);
         editor.zoomToSelection({ animation: { duration: 600 } });
         editor.selectNone();
-        // TODO: capture thumbnail here after a brief delay to allow for rendering
+
+        if (captureTimeoutRef.current) {
+          clearTimeout(captureTimeoutRef.current);
+        }
+
+        captureTimeoutRef.current = setTimeout(() => {
+          void onCapture();
+          captureTimeoutRef.current = null;
+        }, 950);
       }
     }
   }
@@ -432,16 +483,6 @@ const StudioPage = () => {
         }
     }
   }
-  
- const onCapture = useCallback(() => {
-    if (domRef.current === null) return;
-
-    htmlToImage.toPng(domRef.current)
-      .then((dataUrl) => {
-       const blob = 
-      })
-      .catch((err) => console.error(err));
-  }, [domRef]);
 
   useEffect(() => {
     if (projectLoading || isError) return;
@@ -464,6 +505,14 @@ const StudioPage = () => {
     }
   }, [deleteProjectData, deleteError, router, isDeleteSuccess]);
 
+  useEffect(() => {
+    return () => {
+      if (captureTimeoutRef.current) {
+        clearTimeout(captureTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div
       className={cn(
@@ -477,7 +526,7 @@ const StudioPage = () => {
       )}
     >
       {/* Tldraw Infinite Canvas */}
-      <div className="absolute inset-0 z-40">
+      <div className="absolute inset-0 z-40" ref={domRef}>
         <Tldraw
           shapeUtils={shapeUtils}
           components={components}

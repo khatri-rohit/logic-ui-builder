@@ -240,7 +240,7 @@ const SideBar = ({
                 <div className="flex items-start gap-3">
                   <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
                     <Image
-                      src="/thumbnail.jpg"
+                      src={project.thumbnailUrl ?? "/thumbnail.jpg"}
                       alt={project.title}
                       width={64}
                       height={64}
@@ -376,7 +376,7 @@ const SideBar = ({
                     <div className="flex items-start gap-3">
                       <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
                         <Image
-                          src="/thumbnail.jpg"
+                          src={project.thumbnailUrl ?? "/thumbnail.jpg"}
                           alt={project.title}
                           width={56}
                           height={56}

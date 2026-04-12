@@ -70,7 +70,7 @@ export function useCreateProjectMutation() {
 
   return useMutation({
     mutationFn: createProject,
-    onSuccess: async (createdProject) => {
+    onSuccess: async () => {
       // queryClient.setQueryData<ProjectSummary[]>(
       //   projectKeys.list(),
       //   (currentProjects) => {
@@ -184,13 +184,34 @@ export function useProjectStatusUpdateMutation() {
 }
 
 // -- Update prject thumbnail after generation
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function updateProjectThumbnail(id: string, thumbnail: any) {
+export async function updateProjectThumbnail(id: string, thumbnail: Blob) {
+  const body = new FormData();
+  body.append("thumbnail", thumbnail, "thumbnail.png");
+
   return requestApi<{ thumbnailUrl: string }>(`/api/projects/${id}/thumbnail`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "multipart/form-data",
+    body,
+  });
+}
+
+export function useProjectThumbnailUpdateMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, thumbnail }: { id: string; thumbnail: Blob }) =>
+      updateProjectThumbnail(id, thumbnail),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
+        prev ? { ...prev, thumbnailUrl: data.thumbnailUrl } : prev,
+      );
+
+      queryClient.setQueryData<ProjectSummary[]>(projectKeys.list(), (prev) =>
+        prev?.map((project) =>
+          project.id === id
+            ? { ...project, thumbnailUrl: data.thumbnailUrl }
+            : project,
+        ),
+      );
     },
-    body: JSON.stringify({ thumbnail }),
   });
 }

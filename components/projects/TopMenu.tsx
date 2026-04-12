@@ -35,41 +35,14 @@ const projectActions = [
 ];
 
 interface ProjectMenuPanelProps {
-  title?: string;
+  title: string;
+  handleMenuClick: (action: string) => void;
 }
 
 export default function ProjectMenuPanel({
-  title = "Untitled Project",
+  title,
+  handleMenuClick,
 }: ProjectMenuPanelProps) {
-  const router = useRouter();
-
-  function handleMenuClick(action: string) {
-    switch (action) {
-      case "Go to all projects":
-        router.push("/");
-        break;
-      case "Share":
-        // Implement share functionality
-        alert("Share functionality is not implemented yet.");
-        break;
-      case "Download project":
-        // Implement download functionality
-        alert("Download functionality is not implemented yet.");
-
-      case "Edit":
-        // Implement edit functionality
-        alert("Edit functionality is not implemented yet.");
-      case "Delete project":
-        // Implement delete functionality
-        const confirmed = confirm(
-          "Are you sure you want to delete this project? This action cannot be undone.",
-        );
-        if (confirmed) {
-          // Implement delete logic here
-        }
-    }
-  }
-
   return (
     <div className="dark absolute inset-5 z-50">
       <div className="flex items-center gap-3">

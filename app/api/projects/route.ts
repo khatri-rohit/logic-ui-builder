@@ -42,28 +42,29 @@ export async function POST(req: NextRequest) {
     }
 
     const spec = getSpecForPrompt(prompt);
-    const ollama = initializeOllama();
-    const { text: projectTitle } = await generateText({
-      model: ollama("gemma4:31b-cloud"),
-      system:
-        "Generate exactly one concise, descriptive project title from the user's prompt. Return only the title text as a single line. Do not provide options, explanations, discussion, quotes, numbering, labels, or any extra text.",
-      prompt,
-    });
+    // const ollama = initializeOllama();
+    // const { text: projectTitle } = await generateText({
+    //   model: ollama("gemma4:31b-cloud"),
+    //   system:
+    //     "Generate exactly one concise, descriptive project title from the user's prompt. Return only the title text as a single line. Do not provide options, explanations, discussion, quotes, numbering, labels, or any extra text.",
+    //   prompt,
+    // });
 
-    const { text: projectDescription } = await generateText({
-      model: ollama("gemma4:31b-cloud"),
-      system:
-        "You are a helpful assistant that generates a very short description for a design project based on the user's prompt. The description should be concise and descriptive.",
-      prompt,
-    });
+    // const { text: projectDescription } = await generateText({
+    //   model: ollama("gemma4:31b-cloud"),
+    //   system:
+    //     "You are a helpful assistant that generates a very short description for a design project based on the user's prompt. The description should be concise and descriptive.",
+    //   prompt,
+    // });
 
     const newProject = await prisma.project.create({
       data: {
         userId: authContext.appUserId,
-        title: projectTitle || "Untitled Project",
-        description: projectDescription || "",
+        title: "Untitled Project",
+        description: "",
         initialPrompt: prompt,
         platform: platform ?? spec,
+        status: "PENDING",
       },
     });
 
@@ -74,21 +75,20 @@ export async function POST(req: NextRequest) {
         error: false,
         data: {
           projectId: newProject.id,
-          // title: newProject.title,
-          // description: newProject.description,
-          // spec,
         },
         message: "New project created successfully.",
       },
       { status: 201 },
     );
   } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
     if (isAuthError(error)) {
       return NextResponse.json(
         {
           error: true,
           code: error.code,
           message: error.message,
+          details: err,
         },
         { status: error.status },
       );

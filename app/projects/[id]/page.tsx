@@ -391,7 +391,6 @@ const StudioPage = () => {
   const handleMount = (mountedEditor: Editor) => {
     editorRef.current = mountedEditor; // always current, never stale
     mountedEditor.updateInstanceState({ isGridMode: true });
-    handleGenerate();
   };
 
   useEffect(() => {

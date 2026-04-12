@@ -262,7 +262,7 @@ export default function CustomSignUpFlow() {
         sessionStorage.removeItem("initialPrompt");
 
         if (project.projectId) {
-          router.replace(`/studio/${project.projectId}`);
+          router.replace(`/projects/${project.projectId}`);
           return;
         }
 

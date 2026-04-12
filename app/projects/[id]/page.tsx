@@ -232,36 +232,78 @@ const StudioPage = () => {
   const canGenerate = !!prompt.trim() && !isGenerating;
   const models = [...DASHBOARD_MODEL_ALIASES];
 
-  const onCapture = useCallback(async () => {
-    if (!domRef.current || isUploadingThumbnailRef.current) {
-      return;
-    }
+  const onCapture = useCallback(
+    async (shapeIds: TLShapeId[]) => {
+      const editor = editorRef.current;
 
-    const canvasElement = domRef.current.querySelector(".tl-canvas");
-    const captureTarget =
-      (canvasElement as unknown as HTMLElement | null) ?? domRef.current;
-
-    isUploadingThumbnailRef.current = true;
-    try {
-      const thumbnailBlob = await htmlToImage.toBlob(captureTarget, {
-        cacheBust: true,
-        pixelRatio: 1,
-        backgroundColor: "#111111",
-      });
-
-      if (!thumbnailBlob) {
-        logger.warn("Thumbnail capture returned an empty blob.");
+      if (!editor || isUploadingThumbnailRef.current || shapeIds.length === 0) {
         return;
       }
 
-      await updateProjectThumbnail({ id: projectId, thumbnail: thumbnailBlob });
-      logger.info("Project thumbnail updated.", { projectId });
-    } catch (error) {
-      logger.error("Failed to capture and upload project thumbnail:", error);
-    } finally {
-      isUploadingThumbnailRef.current = false;
-    }
-  }, [projectId, updateProjectThumbnail]);
+      isUploadingThumbnailRef.current = true;
+      try {
+        let thumbnailBlob: Blob | null = null;
+
+        try {
+          const imageExport = await editor.toImage(shapeIds, {
+            format: "png",
+            background: true,
+            padding: 24,
+            pixelRatio: 1,
+          });
+          thumbnailBlob = imageExport.blob;
+        } catch (error) {
+          logger.warn(
+            "Editor image export failed, falling back to html-to-image",
+            error,
+          );
+        }
+
+        if (!thumbnailBlob && domRef.current) {
+          const canvasElement = domRef.current.querySelector(".tl-canvas");
+          const captureTarget =
+            (canvasElement as unknown as HTMLElement | null) ?? domRef.current;
+
+          thumbnailBlob = await htmlToImage.toBlob(captureTarget, {
+            // cacheBust appends query strings to blob: URLs and can break iframe-backed previews
+            cacheBust: false,
+            pixelRatio: 1,
+            backgroundColor: "#111111",
+            filter: (node) => node.tagName !== "IFRAME",
+          });
+        }
+
+        if (!thumbnailBlob) {
+          logger.warn("Thumbnail capture returned an empty blob.");
+          return;
+        }
+
+        await updateProjectThumbnail({
+          id: projectId,
+          thumbnail: thumbnailBlob,
+        });
+        logger.info("Project thumbnail updated.", { projectId });
+      } catch (error) {
+        if (error instanceof Event) {
+          const failedTargetSrc =
+            error.target instanceof HTMLImageElement ? error.target.src : null;
+
+          logger.error("Failed to capture and upload project thumbnail:", {
+            type: error.type,
+            failedTargetSrc,
+          });
+        } else {
+          logger.error(
+            "Failed to capture and upload project thumbnail:",
+            error,
+          );
+        }
+      } finally {
+        isUploadingThumbnailRef.current = false;
+      }
+    },
+    [projectId, updateProjectThumbnail],
+  );
 
   const handleGenerate = async () => {
     if (!project) {
@@ -444,9 +486,9 @@ const StudioPage = () => {
         }
 
         captureTimeoutRef.current = setTimeout(() => {
-          void onCapture();
+          void onCapture(newIds);
           captureTimeoutRef.current = null;
-        }, 950);
+        }, 2000);
       }
     }
   }

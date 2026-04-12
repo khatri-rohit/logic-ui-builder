@@ -40,7 +40,7 @@ function getSupabaseS3Config(): SupabaseS3Config {
     accessKeyId,
     secretAccessKey,
     bucket,
-    publicBaseUrl: publicBaseUrl.replace(/\/$/, ""),
+    publicBaseUrl: publicBaseUrl,
   };
 }
 

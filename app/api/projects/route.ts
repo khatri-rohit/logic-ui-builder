@@ -63,7 +63,6 @@ export async function POST(req: NextRequest) {
         title: "Untitled Project",
         description: "",
         initialPrompt: prompt,
-        platform: platform ?? spec,
         status: "PENDING",
       },
     });

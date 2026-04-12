@@ -10,8 +10,6 @@ import { ProjectDetail, ProjectSummary } from "../api/types";
 
 type CreateProjectInput = {
   prompt: string;
-  platform: "web" | "mobile";
-  model: string;
 };
 
 type CreateProjectResult = {
@@ -33,15 +31,11 @@ async function listProjects() {
   return requestApi<ProjectSummary[]>("/api/projects/all");
 }
 
-async function createProject({ prompt, platform, model }: CreateProjectInput) {
+async function createProject({ prompt }: CreateProjectInput) {
   const normalizedPrompt = prompt.trim();
 
-  if (!normalizedPrompt || !platform || !model) {
-    throw new ApiError(
-      "Prompt, platform, and model are required.",
-      400,
-      "INVALID_PROMPT",
-    );
+  if (!normalizedPrompt) {
+    throw new ApiError("Prompt are required.", 400, "INVALID_PROMPT");
   }
 
   return requestApi<CreateProjectResult>("/api/projects", {
@@ -49,7 +43,7 @@ async function createProject({ prompt, platform, model }: CreateProjectInput) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: normalizedPrompt, platform, model }),
+    body: JSON.stringify({ prompt: normalizedPrompt }),
   });
 }
 

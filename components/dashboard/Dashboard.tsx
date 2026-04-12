@@ -81,7 +81,7 @@ const Dashboard = () => {
   const selectedModel = useUserActivityStore((state) => state.model);
   const setSelectedModel = useUserActivityStore((state) => state.setModel);
 
-  const { mutate, status, data } = useCreateProjectMutation();
+  const { mutate: createProject, status, data } = useCreateProjectMutation();
   const router = useRouter();
 
   const shouldReduceMotion = useReducedMotion();
@@ -138,10 +138,8 @@ const Dashboard = () => {
     }
 
     try {
-      mutate({
+      createProject({
         prompt: normalizedPrompt,
-        platform: spec,
-        model: selectedModel,
       });
     } catch {
       // Ignore storage failures; studio still has URL fallbacks for minimal state.

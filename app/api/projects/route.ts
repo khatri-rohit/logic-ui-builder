@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Client } from "@upstash/qstash";
 
 import prisma from "@/lib/prisma";
-import logger from "@/lib/logger";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 
-import { Client } from "@upstash/qstash";
+import logger from "@/lib/logger";
 
 const client = new Client({
   token: process.env.QSTASH_TOKEN,

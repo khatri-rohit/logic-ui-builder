@@ -45,3 +45,6 @@ yarn-error.log*
 next-env.d.ts
 
 .github/skills/
+
+# clerk configuration (can include secrets)
+/.clerk/

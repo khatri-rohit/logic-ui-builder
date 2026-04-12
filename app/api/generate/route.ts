@@ -13,6 +13,7 @@ import logger from "@/lib/logger";
 import { buildEnhancedPrompt } from "@/lib/promptEnhancer";
 import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import { generationRatelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -178,6 +179,22 @@ export async function POST(req: NextRequest) {
           data: null,
         },
         { status: 401 },
+      );
+    }
+
+    const { success, limit, remaining, reset } =
+      await generationRatelimit.limit(authContext.appUserId);
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Rate limit exceeded" },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limit.toString(),
+            "X-RateLimit-Remaining": remaining.toString(),
+            "X-RateLimit-Reset": reset.toString(),
+          },
+        },
       );
     }
 

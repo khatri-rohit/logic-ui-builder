@@ -155,6 +155,13 @@ const StudioPage = () => {
   const isUploadingThumbnailRef = useRef(false);
   const hasInitiatedGenerationRef = useRef(false);
   const hasHydratedCanvasRef = useRef(false);
+  const activeFrameIdRef = useRef<string | null>(null);
+  const selectedFrameIdRef = useRef<string | null>(null);
+  const canvasTransformRef = useRef<Transform>({
+    x: 0,
+    y: 0,
+    k: 1,
+  });
 
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -181,6 +188,18 @@ const StudioPage = () => {
   const canGenerate = !!prompt.trim() && !isGenerating;
   const models = [...DASHBOARD_MODEL_ALIASES];
 
+  useEffect(() => {
+    activeFrameIdRef.current = activeFrameId;
+  }, [activeFrameId]);
+
+  useEffect(() => {
+    selectedFrameIdRef.current = selectedFrameId;
+  }, [selectedFrameId]);
+
+  useEffect(() => {
+    canvasTransformRef.current = canvasTransform;
+  }, [canvasTransform]);
+
   const frameList = useMemo(() => {
     return [...frames.values()].sort((a, b) => {
       if (a.y !== b.y) return a.y - b.y;
@@ -206,17 +225,18 @@ const StudioPage = () => {
   );
 
   const buildSnapshot = useCallback((): CanvasSnapshotV1 => {
-    const camera = canvasRef.current?.getTransform() ?? canvasTransform;
+    const camera =
+      canvasRef.current?.getTransform() ?? canvasTransformRef.current;
 
     return {
       version: 1,
       camera,
       frames: [...framesRef.current.values()],
-      activeFrameId,
-      selectedFrameId,
+      activeFrameId: activeFrameIdRef.current,
+      selectedFrameId: selectedFrameIdRef.current,
       savedAt: new Date().toISOString(),
     };
-  }, [activeFrameId, canvasTransform, selectedFrameId]);
+  }, []);
 
   const scheduleSnapshotPersist = useCallback(() => {
     if (!projectId || !hasHydratedCanvasRef.current) return;
@@ -229,6 +249,15 @@ const StudioPage = () => {
       snapshotSaveTimeoutRef.current = null;
       persistCanvasState({ id: projectId, canvasState: buildSnapshot() });
     }, 450);
+  }, [buildSnapshot, persistCanvasState, projectId]);
+
+  const flushPendingSnapshotPersist = useCallback(() => {
+    if (!projectId || !hasHydratedCanvasRef.current) return;
+    if (!snapshotSaveTimeoutRef.current) return;
+
+    clearTimeout(snapshotSaveTimeoutRef.current);
+    snapshotSaveTimeoutRef.current = null;
+    persistCanvasState({ id: projectId, canvasState: buildSnapshot() });
   }, [buildSnapshot, persistCanvasState, projectId]);
 
   const resolveFrameIdForScreen = useCallback((screenName: string) => {
@@ -496,7 +525,6 @@ const StudioPage = () => {
         cacheBust: false,
         pixelRatio: 1,
         backgroundColor: "#111111",
-        filter: (node) => node.tagName !== "IFRAME",
       });
 
       if (!thumbnailBlob) {
@@ -533,6 +561,8 @@ const StudioPage = () => {
       frameIdsRef.current = restoredFrameIds;
       activeFrameIdsRef.current.clear();
 
+      selectedFrameIdRef.current = snapshot.selectedFrameId ?? null;
+      activeFrameIdRef.current = snapshot.activeFrameId ?? null;
       setSelectedFrameId(snapshot.selectedFrameId ?? null);
       if (snapshot.activeFrameId) {
         enterFrame(snapshot.activeFrameId);
@@ -542,6 +572,7 @@ const StudioPage = () => {
 
       requestAnimationFrame(() => {
         canvasRef.current?.setTransform(snapshot.camera);
+        canvasTransformRef.current = snapshot.camera;
         setCanvasTransform(snapshot.camera);
       });
     },
@@ -682,6 +713,11 @@ const StudioPage = () => {
         if (!frameId) return;
 
         const finalCode = screenBuffersRef.current.get(event.screen) ?? "";
+        const hasRenderableContent = finalCode.trim().length > 0;
+        const nextState: FrameState = hasRenderableContent ? "done" : "error";
+        const nextError = hasRenderableContent
+          ? null
+          : "Generation ended before this screen completed.";
         const frame = framesRef.current.get(frameId);
         const generationId =
           frame?.generationId ?? activeGenerationIdRef.current ?? "unknown";
@@ -695,9 +731,9 @@ const StudioPage = () => {
           const next = new Map(current);
           next.set(frameId, {
             ...frame,
-            state: "done",
+            state: nextState,
             content: finalCode,
-            error: null,
+            error: nextError,
           });
           return next;
         });
@@ -706,8 +742,8 @@ const StudioPage = () => {
           frameId,
           screenName: event.screen,
           generationId,
-          state: "done",
-          error: null,
+          state: nextState,
+          error: nextError,
           code: finalCode,
         });
 
@@ -749,7 +785,7 @@ const StudioPage = () => {
           preferError: true,
           errorMessage: event.message,
         });
-        updateProjectStatus({ id: projectId, status: "ARCHIVED" });
+        updateProjectStatus({ id: projectId, status: "ACTIVE" });
         emitGenerationReviewLog("error");
         scheduleSnapshotPersist();
       }
@@ -791,6 +827,11 @@ const StudioPage = () => {
       screenBuffersRef.current = new Map();
       dirtyScreensRef.current.clear();
 
+      const generationPrompt =
+        project.status === "PENDING"
+          ? project.initialPrompt
+          : prompt.trim() || project.initialPrompt;
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
@@ -798,7 +839,7 @@ const StudioPage = () => {
         },
         body: JSON.stringify({
           model,
-          prompt: project.status === "PENDING" ? project.initialPrompt : prompt,
+          prompt: generationPrompt,
           platform: spec ?? "web",
         }),
       });
@@ -882,7 +923,7 @@ const StudioPage = () => {
             ? error.message
             : "Generation failed unexpectedly.",
       });
-      updateProjectStatus({ id: projectId, status: "ARCHIVED" });
+      updateProjectStatus({ id: projectId, status: "ACTIVE" });
       logger.error("Error generating layout:", error);
       emitGenerationReviewLog("request-failed");
     } finally {
@@ -973,6 +1014,7 @@ const StudioPage = () => {
 
   const handleTransformChange = useCallback(
     (nextTransform: Transform) => {
+      canvasTransformRef.current = nextTransform;
       setCanvasTransform(nextTransform);
       scheduleSnapshotPersist();
     },
@@ -1016,17 +1058,21 @@ const StudioPage = () => {
       return;
     }
 
+    const canvasSnapshot = isCanvasSnapshotV1(project.canvasState)
+      ? project.canvasState
+      : null;
+
     if (!hasHydratedCanvasRef.current) {
-      if (isCanvasSnapshotV1(project.canvasState)) {
-        restoreFromSnapshot(project.canvasState);
+      if (canvasSnapshot) {
+        restoreFromSnapshot(canvasSnapshot);
       }
       hasHydratedCanvasRef.current = true;
     }
 
     if (
-      project.status === "PENDING" &&
+      !canvasSnapshot &&
       !hasInitiatedGenerationRef.current &&
-      !isCanvasSnapshotV1(project.canvasState)
+      project.status !== "ARCHIVED"
     ) {
       hasInitiatedGenerationRef.current = true;
       void handleGenerate();
@@ -1050,16 +1096,19 @@ const StudioPage = () => {
   useEffect(() => {
     return () => {
       stopChunkFlusher();
+      flushPendingSnapshotPersist();
 
       if (captureTimeoutRef.current) {
         clearTimeout(captureTimeoutRef.current);
+        captureTimeoutRef.current = null;
       }
 
       if (snapshotSaveTimeoutRef.current) {
         clearTimeout(snapshotSaveTimeoutRef.current);
+        snapshotSaveTimeoutRef.current = null;
       }
     };
-  }, [stopChunkFlusher]);
+  }, [flushPendingSnapshotPersist, stopChunkFlusher]);
 
   return (
     <div
@@ -1092,6 +1141,8 @@ const StudioPage = () => {
               onActivate={(id) => {
                 setSelectedFrameId(id);
                 enterFrame(id);
+                selectedFrameIdRef.current = id;
+                activeFrameIdRef.current = id;
                 scheduleSnapshotPersist();
               }}
               onMove={handleMoveFrame}

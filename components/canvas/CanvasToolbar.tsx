@@ -19,6 +19,8 @@ export function CanvasToolbar({
       <Button
         type="button"
         onClick={onFit}
+        aria-label="Fit canvas to frames"
+        title="Fit canvas to frames"
         className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-white/80 transition hover:bg-white/10"
       >
         <SquareDashed className="size-3.5" />
@@ -26,6 +28,8 @@ export function CanvasToolbar({
       <Button
         type="button"
         onClick={onZoomIn}
+        aria-label="Zoom in"
+        title="Zoom in"
         className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-white/80 transition hover:bg-white/10"
       >
         <ZoomIn className="size-3.5" />
@@ -33,6 +37,8 @@ export function CanvasToolbar({
       <Button
         type="button"
         onClick={onZoomOut}
+        aria-label="Zoom out"
+        title="Zoom out"
         className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-white/80 transition hover:bg-white/10"
       >
         <ZoomOut className="size-3.5" />

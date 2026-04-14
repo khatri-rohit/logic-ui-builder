@@ -54,6 +54,10 @@ function isNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isPositiveNumber(value: unknown): value is number {
+  return isNumber(value) && value > 0;
+}
+
 function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
@@ -68,7 +72,7 @@ function isGenerationPlatform(value: unknown): value is GenerationPlatform {
 
 function isCameraSnapshot(value: unknown): value is CanvasCameraSnapshot {
   if (!isObject(value)) return false;
-  return isNumber(value.x) && isNumber(value.y) && isNumber(value.k);
+  return isNumber(value.x) && isNumber(value.y) && isPositiveNumber(value.k);
 }
 
 function isFrameSnapshot(value: unknown): value is CanvasFrameSnapshot {
@@ -80,8 +84,8 @@ function isFrameSnapshot(value: unknown): value is CanvasFrameSnapshot {
     isGenerationPlatform(value.platform) &&
     isNumber(value.x) &&
     isNumber(value.y) &&
-    isNumber(value.w) &&
-    isNumber(value.h) &&
+    isPositiveNumber(value.w) &&
+    isPositiveNumber(value.h) &&
     typeof value.content === "string" &&
     isStringOrNull(value.editedContent) &&
     isFrameState(value.state) &&

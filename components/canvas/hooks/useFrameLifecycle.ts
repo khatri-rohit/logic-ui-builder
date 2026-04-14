@@ -25,34 +25,54 @@ export function useFrameLifecycle({
 }: UseFrameLifecycleOptions) {
   const clientRef = useRef<SandpackClient | null>(null);
   const isMountedRef = useRef(false);
+  const isMountingRef = useRef(false);
+  const mountTokenRef = useRef(0);
   const destroyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mount = useCallback(async () => {
-    console.log(content);
-    console.log(iframeRef.current);
-    if (!iframeRef.current || !content) return;
-    const client = await loadSandpackClient(
-      iframeRef.current,
-      {
-        files: buildSandpackFiles(content),
-        entry: "/index.tsx",
-        template: "create-react-app-typescript",
-      },
-      {
-        showOpenInCodeSandbox: false,
-        showErrorScreen: true,
-        showLoadingScreen: true,
-        externalResources: [
-          "https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,container-queries",
-        ],
-      },
-    );
+    const iframeElement = iframeRef.current;
+    if (!iframeElement || !content) return;
+    if (isMountedRef.current || isMountingRef.current) return;
 
-    clientRef.current = client;
-    isMountedRef.current = true;
+    const mountToken = mountTokenRef.current + 1;
+    mountTokenRef.current = mountToken;
+    isMountingRef.current = true;
+
+    try {
+      const client = await loadSandpackClient(
+        iframeElement,
+        {
+          files: buildSandpackFiles(content),
+          entry: "/index.tsx",
+          template: "create-react-app-typescript",
+        },
+        {
+          showOpenInCodeSandbox: false,
+          showErrorScreen: true,
+          showLoadingScreen: true,
+          externalResources: [
+            "https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,container-queries",
+          ],
+        },
+      );
+
+      if (mountToken !== mountTokenRef.current) {
+        client.destroy();
+        return;
+      }
+
+      clientRef.current = client;
+      isMountedRef.current = true;
+    } finally {
+      if (mountToken === mountTokenRef.current) {
+        isMountingRef.current = false;
+      }
+    }
   }, [content, iframeRef]);
 
   const destroy = useCallback(() => {
+    mountTokenRef.current += 1;
+    isMountingRef.current = false;
     clientRef.current?.destroy();
     clientRef.current = null;
     isMountedRef.current = false;
@@ -63,7 +83,14 @@ export function useFrameLifecycle({
   }, [iframeRef]);
 
   useEffect(() => {
-    if (state !== "done" || !content || !containerRef.current) return;
+    if (state !== "done" || !content || !containerRef.current) {
+      if (destroyTimerRef.current) {
+        clearTimeout(destroyTimerRef.current);
+        destroyTimerRef.current = null;
+      }
+      destroy();
+      return;
+    }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -110,6 +137,7 @@ export function useFrameLifecycle({
     return () => {
       if (destroyTimerRef.current) {
         clearTimeout(destroyTimerRef.current);
+        destroyTimerRef.current = null;
       }
       destroy();
     };

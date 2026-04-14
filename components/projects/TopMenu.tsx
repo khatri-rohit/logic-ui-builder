@@ -52,7 +52,7 @@ export default function ProjectMenuPanel({
   handleMenuClick,
 }: ProjectMenuPanelProps) {
   return (
-    <div className="dark absolute inset-5 z-40 w-fit h-fit">
+    <div className="dark absolute inset-5 z-50 w-fit h-fit">
       <div className="flex items-center gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

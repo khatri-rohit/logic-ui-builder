@@ -52,6 +52,10 @@ export async function GET(
       );
     }
 
+    const normalizedCanvasState = isCanvasSnapshotV1(project.canvasState)
+      ? project.canvasState
+      : null;
+
     return NextResponse.json(
       {
         error: false,
@@ -61,7 +65,7 @@ export async function GET(
           title: project.title ?? "Untitled Project",
           status: project.status,
           initialPrompt: project.initialPrompt,
-          canvasState: project.canvasState,
+          canvasState: normalizedCanvasState,
         },
       },
       { status: 200 },
@@ -123,10 +127,27 @@ export async function PATCH(
         { status: 400 },
       );
     }
-    const body = (await req.json()) as {
+
+    let body: {
       status?: unknown;
       canvasState?: unknown;
     };
+
+    try {
+      body = (await req.json()) as {
+        status?: unknown;
+        canvasState?: unknown;
+      };
+    } catch {
+      return NextResponse.json(
+        {
+          error: true,
+          message: "Request body must be valid JSON",
+          data: null,
+        },
+        { status: 400 },
+      );
+    }
 
     const { status, canvasState } = body;
 
@@ -171,6 +192,13 @@ export async function PATCH(
       );
     }
 
+    const canvasStateSnapshot =
+      canvasState !== undefined &&
+      canvasState !== null &&
+      isCanvasSnapshotV1(canvasState)
+        ? canvasState
+        : null;
+
     const project = await prisma.project.findUnique({
       where: { id, userId: authContext.appUserId },
     });
@@ -186,6 +214,37 @@ export async function PATCH(
       );
     }
 
+    if (canvasStateSnapshot) {
+      const incomingSavedAtMs = Date.parse(canvasStateSnapshot.savedAt);
+      if (Number.isNaN(incomingSavedAtMs)) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Invalid canvasState savedAt value",
+            data: null,
+          },
+          { status: 400 },
+        );
+      }
+
+      if (isCanvasSnapshotV1(project.canvasState)) {
+        const persistedSavedAtMs = Date.parse(project.canvasState.savedAt);
+        if (
+          !Number.isNaN(persistedSavedAtMs) &&
+          incomingSavedAtMs <= persistedSavedAtMs
+        ) {
+          return NextResponse.json(
+            {
+              error: true,
+              message: "Stale canvasState payload rejected",
+              data: null,
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
     const updateData: Prisma.ProjectUpdateInput = {};
 
     if (status !== undefined) {
@@ -196,7 +255,7 @@ export async function PATCH(
       updateData.canvasState =
         canvasState === null
           ? Prisma.JsonNull
-          : (canvasState as unknown as Prisma.InputJsonValue);
+          : (canvasStateSnapshot as unknown as Prisma.InputJsonValue);
     }
 
     const updatedProject = await prisma.project.update({

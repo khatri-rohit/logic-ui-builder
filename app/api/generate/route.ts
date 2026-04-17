@@ -17,12 +17,13 @@ import { generationRatelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
-// const STAGE1_MODELS = ["deepseek-v3.2:cloud", "gpt-oss:120b"];
-// const STAGE2_MODELS = [
-//   "deepseek-v3.2:cloud",
-//   "gpt-oss:120b",
-//   "deepseek-v3.1:671b",
-// ];
+const STAGE1_MODELS = ["deepseek-v3.2:cloud", "gpt-oss:120b", "gemma4:31b"];
+const STAGE2_MODELS = [
+  "deepseek-v3.2:cloud",
+  "gpt-oss:120b",
+  "deepseek-v3.1:671b",
+  "qwen3.5",
+];
 const STAGE3_MODELS = [
   "gemma4:31b",
   "deepseek-v3.1:671b",
@@ -152,6 +153,58 @@ function parseJsonStrict<T>(raw: string): T {
   }
 }
 
+function buildModelPriority(
+  preferredModel: string | null,
+  defaults: readonly string[],
+) {
+  if (!preferredModel) {
+    return [...defaults];
+  }
+
+  if (defaults.includes(preferredModel)) {
+    return [
+      preferredModel,
+      ...defaults.filter((model) => model !== preferredModel),
+    ];
+  }
+
+  return [preferredModel, ...defaults];
+}
+
+async function generateTextWithFallback({
+  stage,
+  models,
+  ollama,
+  system,
+  prompt,
+}: {
+  stage: string;
+  models: string[];
+  ollama: ReturnType<typeof initializeOllama>;
+  system: string;
+  prompt: string;
+}) {
+  let lastError: unknown = null;
+
+  for (const model of models) {
+    try {
+      logger.info(`${stage} via model: ${model}`);
+      return await generateText({
+        model: ollama(model),
+        system,
+        prompt,
+      });
+    } catch (error) {
+      lastError = error;
+      logger.warn(`${stage} model failed: ${model}`, error);
+    }
+  }
+
+  throw new Error(
+    `${stage} failed across all candidate models: ${String(lastError)}`,
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authContext = await requireAuthContext({
@@ -276,9 +329,18 @@ export async function POST(req: NextRequest) {
       designContext,
     });
     const designContextText = toDesignContextText(designContext);
-    const stage3ModelPriority = preferredModel
-      ? [preferredModel, ...STAGE3_MODELS.filter((m) => m !== preferredModel)]
-      : [...STAGE3_MODELS];
+    const stage1ModelPriority = buildModelPriority(
+      preferredModel,
+      STAGE1_MODELS,
+    );
+    const stage2ModelPriority = buildModelPriority(
+      preferredModel,
+      STAGE2_MODELS,
+    );
+    const stage3ModelPriority = buildModelPriority(
+      preferredModel,
+      STAGE3_MODELS,
+    );
 
     const ollama = initializeOllama();
 
@@ -295,8 +357,10 @@ export async function POST(req: NextRequest) {
         // generateText = wait for full response, no stream
         logger.info("Starting Stage 1: Spec Extraction");
 
-        const { text: rawSpec } = await generateText({
-          model: ollama(body.model as string),
+        const { text: rawSpec } = await generateTextWithFallback({
+          stage: "Stage 1 Spec Extraction",
+          models: stage1ModelPriority,
+          ollama,
           system: STAGE1_SYSTEM,
           prompt: `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
         });
@@ -312,14 +376,14 @@ export async function POST(req: NextRequest) {
 
         // Stage 2 — component planner (non-streaming)
         logger.info("Starting Stage 2: Component Planner");
-        const { text: rawTree } = await generateText({
-          model: ollama(body.model as string),
+        const { text: rawTree } = await generateTextWithFallback({
+          stage: "Stage 2 Component Planner",
+          models: stage2ModelPriority,
+          ollama,
           system: STAGE2_SYSTEM,
           prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
         });
-        console.log(rawTree);
         const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
-        console.log(tree);
         logger.info("Stage 2 complete");
         await write({ type: "tree", tree });
 
@@ -380,6 +444,7 @@ export async function POST(req: NextRequest) {
           }
 
           if (!screenGenerated) {
+            await write({ type: "screen_done", screen });
             throw new Error(
               `All stage 3 models failed for ${screen}: ${String(streamErr)}`,
             );

@@ -41,6 +41,7 @@ import {
 import logger from "@/lib/logger";
 import { GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SandpackProvider } from "@codesandbox/sandpack-react";
 
 const DASHBOARD_MODEL_ALIASES: string[] = [
   "gemma4:31b",
@@ -98,6 +99,51 @@ function toFrameRects(frames: CanvasFrameData[]): FrameRect[] {
 
 function normalizePosition(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function cloneScreenFrameMap(source: Map<string, string[]>) {
+  return new Map(
+    [...source.entries()].map(([screenName, frameIds]) => [
+      screenName,
+      [...frameIds],
+    ]),
+  );
+}
+
+function resolveFrameIdForScreenFromState({
+  screenName,
+  frames,
+  activeFrameIds,
+  frameIdsByScreen,
+}: {
+  screenName: string;
+  frames: Map<string, CanvasFrameData>;
+  activeFrameIds: Map<string, string>;
+  frameIdsByScreen: Map<string, string[]>;
+}) {
+  const activeFrameId = activeFrameIds.get(screenName);
+  if (activeFrameId && frames.has(activeFrameId)) {
+    return activeFrameId;
+  }
+
+  const frameIds = frameIdsByScreen.get(screenName);
+  if (!frameIds || frameIds.length === 0) return null;
+
+  for (const frameId of frameIds) {
+    const frame = frames.get(frameId);
+    if (!frame) continue;
+    if (frame.state !== "done" && frame.state !== "error") {
+      return frameId;
+    }
+  }
+
+  for (const frameId of frameIds) {
+    if (frames.has(frameId)) {
+      return frameId;
+    }
+  }
+
+  return null;
 }
 
 async function readResponseErrorMessage(response: Response) {
@@ -204,6 +250,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const hasHydratedCanvasRef = useRef(false);
   const activeFrameIdRef = useRef<string | null>(null);
   const selectedFrameIdRef = useRef<string | null>(null);
+  const generationTokenRef = useRef(0);
   const canvasTransformRef = useRef<Transform>({
     x: 0,
     y: 0,
@@ -308,21 +355,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   }, [buildSnapshot, persistCanvasState, projectId]);
 
   const resolveFrameIdForScreen = useCallback((screenName: string) => {
-    const activeFrameId = activeFrameIdsRef.current.get(screenName);
-    if (activeFrameId) return activeFrameId;
-
-    const frameIds = frameIdsRef.current.get(screenName);
-    if (!frameIds || frameIds.length === 0) return null;
-
-    for (const frameId of frameIds) {
-      const frame = framesRef.current.get(frameId);
-      if (!frame) continue;
-      if (frame.state !== "done" && frame.state !== "error") {
-        return frameId;
-      }
-    }
-
-    return null;
+    return resolveFrameIdForScreenFromState({
+      screenName,
+      frames: framesRef.current,
+      activeFrameIds: activeFrameIdsRef.current,
+      frameIdsByScreen: frameIdsRef.current,
+    });
   }, []);
 
   const claimFrameIdForScreen = useCallback(
@@ -429,6 +467,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     if (dirtyScreensRef.current.size === 0) return;
 
     const dirtyScreens = [...dirtyScreensRef.current];
+    const buffersSnapshot = new Map(screenBuffersRef.current);
+    const activeFrameIdsSnapshot = new Map(activeFrameIdsRef.current);
+    const frameIdsSnapshot = cloneScreenFrameMap(frameIdsRef.current);
     dirtyScreensRef.current.clear();
 
     applyFrames((current) => {
@@ -436,13 +477,18 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       const next = new Map(current);
 
       for (const screenName of dirtyScreens) {
-        const frameId = resolveFrameIdForScreen(screenName);
+        const frameId = resolveFrameIdForScreenFromState({
+          screenName,
+          frames: next,
+          activeFrameIds: activeFrameIdsSnapshot,
+          frameIdsByScreen: frameIdsSnapshot,
+        });
         if (!frameId) continue;
 
         const frame = next.get(frameId);
         if (!frame) continue;
 
-        const bufferedContent = screenBuffersRef.current.get(screenName) ?? "";
+        const bufferedContent = buffersSnapshot.get(screenName) ?? "";
         if (bufferedContent === frame.content && frame.state === "streaming") {
           continue;
         }
@@ -457,7 +503,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       return changed ? next : current;
     });
-  }, [applyFrames, resolveFrameIdForScreen]);
+  }, [applyFrames]);
 
   const startChunkFlusher = useCallback(() => {
     if (chunkFlushIntervalRef.current) return;
@@ -482,7 +528,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       preferError?: boolean;
       errorMessage?: string;
     }) => {
-      flushChunkBuffer();
+      stopChunkFlusher();
+
+      const bufferedScreens = [...screenBuffersRef.current.entries()];
+      const activeFrameIdsSnapshot = new Map(activeFrameIdsRef.current);
+      const frameIdsSnapshot = cloneScreenFrameMap(frameIdsRef.current);
 
       applyFrames((current) => {
         let changed = false;
@@ -509,7 +559,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           ) {
             return;
           }
-          logger.info("Content: ", resolvedContent);
+
           changed = true;
           next.set(frameId, {
             ...frame,
@@ -528,8 +578,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           });
         };
 
-        for (const [screenName, bufferedContent] of screenBuffersRef.current) {
-          const frameId = resolveFrameIdForScreen(screenName);
+        for (const [screenName, bufferedContent] of bufferedScreens) {
+          const frameId = resolveFrameIdForScreenFromState({
+            screenName,
+            frames: next,
+            activeFrameIds: activeFrameIdsSnapshot,
+            frameIdsByScreen: frameIdsSnapshot,
+          });
           if (!frameId) continue;
           finalizeFrame(frameId, bufferedContent);
         }
@@ -548,15 +603,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       screenBuffersRef.current.clear();
       dirtyScreensRef.current.clear();
       setActiveStreamingScreen(null);
-      stopChunkFlusher();
     },
-    [
-      applyFrames,
-      flushChunkBuffer,
-      resolveFrameIdForScreen,
-      stopChunkFlusher,
-      upsertGenerationReviewEntry,
-    ],
+    [applyFrames, stopChunkFlusher, upsertGenerationReviewEntry],
   );
 
   const onCapture = useCallback(async () => {
@@ -627,7 +675,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   );
 
   const handleEvent = useCallback(
-    (event: GenerationEvent) => {
+    (event: GenerationEvent, generationToken: number) => {
+      if (generationToken !== generationTokenRef.current) {
+        return;
+      }
+
       if (event.type === "design_context" || event.type === "tree") {
         return;
       }
@@ -640,7 +692,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           name: screenName,
           ...getInitialDimensionsForPlatform(screenName, platform),
         }));
-
         const positions = getGenerationLayout(
           [...framesRef.current.values()],
           screensWithDims,
@@ -648,21 +699,19 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
         const generationId = crypto.randomUUID();
         activeGenerationIdRef.current = generationId;
-        frameIdsRef.current = new Map();
         activeFrameIdsRef.current.clear();
         screenBuffersRef.current = new Map();
         dirtyScreensRef.current.clear();
 
-        applyFrames((current) => {
-          const next = new Map(current);
-
-          screensWithDims.forEach((screen, index) => {
+        const nextFrameIdsByScreen = new Map<string, string[]>();
+        const nextFrames: CanvasFrameData[] = screensWithDims.map(
+          (screen, index) => {
             const frameId = crypto.randomUUID();
             const position = positions[index];
+            const frameIds = nextFrameIdsByScreen.get(screen.name) ?? [];
 
-            const frameIds = frameIdsRef.current.get(screen.name) ?? [];
             frameIds.push(frameId);
-            frameIdsRef.current.set(screen.name, frameIds);
+            nextFrameIdsByScreen.set(screen.name, frameIds);
 
             upsertGenerationReviewEntry({
               frameId,
@@ -673,7 +722,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
               code: "",
             });
 
-            next.set(frameId, {
+            return {
               id: frameId,
               screenName: screen.name,
               platform,
@@ -687,8 +736,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
               thumbnail: null,
               generationId,
               error: null,
-            });
-          });
+            };
+          },
+        );
+
+        frameIdsRef.current = nextFrameIdsByScreen;
+
+        applyFrames((current) => {
+          const next = new Map(current);
+          for (const frame of nextFrames) {
+            next.set(frame.id, frame);
+          }
 
           return next;
         });
@@ -707,19 +765,25 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         setActiveStreamingScreen(event.screen);
         startChunkFlusher();
 
-        if (frameId) {
-          applyFrames((current) => {
-            const frame = current.get(frameId);
-            if (!frame || frame.state === "streaming") return current;
-
-            const next = new Map(current);
-            next.set(frameId, {
-              ...frame,
-              state: "streaming",
-            });
-            return next;
+        if (!frameId) {
+          logger.warn("Unable to resolve frame for screen_start event", {
+            screen: event.screen,
+            generationId: activeGenerationIdRef.current,
           });
+          return;
         }
+
+        applyFrames((current) => {
+          const frame = current.get(frameId);
+          if (!frame || frame.state === "streaming") return current;
+
+          const next = new Map(current);
+          next.set(frameId, {
+            ...frame,
+            state: "streaming",
+          });
+          return next;
+        });
         return;
       }
 
@@ -755,9 +819,20 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       }
 
       if (event.type === "screen_done") {
-        flushChunkBuffer();
-        const frameId = resolveFrameIdForScreen(event.screen);
-        if (!frameId) return;
+        const frameId = resolveFrameIdForScreenFromState({
+          screenName: event.screen,
+          frames: framesRef.current,
+          activeFrameIds: activeFrameIdsRef.current,
+          frameIdsByScreen: frameIdsRef.current,
+        });
+
+        if (!frameId) {
+          logger.warn("Unable to resolve frame for screen_done event", {
+            screen: event.screen,
+            generationId: activeGenerationIdRef.current,
+          });
+          return;
+        }
 
         const finalCode = screenBuffersRef.current.get(event.screen) ?? "";
         const hasRenderableContent = finalCode.trim().length > 0;
@@ -774,7 +849,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         applyFrames((current) => {
           const frame = current.get(frameId);
           if (!frame) return current;
-
           const next = new Map(current);
           next.set(frameId, {
             ...frame,
@@ -820,7 +894,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         captureTimeoutRef.current = setTimeout(() => {
           void onCapture();
           captureTimeoutRef.current = null;
-        }, 2000);
+        }, 5000);
 
         emitGenerationReviewLog("done");
         scheduleSnapshotPersist();
@@ -828,6 +902,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       }
 
       if (event.type === "error") {
+        logger.error("Generation error event received:", {
+          message: event.message,
+        });
         finalizePendingFrames({
           preferError: true,
           errorMessage: event.message,
@@ -841,7 +918,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       applyFrames,
       claimFrameIdForScreen,
       finalizePendingFrames,
-      flushChunkBuffer,
       emitGenerationReviewLog,
       onCapture,
       projectId,
@@ -858,6 +934,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       logger.error("Project not found");
       return;
     }
+
+    const generationToken = generationTokenRef.current + 1;
+    generationTokenRef.current = generationToken;
+    const isStaleGeneration = () =>
+      generationToken !== generationTokenRef.current;
 
     setIsGenerating(true);
     setActiveStreamingScreen(null);
@@ -906,6 +987,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       const processSseLines = (lines: string[]) => {
         for (const line of lines) {
+          if (isStaleGeneration()) {
+            return true;
+          }
+
           if (!line.startsWith("data:")) continue;
 
           const raw = line.slice(5).trim();
@@ -920,7 +1005,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
             if (event.type === "done" || event.type === "error") {
               terminalEventReceived = true;
             }
-            handleEvent(event);
+            handleEvent(event, generationToken);
           } catch (parseError) {
             logger.warn("Skipping malformed SSE payload", {
               rawSnippet: raw.slice(0, 200),
@@ -933,7 +1018,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       };
 
       while (true) {
+        if (isStaleGeneration()) {
+          stopChunkFlusher();
+          return;
+        }
+
         const { done, value } = await reader.read();
+
+        if (isStaleGeneration()) {
+          stopChunkFlusher();
+          return;
+        }
 
         if (value) {
           sseBuffer += decoder.decode(value, { stream: true });
@@ -962,6 +1057,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         }
       }
     } catch (error) {
+      if (isStaleGeneration()) {
+        return;
+      }
+
       streamFailed = true;
       finalizePendingFrames({
         preferError: true,
@@ -974,6 +1073,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       logger.error("Error generating layout:", error);
       emitGenerationReviewLog("request-failed");
     } finally {
+      if (isStaleGeneration()) {
+        return;
+      }
+
       if (
         !streamFailed &&
         !terminalEventReceived &&
@@ -1248,23 +1351,24 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           onTransformChange={handleTransformChange}
         >
           {frameList.map((frame) => (
-            <CanvasFrame
-              key={frame.id}
-              {...frame}
-              scale={canvasTransform.k}
-              isActive={activeFrameId === frame.id}
-              isSelected={selectedFrameId === frame.id}
-              onSelect={setSelectedFrameId}
-              onActivate={(id) => {
-                setSelectedFrameId(id);
-                enterFrame(id);
-                selectedFrameIdRef.current = id;
-                activeFrameIdRef.current = id;
-                scheduleSnapshotPersist();
-              }}
-              onMove={handleMoveFrame}
-              onResize={handleResizeFrame}
-            />
+            <SandpackProvider key={frame.id}>
+              <CanvasFrame
+                {...frame}
+                scale={canvasTransform.k}
+                isActive={activeFrameId === frame.id}
+                isSelected={selectedFrameId === frame.id}
+                onSelect={setSelectedFrameId}
+                onActivate={(id) => {
+                  setSelectedFrameId(id);
+                  enterFrame(id);
+                  selectedFrameIdRef.current = id;
+                  activeFrameIdRef.current = id;
+                  scheduleSnapshotPersist();
+                }}
+                onMove={handleMoveFrame}
+                onResize={handleResizeFrame}
+              />
+            </SandpackProvider>
           ))}
         </InfiniteCanvas>
       </div>

@@ -1,11 +1,7 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { Client } from "@upstash/qstash";
 import logger from "@/lib/logger";
-
-const FeedbackSchema = z.object({
-  feedback: z.string().min(1, "Feedback cannot be empty"),
-});
+import { feedbackBodySchema, toValidationIssues } from "@/lib/schemas/studio";
 
 const client = new Client({
   token: process.env.QSTASH_TOKEN,
@@ -17,18 +13,30 @@ const client = new Client({
 
 export async function POST(request: NextRequest) {
   try {
-    const { feedback } = await request.json();
-
-    // Validate feedback using Zod
-    const parsed = FeedbackSchema.safeParse({ feedback });
-
-    if (!parsed.success) {
-      logger.error("Validation error:", { error: parsed.error });
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
       return new Response(
-        JSON.stringify({ error: "Invalid feedback: " + parsed.error.message }),
+        JSON.stringify({ error: "Request body must be valid JSON" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
+
+    const parsedBody = feedbackBodySchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      logger.error("Validation error:", { error: parsedBody.error });
+      return new Response(
+        JSON.stringify({
+          error: "Invalid feedback payload",
+          code: "VALIDATION_ERROR",
+          issues: toValidationIssues(parsedBody.error),
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const { feedback } = parsedBody.data;
 
     // Send email with feedback content through background job
     const result = await client.publishJSON({

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const projectIdSchema = z.string().cuid();
+
 const frameStateSchema = z.enum([
   "skeleton",
   "streaming",
@@ -56,7 +58,7 @@ export const canvasStateMetadataSchema = z.object({
   activeFrameId: z.string().nullable(),
   selectedFrameId: z.string().nullable(),
   selectedGenerationId: z.string().nullable().default(null),
-  savedAt: z.string().min(1),
+  savedAt: z.string().datetime({ offset: true }),
 });
 
 export const canvasSnapshotSchema = canvasStateMetadataSchema.extend({
@@ -76,11 +78,29 @@ export const webAppSpecSchema = z.object({
 });
 
 export const generationRequestBodySchema = z.object({
-  projectId: z.string().min(1),
+  projectId: projectIdSchema,
   prompt: z.string().trim().min(1).max(10000),
   platform: generationPlatformSchema.optional(),
   model: z.string().trim().min(1).max(80).optional(),
   idempotencyKey: z.string().trim().min(8).max(128).optional(),
+});
+
+export const projectRouteParamsSchema = z.object({
+  id: projectIdSchema,
+});
+
+export const feedbackBodySchema = z.object({
+  feedback: z.string().trim().min(1).max(10000),
+});
+
+export const projectMetadataJobBodySchema = z.object({
+  projectId: projectIdSchema.optional(),
+  prompt: z.string().trim().min(1).max(10000),
+});
+
+export const createProjectBodySchema = z.object({
+  prompt: z.string().trim().min(1).max(10000),
+  platform: generationPlatformSchema.optional(),
 });
 
 export const projectPatchBodySchema = z

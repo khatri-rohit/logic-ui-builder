@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
+import {
+  projectRouteParamsSchema,
+  toValidationIssues,
+} from "@/lib/schemas/studio";
 import { uploadProjectThumbnailToStorage } from "@/lib/supabase-storage";
+import { z } from "zod";
 
 const SUPPORTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -12,6 +17,17 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 ]);
 
 const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024;
+
+const thumbnailFormSchema = z.object({
+  thumbnail: z
+    .instanceof(File, { message: "Thumbnail file is required" })
+    .refine((file) => SUPPORTED_IMAGE_TYPES.has(file.type), {
+      message: "Unsupported thumbnail type. Use PNG, JPEG, or WebP.",
+    })
+    .refine((file) => file.size > 0 && file.size <= MAX_THUMBNAIL_SIZE_BYTES, {
+      message: "Thumbnail size must be between 1 byte and 5 MB.",
+    }),
+});
 
 export const runtime = "nodejs";
 
@@ -36,17 +52,21 @@ export async function PATCH(
       );
     }
 
-    const { id } = await params;
-    if (!id) {
+    const parsedParams = projectRouteParamsSchema.safeParse(await params);
+    if (!parsedParams.success) {
       return NextResponse.json(
         {
           error: true,
-          message: "Project ID is required",
+          code: "VALIDATION_ERROR",
+          message: "Invalid project route parameters",
+          issues: toValidationIssues(parsedParams.error),
           data: null,
         },
         { status: 400 },
       );
     }
+
+    const { id } = parsedParams.data;
 
     const project = await prisma.project.findUnique({
       where: { id, userId: authContext.appUserId },
@@ -65,40 +85,23 @@ export async function PATCH(
     }
 
     const formData = await req.formData();
-    const thumbnail = formData.get("thumbnail");
-
-    if (!(thumbnail instanceof File)) {
+    const parsedFormData = thumbnailFormSchema.safeParse({
+      thumbnail: formData.get("thumbnail"),
+    });
+    if (!parsedFormData.success) {
       return NextResponse.json(
         {
           error: true,
-          message: "Thumbnail file is required",
+          code: "VALIDATION_ERROR",
+          message: "Invalid thumbnail payload",
+          issues: toValidationIssues(parsedFormData.error),
           data: null,
         },
         { status: 400 },
       );
     }
 
-    if (!SUPPORTED_IMAGE_TYPES.has(thumbnail.type)) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: "Unsupported thumbnail type. Use PNG, JPEG, or WebP.",
-          data: null,
-        },
-        { status: 400 },
-      );
-    }
-
-    if (thumbnail.size <= 0 || thumbnail.size > MAX_THUMBNAIL_SIZE_BYTES) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: "Thumbnail size must be between 1 byte and 5 MB.",
-          data: null,
-        },
-        { status: 400 },
-      );
-    }
+    const { thumbnail } = parsedFormData.data;
 
     const thumbnailBytes = Buffer.from(await thumbnail.arrayBuffer());
     const thumbnailUrl = await uploadProjectThumbnailToStorage({

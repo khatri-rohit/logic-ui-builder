@@ -5,11 +5,25 @@ import { type UserJSON, type WebhookEvent } from "@clerk/nextjs/server";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/browser";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
 type Provider = "GOOGLE" | "GITHUB" | "EMAIL";
 type SessionStatus = "ACTIVE" | "ENDED" | "REVOKED";
+
+const nonEmptyStringSchema = z.string().trim().min(1);
+
+const deletedUserWebhookDataSchema = z.object({
+  id: nonEmptyStringSchema,
+});
+
+const sessionWebhookDataSchema = z.object({
+  id: nonEmptyStringSchema,
+  user_id: nonEmptyStringSchema,
+  created_at: z.union([z.number(), z.string()]).optional(),
+  expire_at: z.union([z.number(), z.string()]).optional(),
+});
 
 function timestampToDate(value: unknown): Date | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -119,10 +133,12 @@ async function upsertUserFromWebhookData(
   tx: Prisma.TransactionClient,
   userData: UserJSON,
 ) {
-  const clerkUserId = userData.id;
-  if (!clerkUserId || typeof clerkUserId !== "string") {
+  const parsedClerkUserId = nonEmptyStringSchema.safeParse(userData.id);
+  if (!parsedClerkUserId.success) {
     return null;
   }
+
+  const clerkUserId = parsedClerkUserId.data;
 
   const email = extractPrimaryEmail(userData, clerkUserId);
   const name = extractDisplayName(userData, email);
@@ -271,8 +287,11 @@ export async function POST(req: NextRequest) {
         }
 
         if (evt.type === "user.deleted") {
-          const clerkUserId = evt.data?.id;
-          if (typeof clerkUserId === "string" && clerkUserId.length > 0) {
+          const parsedDeletedUser = deletedUserWebhookDataSchema.safeParse(
+            evt.data,
+          );
+          if (parsedDeletedUser.success) {
+            const clerkUserId = parsedDeletedUser.data.id;
             // Soft delete the user in our database to preserve historical data and relations, but mark them as inactive
             // await tx.user.updateMany({
             //   where: {
@@ -282,7 +301,7 @@ export async function POST(req: NextRequest) {
             //     isActive: false,
             //   },
             // });
-            await await tx.user.deleteMany({
+            await tx.user.deleteMany({
               where: {
                 clerkUserId,
               },
@@ -299,18 +318,15 @@ export async function POST(req: NextRequest) {
           evt.type === "session.ended" ||
           evt.type === "session.revoked"
         ) {
-          const sessionData = evt.data;
-          const clerkSessionId = sessionData?.id;
-          const clerkUserId = sessionData?.user_id;
+          const parsedSessionData = sessionWebhookDataSchema.safeParse(
+            evt.data,
+          );
           const status = mapSessionEventToStatus(evt.type);
 
-          if (
-            typeof clerkSessionId === "string" &&
-            clerkSessionId.length > 0 &&
-            typeof clerkUserId === "string" &&
-            clerkUserId.length > 0 &&
-            status
-          ) {
+          if (parsedSessionData.success && status) {
+            const sessionData = parsedSessionData.data;
+            const clerkSessionId = sessionData.id;
+            const clerkUserId = sessionData.user_id;
             const user = await ensureUserForSession(tx, clerkUserId);
             const issuedAt =
               timestampToDate(sessionData?.created_at) ?? new Date();

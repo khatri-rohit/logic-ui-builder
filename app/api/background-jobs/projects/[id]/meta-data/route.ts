@@ -5,9 +5,11 @@ import prisma from "@/lib/prisma";
 import { initializeOllama } from "@/lib/ollama";
 import logger from "@/lib/logger";
 import { revalidateTag } from "next/cache";
-
-const PROJECT_ID_PATTERN = /^c[a-z0-9]{24}$/;
-const MAX_METADATA_PROMPT_LENGTH = 10000;
+import {
+  projectMetadataJobBodySchema,
+  projectRouteParamsSchema,
+  toValidationIssues,
+} from "@/lib/schemas/studio";
 
 interface MetaDataRouteContext {
   params: Promise<{ id: string }>;
@@ -15,36 +17,59 @@ interface MetaDataRouteContext {
 
 export const POST = verifySignatureAppRouter(
   async (req: Request, context: MetaDataRouteContext) => {
-    let body: { projectId?: unknown; prompt?: unknown };
+    const parsedParams = projectRouteParamsSchema.safeParse(
+      await context.params,
+    );
+    if (!parsedParams.success) {
+      return new Response(
+        JSON.stringify({
+          error: true,
+          code: "VALIDATION_ERROR",
+          message: "Invalid project route parameters",
+          issues: toValidationIssues(parsedParams.error),
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const routeProjectId = parsedParams.data.id;
+
+    let rawBody: unknown;
 
     try {
-      body = (await req.json()) as { projectId?: unknown; prompt?: unknown };
+      rawBody = await req.json();
     } catch {
-      return new Response("Request body must be valid JSON", { status: 400 });
+      return new Response(
+        JSON.stringify({
+          error: true,
+          message: "Request body must be valid JSON",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    const projectId =
-      typeof body.projectId === "string" ? body.projectId.trim() : "";
-    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-
-    const { id: routeProjectId } = await context.params;
-
-    if (!routeProjectId || !PROJECT_ID_PATTERN.test(routeProjectId)) {
-      return new Response("Invalid project route", { status: 400 });
+    const parsedBody = projectMetadataJobBodySchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return new Response(
+        JSON.stringify({
+          error: true,
+          code: "VALIDATION_ERROR",
+          message: "Invalid project meta-data payload",
+          issues: toValidationIssues(parsedBody.error),
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
     }
+
+    const { projectId, prompt } = parsedBody.data;
 
     if (projectId && projectId !== routeProjectId) {
-      return new Response("Route/body projectId mismatch", { status: 400 });
-    }
-
-    if (!prompt) {
-      return new Response("Prompt is required", { status: 400 });
-    }
-
-    if (prompt.length > MAX_METADATA_PROMPT_LENGTH) {
       return new Response(
-        `Prompt is too long. Maximum ${MAX_METADATA_PROMPT_LENGTH} characters.`,
-        { status: 400 },
+        JSON.stringify({
+          error: true,
+          message: "Route/body projectId mismatch",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 

@@ -3,10 +3,12 @@ import { Client } from "@upstash/qstash";
 
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import {
+  createProjectBodySchema,
+  toValidationIssues,
+} from "@/lib/schemas/studio";
 
 import logger from "@/lib/logger";
-
-const MAX_PROJECT_PROMPT_LENGTH = 10000;
 
 const client = new Client({
   token: process.env.QSTASH_TOKEN,
@@ -35,10 +37,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: { prompt?: unknown; platform?: unknown };
+    let rawBody: unknown;
 
     try {
-      body = (await req.json()) as { prompt?: unknown; platform?: unknown };
+      rawBody = await req.json();
     } catch {
       return NextResponse.json(
         {
@@ -49,28 +51,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-
-    if (!prompt) {
+    const parsedBody = createProjectBodySchema.safeParse(rawBody);
+    if (!parsedBody.success) {
       return NextResponse.json(
         {
           error: true,
-          message:
-            "Invalid prompt. Please provide a prompt to create a design.",
+          code: "VALIDATION_ERROR",
+          message: "Invalid project creation payload",
+          issues: toValidationIssues(parsedBody.error),
         },
         { status: 400 },
       );
     }
 
-    if (prompt.length > MAX_PROJECT_PROMPT_LENGTH) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: `Prompt is too long. Maximum ${MAX_PROJECT_PROMPT_LENGTH} characters.`,
-        },
-        { status: 400 },
-      );
-    }
+    const { prompt } = parsedBody.data;
 
     const newProject = await prisma.project.create({
       data: {

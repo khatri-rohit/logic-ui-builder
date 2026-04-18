@@ -21,6 +21,7 @@ import {
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import prisma from "@/lib/prisma";
 import {
+  projectRouteParamsSchema,
   persistedGenerationScreenSchema,
   projectPatchBodySchema,
   toValidationIssues,
@@ -159,17 +160,21 @@ export async function GET(
       );
     }
 
-    const { id } = await params;
-    if (!id) {
+    const parsedParams = projectRouteParamsSchema.safeParse(await params);
+    if (!parsedParams.success) {
       return NextResponse.json(
         {
           error: true,
-          message: "Project ID is required",
+          code: "VALIDATION_ERROR",
+          message: "Invalid project route parameters",
+          issues: toValidationIssues(parsedParams.error),
           data: null,
         },
         { status: 400 },
       );
     }
+
+    const { id } = parsedParams.data;
 
     const project = await prisma.project.findUnique({
       where: { id, userId: authContext.appUserId },
@@ -259,17 +264,21 @@ export async function PATCH(
       );
     }
 
-    const { id } = await params;
-    if (!id) {
+    const parsedParams = projectRouteParamsSchema.safeParse(await params);
+    if (!parsedParams.success) {
       return NextResponse.json(
         {
           error: true,
-          message: "Project ID is required",
+          code: "VALIDATION_ERROR",
+          message: "Invalid project route parameters",
+          issues: toValidationIssues(parsedParams.error),
           data: null,
         },
         { status: 400 },
       );
     }
+
+    const { id } = parsedParams.data;
 
     let rawBody: unknown;
     try {
@@ -326,17 +335,7 @@ export async function PATCH(
     const persistedCanvasState = normalizeCanvasMetadata(project.canvasState);
 
     if (canvasState) {
-      const incomingSavedAtMs = Date.parse(canvasState.savedAt);
-      if (Number.isNaN(incomingSavedAtMs)) {
-        return NextResponse.json(
-          {
-            error: true,
-            message: "Invalid canvasState savedAt value",
-            data: null,
-          },
-          { status: 400 },
-        );
-      }
+      const incomingSavedAtMs = new Date(canvasState.savedAt).getTime();
 
       if (persistedCanvasState) {
         const persistedSavedAtMs = Date.parse(persistedCanvasState.savedAt);
@@ -523,17 +522,21 @@ export async function DELETE(
       );
     }
 
-    const { id } = await params;
-    if (!id) {
+    const parsedParams = projectRouteParamsSchema.safeParse(await params);
+    if (!parsedParams.success) {
       return NextResponse.json(
         {
           error: true,
-          message: "Project ID is required",
+          code: "VALIDATION_ERROR",
+          message: "Invalid project route parameters",
+          issues: toValidationIssues(parsedParams.error),
           data: null,
         },
         { status: 400 },
       );
     }
+
+    const { id } = parsedParams.data;
 
     const project = await prisma.project.findUnique({
       where: { id, userId: authContext.appUserId },

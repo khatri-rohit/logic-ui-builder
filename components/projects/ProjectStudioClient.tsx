@@ -280,7 +280,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     y: 0,
     k: 1,
   });
-  const [openFeedbackForm, setOpenFeedbackForm] = useState(true);
+  const [openFeedbackForm, setOpenFeedbackForm] = useState(false);
 
   const {
     activeFrameId,

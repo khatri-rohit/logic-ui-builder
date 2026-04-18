@@ -29,6 +29,7 @@ import {
   getInitialDimensionsForPlatform,
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
@@ -47,7 +48,19 @@ const STAGE3_MODELS = [
   "deepseek-v3.2:cloud",
 ];
 
-const MAX_MODEL_NAME_LENGTH = 80;
+const generationBodySchema = generationRequestBodySchema.superRefine(
+  (value, ctx) => {
+    if (value.model && !STAGE3_MODELS.includes(value.model)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["model"],
+        message: "Unsupported model selection",
+      });
+    }
+  },
+);
+
+const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
 function normalizePlatform(value: unknown): GenerationPlatform {
   return value === "mobile" ? "mobile" : "web";
@@ -57,16 +70,6 @@ function toPrismaPlatform(
   platform: GenerationPlatform,
 ): PrismaGenerationPlatform {
   return platform === "mobile" ? "MOBILE" : "WEB";
-}
-
-function normalizeModelPreference(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim();
-  if (!normalized) return null;
-  if (normalized.length > MAX_MODEL_NAME_LENGTH) return null;
-
-  return normalized;
 }
 
 const MOBILE_COMPLEXITY_KEYWORDS = [
@@ -289,7 +292,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const parsedBody = generationRequestBodySchema.safeParse(rawBody);
+    const parsedBody = generationBodySchema.safeParse(rawBody);
     if (!parsedBody.success) {
       return NextResponse.json(
         {
@@ -304,34 +307,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = parsedBody.data;
-    const preferredModel = normalizeModelPreference(body.model);
-    if (body.model !== undefined && !preferredModel) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: "Invalid model value",
-          data: null,
-        },
-        { status: 400 },
-      );
-    }
+    const preferredModel = body.model ?? null;
 
-    if (preferredModel && !STAGE3_MODELS.includes(preferredModel)) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: "Unsupported model selection",
-          data: null,
-        },
-        { status: 400 },
-      );
-    }
-
-    const requestIdempotencyKey = req.headers.get("Idempotency-Key")?.trim();
-    const idempotencyKey =
-      requestIdempotencyKey && requestIdempotencyKey.length >= 8
-        ? requestIdempotencyKey
-        : (body.idempotencyKey ?? crypto.randomUUID());
+    const idempotencyHeaderResult = idempotencyHeaderSchema.safeParse(
+      req.headers.get("Idempotency-Key"),
+    );
+    const idempotencyKey = idempotencyHeaderResult.success
+      ? idempotencyHeaderResult.data
+      : (body.idempotencyKey ?? crypto.randomUUID());
 
     const project = await prisma.project.findUnique({
       where: {

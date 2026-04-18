@@ -245,9 +245,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const setStudioSelectedGenerationId = useProjectStudioStore(
     (state) => state.setSelectedGenerationId,
   );
-  const getGenerationRunId = useProjectStudioStore(
-    (state) => state.runtime.activeGenerationId,
-  );
 
   const canvasRef = useRef<InfiniteCanvasHandle | null>(null);
   const domRef = useRef<HTMLDivElement | null>(null);
@@ -402,6 +399,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       snapshotSaveTimeoutRef.current = setTimeout(() => {
         snapshotSaveTimeoutRef.current = null;
+        if (buildSnapshot().frames.length === 0) {
+          // Don't persist empty canvas state as it can overwrite existing state with an empty one in case of a delayed persist call after a new generation has started.
+          return;
+        }
         persistCanvasState({
           id: projectId,
           canvasState: buildSnapshot(),
@@ -1397,21 +1398,15 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const handleFrame = (event: React.MouseEvent<HTMLDivElement>, id: string) => {
     const { textContent } = event.target as HTMLDivElement;
     logger.info("Frame clicked", textContent);
+    const frame = framesRef.current.get(id);
+    if (!frame) {
+      logger.warn("Clicked frame not found", { frameId: id });
+      return;
+    }
     logger.info("Regenerate frame requested", {
       frameId: id,
-      generationId: getGenerationRunId,
+      generationId: frame.generationId,
     });
-  };
-
-  const handleSelectContext = (frameId: string) => {
-    selectedFrameIdRef.current = frameId;
-    activeFrameIdRef.current = frameId;
-    const frame = framesRef.current.get(frameId);
-    if (frame) {
-      setStudioSelectedGenerationId(frame.generationId);
-    }
-    setSelectedFrameId(frameId);
-    enterFrame(frameId);
   };
 
   useEffect(() => {
@@ -1623,7 +1618,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
                 onMove={handleMoveFrame}
                 onResize={handleResizeFrame}
                 handleFrame={handleFrame}
-                handleSelectContext={handleSelectContext}
               />
             </SandpackProvider>
           ))}

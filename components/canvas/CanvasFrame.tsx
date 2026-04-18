@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, MouseEvent, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
 import { CanvasFrameData } from "@/components/canvas/types";
@@ -49,8 +50,8 @@ interface CanvasFrameProps extends CanvasFrameData {
   onActivate: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
   onResize: (id: string, w: number, h: number) => void;
-  handleFrame: (event: MouseEvent<HTMLDivElement>, id: string) => void;
-  handleSelectContext: (frameId: string) => void;
+  handleFrame: (event: ReactMouseEvent<HTMLDivElement>, id: string) => void;
+  handleSelectContext?: (frameId: string) => void;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -82,6 +83,7 @@ export const CanvasFrame = memo(function CanvasFrame({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const interactionRef = useRef<InteractionState | null>(null);
+  const contextMenuOpenRef = useRef(false);
 
   const safeScale = Math.max(scale, 0.001);
   const activeContent = editedContent ?? content;
@@ -92,6 +94,36 @@ export const CanvasFrame = memo(function CanvasFrame({
     containerRef,
     iframeRef,
   });
+
+  const openContextMenuAt = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    if (!container || typeof window.MouseEvent !== "function") return;
+
+    container.dispatchEvent(
+      new window.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        button: 2,
+        buttons: 2,
+        clientX,
+        clientY,
+      }),
+    );
+  }, []);
+
+  const requestCloseContextMenu = useCallback(() => {
+    if (!contextMenuOpenRef.current) return;
+    if (typeof window.KeyboardEvent !== "function") return;
+
+    window.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, []);
 
   const handleWindowPointerMove = useCallback(
     (event: PointerEvent) => {
@@ -174,9 +206,41 @@ export const CanvasFrame = memo(function CanvasFrame({
   );
 
   useEffect(() => {
+    if (state !== "done") return;
+
     const handler = (event: MessageEvent) => {
-      if (event.data?.type !== "frame-dimensions") return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+
+      if (event.data?.type === "frame-pointer-down") {
+        requestCloseContextMenu();
+        return;
+      }
+
+      if (event.data?.type === "frame-context-menu") {
+        const iframeBounds = iframeRef.current?.getBoundingClientRect();
+        if (!iframeBounds) return;
+
+        const localX = Number(event.data.clientX);
+        const localY = Number(event.data.clientY);
+        if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
+
+        onSelect(id);
+        handleSelectContext?.(id);
+
+        const clientX = iframeBounds.left + localX;
+        const clientY = iframeBounds.top + localY;
+
+        const reopen = () => openContextMenuAt(clientX, clientY);
+        if (contextMenuOpenRef.current) {
+          requestCloseContextMenu();
+          requestAnimationFrame(reopen);
+        } else {
+          reopen();
+        }
+        return;
+      }
+
+      if (event.data?.type !== "frame-dimensions") return;
 
       const reportedWidth = Number(event.data.width) || 0;
       const reportedHeight = Number(event.data.height) || 0;
@@ -215,7 +279,18 @@ export const CanvasFrame = memo(function CanvasFrame({
     return () => {
       window.removeEventListener("message", handler);
     };
-  }, [h, id, onResize, platform, w]);
+  }, [
+    h,
+    handleSelectContext,
+    id,
+    onResize,
+    onSelect,
+    openContextMenuAt,
+    platform,
+    requestCloseContextMenu,
+    state,
+    w,
+  ]);
 
   useEffect(() => {
     return () => stopInteraction();
@@ -236,8 +311,12 @@ export const CanvasFrame = memo(function CanvasFrame({
       : resolvedErrorMessage;
 
   return (
-    <ContextMenu onOpenChange={() => handleSelectContext(id)}>
-      <ContextMenuTrigger>
+    <ContextMenu
+      onOpenChange={(open) => {
+        contextMenuOpenRef.current = open;
+      }}
+    >
+      <ContextMenuTrigger asChild>
         <div
           ref={containerRef}
           className="absolute"
@@ -349,6 +428,10 @@ export const CanvasFrame = memo(function CanvasFrame({
                   onActivate(id);
                 }
               }}
+              onContextMenu={() => {
+                onSelect(id);
+                handleSelectContext?.(id);
+              }}
             />
 
             {!isActive && (
@@ -374,7 +457,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       {/* Context menu content can be added here */}
       <ContextMenuContent
         onEscapeKeyDown={(event) => event.stopPropagation()}
-        onClick={(event: React.MouseEvent<HTMLDivElement>) =>
+        onClick={(event: ReactMouseEvent<HTMLDivElement>) =>
           handleFrame(event, id)
         }
       >

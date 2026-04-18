@@ -38,6 +38,12 @@ function getWheelZoomDelta(event: WheelEvent) {
   return -event.deltaY * modeFactor;
 }
 
+function getWheelPanDelta(event: WheelEvent) {
+  if (event.deltaMode === 1) return event.deltaY * 16;
+  if (event.deltaMode === 2) return event.deltaY * 120;
+  return event.deltaY;
+}
+
 export function useCanvasTransform(
   containerRef: RefObject<HTMLDivElement | null>,
   worldRef: RefObject<HTMLDivElement | null>,
@@ -49,6 +55,11 @@ export function useCanvasTransform(
     unknown
   > | null>(null);
   const transformRef = useRef<Transform>({ x: 0, y: 0, k: 1 });
+  const onTransformChangeRef = useRef(onTransformChange);
+
+  useEffect(() => {
+    onTransformChangeRef.current = onTransformChange;
+  }, [onTransformChange]);
 
   const applyTransform = useCallback(
     (nextTransform: Transform) => {
@@ -59,9 +70,9 @@ export function useCanvasTransform(
         world.style.transformOrigin = "0 0";
       }
 
-      onTransformChange?.(nextTransform);
+      onTransformChangeRef.current?.(nextTransform);
     },
-    [onTransformChange, worldRef],
+    [worldRef],
   );
 
   useEffect(() => {
@@ -75,8 +86,12 @@ export function useCanvasTransform(
       .filter((event: MouseEvent | WheelEvent) => {
         if (event.type === "wheel") {
           const wheelEvent = event as WheelEvent;
+          if (!wheelEvent.ctrlKey && !wheelEvent.metaKey) {
+            return false;
+          }
+
           wheelEvent.preventDefault();
-          return wheelEvent.ctrlKey || wheelEvent.metaKey;
+          return true;
         }
 
         if (event.type === "mousedown") {
@@ -96,18 +111,42 @@ export function useCanvasTransform(
     selection.call(zoomBehavior as never);
     selection.on("dblclick.zoom", null);
 
+    const handleWheelPan = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) return;
+
+      event.preventDefault();
+
+      const current = transformRef.current;
+      const panDeltaY = getWheelPanDelta(event);
+      const next = {
+        x: current.x,
+        y: current.y - panDeltaY,
+        k: current.k,
+      };
+
+      const targetTransform = d3Zoom.zoomIdentity
+        .translate(next.x, next.y)
+        .scale(next.k);
+
+      selection.call(zoomBehavior.transform as never, targetTransform);
+    };
+
     const preventNativeZoom = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
       }
     };
 
+    container.addEventListener("wheel", handleWheelPan, {
+      passive: false,
+    });
     container.addEventListener("wheel", preventNativeZoom, {
       passive: false,
     });
 
     return () => {
-      // selection.on(".zoom", null);
+      selection.on(".zoom", null);
+      container.removeEventListener("wheel", handleWheelPan);
       container.removeEventListener("wheel", preventNativeZoom);
     };
   }, [applyTransform, containerRef]);

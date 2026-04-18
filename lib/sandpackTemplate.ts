@@ -31,6 +31,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   let lastW = 0
   let lastH = 0
 
+  const postToParent = (payload) => {
+    window.parent.postMessage(payload, '*')
+  }
+
   const report = () => {
     const html = document.documentElement
     const body = document.body
@@ -60,15 +64,29 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     lastW = width
     lastH = height
 
-    window.parent.postMessage(
-      {
-        type: 'frame-dimensions',
-        width,
-        height,
-      },
-      '*'
-    )
+    postToParent({
+      type: 'frame-dimensions',
+      width,
+      height,
+    })
   }
+
+  window.addEventListener('contextmenu', (event) => {
+    postToParent({
+      type: 'frame-context-menu',
+      clientX: event.clientX,
+      clientY: event.clientY,
+    })
+    event.preventDefault()
+  }, { capture: true })
+
+  window.addEventListener('pointerdown', (event) => {
+    if (event.button === 2) return
+
+    postToParent({
+      type: 'frame-pointer-down',
+    })
+  }, { capture: true })
 
   window.addEventListener('load', () => {
     setTimeout(report, 80)

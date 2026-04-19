@@ -21,6 +21,7 @@ import styles from "./page.module.css";
 import { Button } from "../ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useEffect, useRef, useState } from "react";
+import { VideoModal } from "./VideoModal";
 
 const displayFont = Manrope({
   subsets: ["latin"],
@@ -81,6 +82,7 @@ const LandingPage = () => {
   const [isNavHidden, setIsNavHidden] = useState(false);
   const lastScrollYRef = useRef(0);
   const navHiddenRef = useRef(false);
+  const [open, setOpen] = useState(false);
 
   const reveal = (delay = 0) =>
     shouldReduceMotion
@@ -115,10 +117,11 @@ const LandingPage = () => {
   };
 
   const goToProcessSection = () => {
-    document.getElementById("logic-process")?.scrollIntoView({
-      behavior: shouldReduceMotion ? "auto" : "smooth",
-      block: "start",
-    });
+    setOpen(true);
+    // document.getElementById("logic-process")?.scrollIntoView({
+    //   behavior: shouldReduceMotion ? "auto" : "smooth",
+    //   block: "start",
+    // });
   };
 
   useEffect(() => {
@@ -172,7 +175,15 @@ const LandingPage = () => {
         </div>
       </nav>
 
-      <main className="overflow-hidden pt-20">
+      {open && (
+        <VideoModal
+          open={open}
+          onOpenChange={setOpen}
+          videoUrl="/Logic_ui-builder-final.mp4"
+        />
+      )}
+
+      <main className="overflow-hidden pt-12">
         <motion.section
           className="relative mx-auto md:m-0 flex min-h-screen w-full flex-col items-center gap-16 overflow-hidden px-6 py-20 lg:flex-row lg:gap-24 lg:px-8 xl:px-12 lg:py-0"
           {...reveal()}

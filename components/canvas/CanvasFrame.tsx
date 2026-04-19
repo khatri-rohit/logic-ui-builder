@@ -534,7 +534,7 @@ function SkeletonView() {
 
 function StreamingView() {
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3 animate-pulse">
       <div className="flex gap-1">
         {[0, 1, 2].map((index) => (
           <div

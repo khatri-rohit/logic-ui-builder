@@ -406,7 +406,6 @@ const Dashboard = () => {
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Add source"
-                    className="self-center"
                   >
                     <Plus />
                   </Button>

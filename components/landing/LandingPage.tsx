@@ -2,252 +2,377 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { JetBrains_Mono } from "next/font/google";
-import { LandingFooter } from "@/components/landing/Footer";
-import { LandingHeader } from "@/components/landing/Header";
-import { LandingMotion } from "@/components/landing/LandingMotion";
-import { ReadyToDeploySection } from "@/components/landing/ReadyToDeploySection";
+import { Inter, Manrope } from "next/font/google";
+import type { LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Code2,
+  MonitorSmartphone,
+  PenLine,
+  PlayCircle,
+  Sparkles,
+  Terminal,
+  Wand2,
+} from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import styles from "./page.module.css";
-import StarterInput from "./StarterInput";
+import { Button } from "../ui/button";
 
-const terminalFont = JetBrains_Mono({
+const displayFont = Manrope({
   subsets: ["latin"],
-  variable: "--font-logic-mono",
+  variable: "--font-logic-display",
+  weight: ["400", "500", "700", "800"],
 });
 
-const TYPING_TEXT = "Generate a sleek fintech mobile app...";
+const bodyFont = Inter({
+  subsets: ["latin"],
+  variable: "--font-logic-body",
+  weight: ["400", "500", "600", "700"],
+});
+
+const DEFAULT_PROMPT =
+  "Design a premium SaaS dashboard with responsive cards and analytics charts.";
+
+type ProcessStep = {
+  step: string;
+  title: string;
+  description: string;
+  Icon: LucideIcon;
+};
+
+const PROCESS_STEPS: ProcessStep[] = [
+  {
+    step: "01",
+    title: "Describe the Intent",
+    description:
+      "Input your requirements in plain language or structured JSON. LOGIC interprets the semantic intent of your layout.",
+    Icon: PenLine,
+  },
+  {
+    step: "02",
+    title: "Generate & Refine",
+    description:
+      "The engine constructs the UI using your defined design system tokens, ensuring consistency across every breakpoint.",
+    Icon: Wand2,
+  },
+  {
+    step: "03",
+    title: "Export Clean Code",
+    description:
+      "Output semantically precise HTML and Tailwind CSS, ready to be dropped into your production environment.",
+    Icon: Terminal,
+  },
+];
+
+const QUALITY_CHECKS = [
+  "Strict token adherence",
+  "Semantic HTML5 structures",
+  "Accessible contrast ratios",
+];
 
 const LandingPage = () => {
   const router = useRouter();
+  const shouldReduceMotion = useReducedMotion();
+  const standardEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-  const handleStarterSubmit = (value: string) => {
-    sessionStorage.setItem("initialPrompt", value);
+  const reveal = (delay = 0) =>
+    shouldReduceMotion
+      ? {}
+      : {
+          initial: { opacity: 0, y: 28 },
+          whileInView: { opacity: 1, y: 0 },
+          viewport: { once: true, amount: 0.2 },
+          transition: {
+            duration: 0.6,
+            delay,
+            ease: standardEase,
+          },
+        };
+
+  const heroVisualReveal = shouldReduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, x: 42, scale: 0.98 },
+        animate: { opacity: 1, x: 0, scale: 1 },
+        transition: { duration: 0.8, delay: 0.2, ease: standardEase },
+      };
+
+  const startOnboarding = () => {
+    try {
+      sessionStorage.setItem("initialPrompt", DEFAULT_PROMPT);
+    } catch {
+      // Continue if session storage is unavailable.
+    }
+
     router.push("/sign-up");
+  };
+
+  const goToProcessSection = () => {
+    document.getElementById("logic-process")?.scrollIntoView({
+      behavior: shouldReduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
   };
 
   return (
     <div
       data-logic-root
-      className={`${styles.logicRoot} ${terminalFont.variable} selection:text-white selection:bg-black`}
+      className={`${styles.logicRoot} ${displayFont.variable} ${bodyFont.variable} selection:bg-(--logic-primary-fixed) selection:text-white`}
     >
-      <LandingHeader />
-
-      <main className="space-y-0">
-        <section className="hero-section min-h-screen border-b border-(--logic-border) px-2 pb-8 pt-24 md:px-4 md:pb-12">
-          <div className="mx-auto grid w-full grid-cols-1 border border-(--logic-border) bg-(--logic-bg) 2xl:mt-20 xl:mt-10 lg:mt-2.5 md:min-h-[68vh] lg:h-[72vh] xl:h-[76vh] 2xl:h-[69vh] lg:grid-cols-12">
-            <div className="hero-left flex flex-col border-b border-(--logic-border) bg-white p-8 md:p-12 lg:col-span-5 lg:border-b-0 lg:border-r">
-              <div className="hero-kicker mono mb-4 flex items-center gap-2 text-xs uppercase tracking-widest text-(--logic-muted)">
-                <span className="h-2 w-2 animate-pulse bg-black" />
-                SYSTEM_READY: v4.0.2
-              </div>
-
-              <h1
-                className={`hero-title ${styles.heroTitle} mb-8 leading-[0.9] font-black tracking-tighter`}
+      <main className="overflow-hidden">
+        <motion.section
+          className="relative mx-auto md:m-0 flex min-h-screen w-full flex-col items-center gap-16 overflow-hidden px-6 py-20 lg:flex-row lg:gap-24 lg:px-8 xl:px-12 lg:py-0"
+          {...reveal()}
+        >
+          <motion.div
+            className="z-10 flex w-full flex-col justify-center space-y-10 pt-12 lg:w-1/2 lg:flex-1 lg:pt-0 lg:px-15 xl:px-24"
+            {...reveal(0.08)}
+          >
+            <div className="inline-flex w-max items-center space-x-2 rounded-full bg-(--logic-surface-container-low) px-4 py-2">
+              <Sparkles
+                className="h-4 w-4 text-(--logic-primary-fixed)"
+                aria-hidden
+              />
+              <span
+                className={`${styles.labelText} logic-body text-xs font-bold text-(--logic-secondary)`}
               >
-                THE{" "}
-                <span className="text-[#777777] selection:text-gray-400!">
-                  INTERFACE
-                </span>{" "}
-                ENGINE.
-              </h1>
-
-              <p className="hero-description mb-12 max-w-md border-l-2 border-black pl-6 text-lg">
-                A digital scalpel for the high-performance architect. Generate
-                layouts at the speed of thought with our neural CAD engine.
-              </p>
-
-              <div className="mt-10 lg:mt-auto">
-                <div className="hero-terminal relative overflow-hidden bg-black p-6 text-sm text-white">
-                  <div className="mono mb-4 flex items-center gap-2 border-b border-zinc-800 pb-2 text-zinc-500">
-                    TERMINAL prompt_input
-                  </div>
-                  <div className="mono flex gap-2 w-full">
-                    <span className="text-[#5e5e5e] mt-1.5">&gt;</span>
-                    <StarterInput onSubmit={handleStarterSubmit} />
-                  </div>
-                </div>
-              </div>
+                AI-Powered Design
+              </span>
             </div>
 
-            <div
-              className={`hero-grid-layer relative flex min-h-104 items-center justify-center overflow-hidden bg-white p-6 md:p-8 lg:col-span-7 ${styles.gridBg}`}
+            <h1
+              className={`${styles.displayText} text-5xl font-extrabold text-(--logic-on-surface) lg:text-5xl xl:text-6xl 2xl:text-7xl`}
             >
-              <div className="hero-canvas flex w-full items-center justify-center">
-                <div className="w-full 2xl:max-w-5xl lg:max-w-2xl 2xl:h-100 xl:h-105 border border-black bg-(--logic-bg) shadow-[20px_20px_0px_0px_rgba(0,0,0,0.05)]">
-                  <div className="flex h-8 items-center gap-2 border-b border-(--logic-border) bg-(--logic-surface-muted) px-4">
-                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                    <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
-                    <span className="mono ml-4 text-xs text-(--logic-muted)">
-                      CANVAS_ACTIVE [0.0ms]
-                    </span>
-                  </div>
+              Turn ideas into <br />
+              <span className={styles.gradientText}>production-ready</span>{" "}
+              <br />
+              UI instantly.
+            </h1>
 
-                  <div className="grid grid-cols-3 gap-4 p-8">
-                    <div className="stagger-card flex xl:h-40 h-24 flex-col justify-between border border-(--logic-border) bg-white p-4">
-                      <div className="line-sweep h-1 w-1/2 bg-(--logic-border)" />
-                      <div className="h-8 w-8 rounded-full border border-(--logic-border)" />
-                    </div>
-                    <div className="stagger-card translate-y-4 border border-black bg-black p-4">
-                      <div className="line-sweep h-1 w-2/3 bg-white/20" />
-                    </div>
-                    <div className="stagger-card -translate-x-4 border border-(--logic-border) bg-white p-4">
-                      <div className="line-sweep h-4 w-full bg-(--logic-surface-subtle)" />
-                    </div>
-                    <div className="stagger-card col-span-2 -translate-y-8 translate-x-12 scale-95 border border-(--logic-border) bg-white p-6">
-                      <div className="line-sweep h-1 w-full bg-(--logic-border)" />
-                      <div className="line-sweep mt-2 h-1 w-3/4 bg-(--logic-border)" />
-                      <div className="line-sweep mt-2 h-1 w-1/2 bg-(--logic-border)" />
-                    </div>
-                    <div className="stagger-card flex h-32 items-center justify-center border border-black bg-(--logic-surface-subtle) p-4">
-                      <span className="mono text-3xl">METRICS</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <p className="logic-body max-w-lg text-lg leading-relaxed text-(--logic-secondary) lg:text-base xl:text-xl">
+              Skip the boilerplate. Describe your vision, and our engine
+              generates modular, responsive components ready for your codebase.
+            </p>
+
+            <div className="flex flex-col items-start gap-6 pt-4 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                onClick={startOnboarding}
+                className={`${styles.btnPrimary} logic-body inline-flex items-center gap-2 rounded-md px-8 py-6.5 text-base font-semibold cursor-pointer`}
+              >
+                <span>Build your first UI free</span>
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                onClick={goToProcessSection}
+                className="logic-body bg-transparent inline-flex items-center gap-2 font-medium text-(--logic-secondary) transition-colors duration-200 hover:bg-transparent hover:text-(--logic-on-surface) cursor-pointer"
+              >
+                <PlayCircle className="h-5 w-5" aria-hidden />
+                <span>Watch Demo</span>
+              </Button>
             </div>
-          </div>
-        </section>
+          </motion.div>
 
-        <section className="border-b border-(--logic-border) bg-(--logic-bg)">
-          <div className="grid grid-cols-1 divide-x divide-(--logic-border) md:grid-cols-2">
-            <div className="scroll-item space-y-8 p-12">
-              <div className="flex items-start justify-between">
-                <h2 className="text-3xl font-black uppercase">Web Viewport</h2>
-                <div className="mono bg-black px-2 py-1 text-xs text-white">
-                  1440px x 900px
-                </div>
+          <motion.div
+            className={`relative flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-2xl bg-(--logic-surface-container-low) p-4 sm:p-6 md:p-8 lg:w-10/12 lg:flex-1 ${styles.ambientShadow}`}
+            {...heroVisualReveal}
+          >
+            <div className="absolute inset-0 bg-linear-to-br from-[rgba(133,130,255,0.2)] to-transparent mix-blend-multiply" />
+            <div
+              className={`relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-(--logic-surface-container-lowest) ${styles.cardShadow}`}
+            >
+              <div className="flex h-10 items-center gap-2 border-b border-[rgba(169,180,185,0.25)] bg-(--logic-surface-container-low) px-4">
+                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
+                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
               </div>
-              <div className="relative aspect-video overflow-hidden border border-(--logic-border) bg-white">
+              <div className="relative min-h-0 flex-1 w-full">
                 <Image
                   fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="h-full w-full object-cover grayscale"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7HE3z3JuyRdugqGHc314nkIFT3jNYkiL52aXy-xZ9oR1i2iiaEG7I-Yrhb4L4guTFOYXk5Krz1nd4a0Z6JCr-8SQ03Gi9zF1H7uzM4YXzzPQTKaGQrb37QSflpgnQkHU-W1nwA-cEKNaXDJ0zuKwjAONc65o7fhCW4muDGlfcK6Cq43hDAJ_tRhdodcmo-Wc1jxUCfceyCCQw1SdQDgO7VnxctdKVQT_M6zEwriKJEK5BW6pW99Sw4IAlxuOIMngyQVhi8KqEat4v"
-                  alt="Minimal desktop dashboard with monochrome charts"
+                  priority
+                  sizes="(min-width: 1280px) 42vw, (min-width: 1024px) 46vw, (min-width: 640px) 88vw, 92vw"
+                  src="/hero-section.png"
+                  alt="Production UI preview with layered interface panels"
+                  className="object-cover object-center"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-1">
-                <div className="mono border border-(--logic-border) p-4 text-xs text-(--logic-muted)">
-                  flex-direction: column
-                </div>
-                <div className="mono border border-(--logic-border) p-4 text-xs text-(--logic-muted)">
-                  auto-layout: true
-                </div>
-                <div className="mono border border-(--logic-border) p-4 text-xs text-(--logic-muted)">
-                  gap: 32px
-                </div>
-              </div>
             </div>
+          </motion.div>
+        </motion.section>
 
-            <div className="scroll-item space-y-8 bg-(--logic-surface-muted) p-12">
-              <div className="flex items-start justify-between">
-                <h2 className="text-3xl font-black uppercase">Mobile Sync</h2>
-                <div className="mono bg-black px-2 py-1 text-xs text-white">
-                  390px x 844px
-                </div>
-              </div>
-              <div className="flex justify-center">
-                <div className="relative h-96 w-48 overflow-hidden border-4 border-black bg-white">
-                  <Image
-                    fill
-                    sizes="192px"
-                    className="h-full w-full object-cover grayscale"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0sP-7OYGyRiEHTSFTisqPV0LtpVH4BPQFrx3i--zT5cA_58uk-D49RkFcYz6VVklFWJI_XXsKg3CsIl4Z1lj588bQ3i3tu2kQpZOMhoBG_eaO9tiHkiSRQBdsFsrmNMwDJIyUcMVakcIIwePOs13VjqQStWYXWcp0raqLMNriXRmKE442k9r7umdCj2VEOKr55WkqdjbH04x4hygWzw8w-iyTjFGVhXKypjXAMBpBkQUste6bw4QkT8QnOXpgVYU1BsM7wgNvNpts"
-                    alt="Mobile finance design in black and white"
-                  />
-                </div>
-              </div>
-              <div className="mono flex items-center justify-between border border-(--logic-border) bg-white p-4 text-xs text-black">
-                <span>SYNC_STATUS</span>
-                <span className="font-bold">LIVE_REFLOW</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-8 border-b border-(--logic-border) bg-(--logic-surface-subtle) p-12 md:grid-cols-12">
-          <div className="scroll-item space-y-4 md:col-span-8">
-            <div className="mono text-xs uppercase tracking-[0.2em] text-(--logic-muted)">
-              Model Performance Matrices
-            </div>
-            <h3 className="text-5xl leading-none font-black tracking-tighter">
-              LATENCY VS. CREATIVE DEPTH
-            </h3>
-          </div>
-
-          <div className="scroll-item flex h-64 flex-col justify-between border border-black bg-white p-8 md:col-span-6">
-            <div>
-              <span className="mono text-xs text-(--logic-muted)">
-                NEURAL_CORE_01
-              </span>
-              <h4 className="mt-2 text-2xl font-black uppercase">
-                Precision Speed
-              </h4>
-            </div>
-            <div className="space-y-2">
-              <div className="mono flex justify-between text-xs">
-                <span>LATENCY</span>
-                <span>12ms</span>
-              </div>
-              <div className="h-2 bg-(--logic-surface-subtle)">
-                <div className="line-fill h-full w-[95%] bg-black" />
-              </div>
-            </div>
-          </div>
-
-          <div className="scroll-item flex h-64 flex-col justify-between border border-(--logic-border) bg-(--logic-bg) p-8 md:col-span-6">
-            <div>
-              <span className="mono text-xs text-(--logic-muted)">
-                DEPTH_ENGINE_02
-              </span>
-              <h4 className="mt-2 text-2xl font-black uppercase">
-                Creative Complexity
-              </h4>
-            </div>
-            <div className="space-y-2">
-              <div className="mono flex justify-between text-xs">
-                <span>RECURSION_DEPTH</span>
-                <span>8.4 / 10</span>
-              </div>
-              <div className="h-2 bg-(--logic-surface-subtle)">
-                <div className="line-fill h-full w-[84%] bg-(--logic-border)" />
-              </div>
-            </div>
-          </div>
-
-          <div className="scroll-item h-80 overflow-hidden border border-(--logic-border) bg-black p-8 text-white md:col-span-4">
-            <p className="mono text-xs leading-relaxed text-zinc-400">
-              Proprietary layout algorithms that respect the rule of thirds
-              while maximizing data density for expert-level operators.
-            </p>
-            <div className="mt-8 border-t border-zinc-800 pt-8">
-              <div className="text-3xl font-bold tracking-tighter">
-                99.9% ACCURACY
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`scroll-item relative h-80 border border-(--logic-border) bg-white p-12 md:col-span-8 ${styles.gridBg}`}
-          >
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-10">
-              <span className="text-[12rem] font-black">LOGIC</span>
-            </div>
-            <div className="relative z-10">
-              <h4 className="mb-4 text-2xl font-black">OPTIMIZED OUTPUT</h4>
-              <p className="max-w-md">
-                Our models do not guess. They compute optimal UX flows based on
-                millions of analyzed interface interactions.
+        <section id="logic-process" className="bg-(--logic-surface) py-32">
+          <div className="mx-auto max-w-7xl px-8 lg:px-24">
+            <motion.div className="mb-24 max-w-2xl" {...reveal()}>
+              <h2
+                className={`${styles.displayText} mb-6 text-4xl font-bold text-(--logic-on-surface) lg:text-5xl`}
+              >
+                The Process
+              </h2>
+              <p className="logic-body text-lg text-(--logic-secondary)">
+                A deliberate, structured approach to generating structural
+                interfaces without the boilerplate.
               </p>
+            </motion.div>
+
+            <div className="flex flex-col gap-24">
+              {PROCESS_STEPS.map((step, index) => {
+                const Icon = step.Icon;
+
+                return (
+                  <motion.article
+                    key={step.step}
+                    className="group flex flex-col items-start gap-12 lg:flex-row"
+                    {...reveal(index * 0.08)}
+                  >
+                    <div className="text-8xl font-black text-(--logic-surface-container-high) transition-colors duration-200 group-hover:text-(--logic-primary-fixed)">
+                      {step.step}
+                    </div>
+                    <div className="flex-1 pt-4">
+                      <div className="mb-4 flex items-center gap-4">
+                        <Icon
+                          className="h-5 w-5 text-(--logic-primary-fixed)"
+                          aria-hidden
+                        />
+                        <h3 className="text-2xl font-bold text-(--logic-on-surface)">
+                          {step.title}
+                        </h3>
+                      </div>
+                      <p className="logic-body max-w-md leading-relaxed text-(--logic-secondary)">
+                        {step.description}
+                      </p>
+                    </div>
+                  </motion.article>
+                );
+              })}
             </div>
           </div>
         </section>
-        <ReadyToDeploySection />
+
+        <section className="bg-(--logic-surface-container-low) py-32">
+          <div className="mx-auto max-w-7xl px-8 lg:px-24">
+            <div className="flex flex-col items-center gap-24 lg:flex-row">
+              <motion.div className="w-full lg:w-1/2" {...reveal()}>
+                <h2
+                  className={`${styles.displayText} mb-6 text-4xl font-bold text-(--logic-on-surface) lg:text-5xl`}
+                >
+                  Obsessive Detail.
+                </h2>
+                <p className="logic-body mb-12 max-w-md text-lg text-(--logic-secondary)">
+                  We do not just output divs. Every component respects
+                  typographic hierarchy, accessibility standards, and responsive
+                  behaviors out of the box.
+                </p>
+                <ul className="space-y-6">
+                  {QUALITY_CHECKS.map((item) => (
+                    <li
+                      key={item}
+                      className="logic-body flex items-center gap-4 font-medium text-(--logic-on-surface)"
+                    >
+                      <Check
+                        className="h-5 w-5 text-(--logic-secondary)"
+                        aria-hidden
+                      />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+
+              <motion.div
+                className="grid w-full grid-cols-2 gap-4 lg:w-1/2"
+                {...reveal(0.08)}
+              >
+                <div
+                  className={`col-span-2 flex flex-col justify-center rounded-xl bg-(--logic-surface-container-lowest) p-8 ${styles.ambientShadow}`}
+                >
+                  <span
+                    className={`${styles.labelText} logic-body mb-4 text-xs text-(--logic-secondary)`}
+                  >
+                    Typography Scale
+                  </span>
+                  <div className="space-y-2">
+                    <div className="text-4xl font-extrabold text-(--logic-on-surface)">
+                      Display
+                    </div>
+                    <div className="text-2xl font-bold text-(--logic-on-surface)">
+                      Headline
+                    </div>
+                    <div className="logic-body text-lg font-semibold text-(--logic-secondary)">
+                      Title
+                    </div>
+                    <div className="logic-body text-sm text-(--logic-secondary)">
+                      Body
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={`flex min-h-40 flex-col items-center justify-center rounded-xl bg-(--logic-surface-container-lowest) p-6 ${styles.ambientShadow}`}
+                >
+                  <MonitorSmartphone
+                    className="mb-2 h-8 w-8 text-(--logic-secondary)"
+                    aria-hidden
+                  />
+                  <span className="logic-body text-center text-sm font-semibold text-(--logic-on-surface)">
+                    Responsive By Default
+                  </span>
+                </div>
+
+                <div
+                  className={`flex min-h-40 flex-col items-start justify-center rounded-xl bg-(--logic-surface-container-lowest) p-6 ${styles.ambientShadow}`}
+                >
+                  <Code2
+                    className="mb-2 h-6 w-6 text-(--logic-primary-fixed)"
+                    aria-hidden
+                  />
+                  <div className="mb-2 h-8 w-8 rounded bg-(--logic-primary-fixed)" />
+                  <div className="mb-2 h-8 w-8 rounded bg-(--logic-surface-container-high)" />
+                  <span className="logic-body text-xs font-medium text-(--logic-secondary)">
+                    Token Mapping
+                  </span>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        <motion.section
+          className="flex items-center justify-center bg-(--logic-surface) px-8 py-48 text-center"
+          {...reveal()}
+        >
+          <div className="max-w-3xl">
+            <h2
+              className={`${styles.displayText} mb-12 text-5xl font-extrabold text-(--logic-on-surface) lg:text-7xl`}
+            >
+              Ready to build?
+            </h2>
+            <Button
+              type="button"
+              onClick={startOnboarding}
+              className={`${styles.btnPrimary} logic-body rounded-md px-12 py-8 text-lg font-bold`}
+            >
+              Generate your first UI
+            </Button>
+          </div>
+        </motion.section>
       </main>
 
-      <LandingFooter />
-      <LandingMotion typingText={TYPING_TEXT} />
+      <footer className="w-full bg-[#f6f3f4] py-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-8">
+          <div className="text-xl font-black tracking-tighter text-slate-900">
+            LOGIC
+          </div>
+          <div className="logic-body text-sm tracking-wide text-[#5f5e5e]">
+            © 2026 LOGIC. All rights reserved.
+          </div>
+        </div>
+      </footer>
+
+      <div
+        className={`${styles.canvasNoise} pointer-events-none fixed inset-0`}
+      />
     </div>
   );
 };

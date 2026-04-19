@@ -1,89 +1,102 @@
 /* stylelint-disable selector-pseudo-class-no-unknown */
 
 .logicRoot {
-  --logic-bg: #f9f9f9;
-  --logic-surface-muted: #f4f3f3;
-  --logic-surface-subtle: #eeeeee;
-  --logic-border: #c6c6c6;
-  --logic-border-soft: #eeeeee;
-  --logic-muted: #777777;
-  --logic-text: #1a1c1c;
-  --logic-scrollbar-thumb: #1a1a1a;
-  --logic-scrollbar-thumb-start: #111111;
-  --logic-scrollbar-thumb-mid: #575757;
-  --logic-scrollbar-thumb-hover-mid: #424242;
+  --logic-bg: #f7f9fb;
+  --logic-surface: #f7f9fb;
+  --logic-surface-bright: #f7f9fb;
+  --logic-surface-container-low: #f0f4f7;
+  --logic-surface-container: #e8eff3;
+  --logic-surface-container-high: #e1e9ee;
+  --logic-surface-container-highest: #d9e4ea;
+  --logic-surface-container-lowest: #ffffff;
+  --logic-on-surface: #2a3439;
+  --logic-on-surface-variant: #566166;
+  --logic-secondary: #575f75;
+  --logic-primary: #4d44e3;
+  --logic-primary-fixed: #124af0;
+  --logic-primary-deep: #002ca3;
+  --logic-outline-variant: #a9b4b9;
 
   background: var(--logic-bg);
-  color: var(--logic-text);
+  color: var(--logic-on-surface);
 }
 
-.logicRoot :global(.mono) {
-  font-family: var(--font-logic-mono), monospace;
+.logicRoot :global(.logic-body) {
+  font-family: var(--font-logic-body), var(--font-sans), sans-serif;
 }
 
-.heroTitle {
-  font-size: clamp(3rem, 8vw, 5rem);
+.displayText {
+  line-height: 1.1;
+  letter-spacing: -0.04em;
 }
 
-@media (min-width: 1750px) {
-  .heroTitle {
-    font-size: clamp(3rem, 8vw, 6rem);
-  }
+.labelText {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-@media (min-width: 2000px) {
-  .heroTitle {
-    font-size: clamp(3rem, 8vw, 8rem);
-  }
-}
-
-@media (min-width: 2500px) {
-  .heroTitle {
-    font-size: clamp(3rem, 8vw, 9rem);
-  }
-}
-
-.gridBg {
-  background-image:
-    linear-gradient(var(--logic-surface-subtle) 1px, transparent 1px),
-    linear-gradient(90deg, var(--logic-surface-subtle) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-:global(html.logic-scroll-theme),
-:global(body.logic-scroll-theme) {
-  scrollbar-width: thin;
-  scrollbar-color: var(--logic-scrollbar-thumb) var(--logic-surface-muted);
-}
-
-:global(html.logic-scroll-theme::-webkit-scrollbar),
-:global(body.logic-scroll-theme::-webkit-scrollbar) {
-  width: 12px;
-}
-
-:global(html.logic-scroll-theme::-webkit-scrollbar-track),
-:global(body.logic-scroll-theme::-webkit-scrollbar-track) {
-  background: var(--logic-surface-muted);
-}
-
-:global(html.logic-scroll-theme::-webkit-scrollbar-thumb),
-:global(body.logic-scroll-theme::-webkit-scrollbar-thumb) {
+.gradientText {
   background: linear-gradient(
-    90deg,
-    var(--logic-scrollbar-thumb-start) 0%,
-    var(--logic-scrollbar-thumb-mid) 50%,
-    var(--logic-scrollbar-thumb-start) 100%
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
   );
-  border: 3px solid var(--logic-surface-muted);
-  border-radius: 999px;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-:global(html.logic-scroll-theme::-webkit-scrollbar-thumb:hover),
-:global(body.logic-scroll-theme::-webkit-scrollbar-thumb:hover) {
+.btnPrimary {
   background: linear-gradient(
-    90deg,
-    var(--logic-scrollbar-thumb-start) 0%,
-    var(--logic-scrollbar-thumb-hover-mid) 50%,
-    var(--logic-scrollbar-thumb-start) 100%
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
   );
+  box-shadow: 0 8px 16px rgba(18, 74, 240, 0.15);
+  color: #ffffff;
+  transition: all 200ms ease-in-out;
+}
+
+.btnPrimary:hover {
+  box-shadow: 0 12px 24px rgba(18, 74, 240, 0.25);
+  transform: translateY(-1px);
+}
+
+.btnSecondary {
+  background: var(--logic-surface-container-highest);
+  color: var(--logic-on-surface);
+  transition: all 200ms ease-in-out;
+}
+
+.btnSecondary:hover {
+  background: var(--logic-surface-container-high);
+}
+
+.ambientShadow {
+  box-shadow: 0 24px 48px rgba(28, 27, 28, 0.06);
+}
+
+.cardShadow {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05);
+}
+
+.canvasNoise {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    #000000 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+  opacity: 0.03;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btnPrimary,
+  .btnSecondary {
+    transition: none;
+  }
+
+  .btnPrimary:hover {
+    box-shadow: 0 8px 16px rgba(18, 74, 240, 0.15);
+    transform: none;
+  }
 }

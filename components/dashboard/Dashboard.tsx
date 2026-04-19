@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { JetBrains_Mono } from "next/font/google";
 import { useRouter } from "next/navigation";
@@ -75,6 +75,8 @@ const quickActions: Array<{
   },
 ];
 
+const MAX_PROMPT_HEIGHT = 220;
+
 const Dashboard = () => {
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
@@ -93,9 +95,23 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
 
-  const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const launcherButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const promptInput = commandInputRef.current;
+
+    if (!promptInput) {
+      return;
+    }
+
+    promptInput.style.height = "0px";
+    const nextHeight = Math.min(promptInput.scrollHeight, MAX_PROMPT_HEIGHT);
+    promptInput.style.height = `${nextHeight}px`;
+    promptInput.style.overflowY =
+      promptInput.scrollHeight > MAX_PROMPT_HEIGHT ? "auto" : "hidden";
+  }, [command]);
 
   const fadeUp = (delay = 0) =>
     shouldReduceMotion
@@ -385,28 +401,30 @@ const Dashboard = () => {
                   </Select>
                 </div>
 
-                <div className="flex min-h-16 items-center gap-1 p-2">
+                <div className="flex min-h-16 items-end gap-1 p-2">
                   <Button
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Add source"
+                    className="self-center"
                   >
                     <Plus />
                   </Button>
 
-                  <input
+                  <textarea
                     ref={commandInputRef}
                     aria-label="Command input"
+                    rows={1}
+                    wrap="soft"
                     className={cn(
-                      "h-10 w-full border-none bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-muted-foreground",
+                      "max-h-55 min-h-10 w-full resize-none border-none bg-transparent px-2 py-2 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground",
                       mono.className,
                     )}
                     placeholder="Design a dashboard with 3 KPI cards and a line chart showing revenue trends."
-                    type="text"
                     value={command}
                     onChange={(event) => setCommand(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
+                      if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
                         void handleSubmit();
                       }

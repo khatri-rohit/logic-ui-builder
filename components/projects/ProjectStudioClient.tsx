@@ -93,6 +93,7 @@ interface ProjectStudioClientProps {
 }
 
 const CHUNK_FLUSH_MS = 120;
+const MAX_PROMPT_HEIGHT = 220;
 
 function toFrameRects(frames: CanvasFrameData[]): FrameRect[] {
   return frames.map((frame) => ({
@@ -277,6 +278,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     y: 0,
     k: 1,
   });
+  const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1842,6 +1844,20 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     };
   }, [flushPendingSnapshotPersist, stopChunkFlusher]);
 
+  useEffect(() => {
+    const promptInput = commandInputRef.current;
+
+    if (!promptInput) {
+      return;
+    }
+
+    promptInput.style.height = "0px";
+    const nextHeight = Math.min(promptInput.scrollHeight, MAX_PROMPT_HEIGHT);
+    promptInput.style.height = `${nextHeight}px`;
+    promptInput.style.overflowY =
+      promptInput.scrollHeight > MAX_PROMPT_HEIGHT ? "auto" : "hidden";
+  }, [prompt]);
+
   if (projectLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background text-foreground">
@@ -2062,6 +2078,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
             <SelectModel list={models} setModel={setModel} model={model} />
 
             <textarea
+              ref={commandInputRef}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={(event) => {
@@ -2074,7 +2091,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
               }}
               placeholder="What would you like to change or create?"
               className={cn(
-                "scrolling h-15 min-h-11 flex-1 resize-none rounded-md border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none transition",
+                "scrolling flex-1 resize-none rounded-md border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none transition",
                 "placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30",
                 isGenerating && "cursor-not-allowed opacity-80",
                 mono.className,

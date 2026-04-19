@@ -51,8 +51,8 @@ export default function RootLayout({
             <ClerkProviders>{children}</ClerkProviders>
           </QueryProvider>
         </UserActivityStoreProvider>
-        <Analytics />
-        <SpeedInsights />
+        {/* <Analytics />
+        <SpeedInsights /> */}
         <Toaster richColors position="top-center" />
       </body>
     </html>

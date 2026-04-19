@@ -1,0 +1,291 @@
+/* stylelint-disable selector-pseudo-class-no-unknown */
+
+.authRoot {
+  --logic-bg: #f7f9fb;
+  --logic-surface: #f7f9fb;
+  --logic-surface-bright: #f7f9fb;
+  --logic-surface-container-low: #f0f4f7;
+  --logic-surface-container: #e8eff3;
+  --logic-surface-container-high: #e1e9ee;
+  --logic-surface-container-highest: #d9e4ea;
+  --logic-surface-container-lowest: #ffffff;
+  --logic-on-surface: #2a3439;
+  --logic-on-surface-variant: #566166;
+  --logic-secondary: #575f75;
+  --logic-primary: #4d44e3;
+  --logic-primary-fixed: #124af0;
+  --logic-primary-deep: #002ca3;
+  --logic-outline-variant: #a9b4b9;
+
+  background:
+    radial-gradient(
+      circle at 18% 20%,
+      rgba(18, 74, 240, 0.08),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 84% 78%,
+      rgba(77, 68, 227, 0.08),
+      transparent 30%
+    ),
+    var(--logic-bg);
+  color: var(--logic-on-surface);
+}
+
+.authRoot :global(.logic-auth-body) {
+  font-family: var(--font-logic-body), var(--font-sans), sans-serif;
+}
+
+.authRoot :global(.logic-auth-display) {
+  font-family: var(--font-logic-display), var(--font-sans), sans-serif;
+}
+
+.displayText {
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.labelText {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.gradientText {
+  background: linear-gradient(
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gridLayer {
+  background-image:
+    linear-gradient(to right, rgba(169, 180, 185, 0.24) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(169, 180, 185, 0.24) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.45;
+}
+
+.glowLayer {
+  background:
+    radial-gradient(
+      circle at 14% 16%,
+      rgba(18, 74, 240, 0.18),
+      transparent 24%
+    ),
+    radial-gradient(circle at 84% 78%, rgba(77, 68, 227, 0.16), transparent 28%);
+}
+
+.shellSurface {
+  border: 1px solid rgba(169, 180, 185, 0.42);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 48px rgba(28, 27, 28, 0.08);
+}
+
+.leftPanelSurface {
+  background: linear-gradient(
+    180deg,
+    rgba(240, 244, 247, 0.84) 0%,
+    rgba(232, 239, 243, 0.9) 100%
+  );
+}
+
+.rightPanelSurface {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.accentChip {
+  border: 1px solid rgba(169, 180, 185, 0.34);
+  border-radius: 999px;
+  background: rgba(240, 244, 247, 0.8);
+}
+
+.statCard {
+  border: 1px solid rgba(169, 180, 185, 0.3);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+}
+
+.securityStrip {
+  border: 1px solid rgba(169, 180, 185, 0.3);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.iconBadge {
+  border: 1px solid rgba(169, 180, 185, 0.32);
+  border-radius: 0.5rem;
+  background: rgba(240, 244, 247, 0.72);
+}
+
+.formLabel {
+  color: var(--logic-secondary);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+.formInput {
+  height: 2.75rem;
+  width: 100%;
+  border: 1px solid rgba(169, 180, 185, 0.45);
+  border-radius: 0.625rem;
+  background: var(--logic-surface-container-lowest);
+  padding: 0 0.875rem;
+  color: var(--logic-on-surface);
+  font-size: 0.875rem;
+  outline: none;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.formInput::placeholder {
+  color: #7f8a96;
+}
+
+.formInput:focus-visible {
+  border-color: var(--logic-primary-fixed);
+  box-shadow: 0 0 0 3px rgba(18, 74, 240, 0.16);
+}
+
+.formPrimaryButton {
+  height: 2.75rem;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  background: linear-gradient(
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
+  );
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+  box-shadow: 0 8px 16px rgba(18, 74, 240, 0.18);
+}
+
+.formPrimaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(18, 74, 240, 0.28);
+}
+
+.formPrimaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.formSecondaryButton {
+  border: 1px solid rgba(169, 180, 185, 0.45);
+  border-radius: 0.625rem;
+  background: var(--logic-surface-container-lowest);
+  color: var(--logic-on-surface);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    background 180ms ease;
+}
+
+.formSecondaryButton:hover:not(:disabled) {
+  border-color: rgba(18, 74, 240, 0.55);
+  color: var(--logic-primary-deep);
+  background: rgba(240, 244, 247, 0.72);
+}
+
+.formSecondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.formDividerLine {
+  height: 1px;
+  flex: 1;
+  background: rgba(169, 180, 185, 0.4);
+}
+
+.formDividerText {
+  color: var(--logic-secondary);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.statusMessage {
+  border: 1px solid rgba(169, 180, 185, 0.45);
+  border-radius: 0.625rem;
+  background: rgba(240, 244, 247, 0.72);
+  padding: 0.625rem 0.75rem;
+  color: var(--logic-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.errorList {
+  border: 1px solid rgba(186, 26, 26, 0.36);
+  border-radius: 0.625rem;
+  background: rgba(186, 26, 26, 0.08);
+  padding: 0.625rem 0.75rem;
+  color: #8f1515;
+  font-size: 0.75rem;
+}
+
+.supportText {
+  color: #6a7388;
+  font-size: 0.688rem;
+}
+
+.supportLink {
+  color: var(--logic-primary-deep);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.supportLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.callbackCard {
+  border: 1px solid rgba(169, 180, 185, 0.4);
+  border-radius: 0.875rem;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 1rem;
+}
+
+.canvasNoise {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(42, 52, 57, 0.65) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+  opacity: 0.04;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .formPrimaryButton,
+  .formSecondaryButton,
+  .formInput {
+    transition: none;
+  }
+
+  .formPrimaryButton:hover:not(:disabled) {
+    transform: none;
+    box-shadow: 0 8px 16px rgba(18, 74, 240, 0.18);
+  }
+}

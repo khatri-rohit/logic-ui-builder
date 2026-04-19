@@ -44,6 +44,7 @@ import { GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SandpackProvider } from "@codesandbox/sandpack-react";
 import FeedbackForm from "./FeedbackForm";
+import { toast } from "sonner";
 
 const DASHBOARD_MODEL_ALIASES: string[] = [
   "gemma4:31b",
@@ -1418,6 +1419,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           {
             frameId: id,
           },
+        );
+        toast.error(
+          "Please wait for the current generation to finish before regenerating individual frames.",
         );
         return;
       }

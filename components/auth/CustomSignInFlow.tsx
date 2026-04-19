@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
+import styles from "./auth-theme.module.css";
 import { cn } from "@/lib/utils";
 
 type ClerkFieldError = { message?: string };
@@ -315,7 +316,11 @@ export default function CustomSignInFlow() {
   const codeError = getFieldError(typedErrors, "code");
 
   if (!signIn) {
-    return <div className="text-zinc-400 text-sm">Loading sign-in...</div>;
+    return (
+      <div className="logic-auth-body text-sm text-(--logic-secondary)">
+        Loading sign-in...
+      </div>
+    );
   }
 
   return (
@@ -325,7 +330,7 @@ export default function CustomSignInFlow() {
           <div className="space-y-2">
             <label
               htmlFor="verification-code"
-              className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+              className={cn(styles.formLabel, "logic-auth-body")}
             >
               Verification code
             </label>
@@ -337,26 +342,25 @@ export default function CustomSignInFlow() {
               onChange={(event) => setCode(event.target.value)}
               autoComplete="one-time-code"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="Enter the 6-digit code"
             />
             {codeError ? (
-              <p className="text-xs text-red-300">{codeError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {codeError}
+              </p>
             ) : null}
           </div>
 
           <button
             type="submit"
             disabled={isAnyAuthFlowLoading}
-            className={cn(
-              "h-11 w-full border border-white bg-white text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors",
-              "hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60",
-            )}
+            className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isAnyAuthFlowLoading ? "Verifying..." : "Verify and continue"}
           </button>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+          <div className="logic-auth-body flex flex-wrap items-center gap-2 text-xs text-(--logic-secondary)">
             <button
               type="button"
               onClick={async () => {
@@ -381,7 +385,10 @@ export default function CustomSignInFlow() {
                 }
               }}
               disabled={isAnyAuthFlowLoading}
-              className="border border-white/12 px-3 py-2 uppercase tracking-[0.14em] transition-colors hover:border-white/30 hover:text-white"
+              className={cn(
+                styles.formSecondaryButton,
+                "logic-auth-body px-3 py-2 text-xs",
+              )}
             >
               Resend code
             </button>
@@ -398,7 +405,10 @@ export default function CustomSignInFlow() {
                 setActiveMfaStrategy(null);
               }}
               disabled={isAnyAuthFlowLoading}
-              className="border border-white/12 px-3 py-2 uppercase tracking-[0.14em] transition-colors hover:border-white/30 hover:text-white"
+              className={cn(
+                styles.formSecondaryButton,
+                "logic-auth-body px-3 py-2 text-xs",
+              )}
             >
               Start over
             </button>
@@ -407,7 +417,7 @@ export default function CustomSignInFlow() {
       ) : (
         <form className="space-y-4" onSubmit={handleSignIn}>
           <div className="space-y-3">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+            <p className={cn(styles.formLabel, "logic-auth-body")}>
               Continue with provider
             </p>
 
@@ -419,8 +429,8 @@ export default function CustomSignInFlow() {
                 }}
                 disabled={isAnyAuthFlowLoading}
                 className={cn(
-                  "h-11 border border-white/15 bg-black px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-100 transition-colors",
-                  "hover:border-white/35 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60",
+                  styles.formSecondaryButton,
+                  "logic-auth-body h-11 w-full px-3 text-[11px]",
                 )}
               >
                 {oauthLoadingProvider === "google" ? "Connecting..." : "Google"}
@@ -433,25 +443,27 @@ export default function CustomSignInFlow() {
                 }}
                 disabled={isAnyAuthFlowLoading}
                 className={cn(
-                  "h-11 border border-white/15 bg-black px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-100 transition-colors",
-                  "hover:border-white/35 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60",
+                  styles.formSecondaryButton,
+                  "logic-auth-body h-11 w-full px-3 text-[11px]",
                 )}
               >
                 {oauthLoadingProvider === "github" ? "Connecting..." : "GitHub"}
               </button>
             </div>
 
-            <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-              <span className="h-px flex-1 bg-white/15" />
-              <span>Or continue with email</span>
-              <span className="h-px flex-1 bg-white/15" />
+            <div className="flex items-center gap-3">
+              <span className={styles.formDividerLine} />
+              <span className={cn(styles.formDividerText, "logic-auth-body")}>
+                Or continue with email
+              </span>
+              <span className={styles.formDividerLine} />
             </div>
           </div>
 
           <div className="space-y-2">
             <label
               htmlFor="signin-email"
-              className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+              className={cn(styles.formLabel, "logic-auth-body")}
             >
               Email address
             </label>
@@ -463,11 +475,13 @@ export default function CustomSignInFlow() {
               onChange={(event) => setEmailAddress(event.target.value)}
               autoComplete="email"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="you@company.com"
             />
             {emailError ? (
-              <p className="text-xs text-red-300">{emailError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {emailError}
+              </p>
             ) : null}
           </div>
 
@@ -475,13 +489,16 @@ export default function CustomSignInFlow() {
             <div className="flex items-center justify-between">
               <label
                 htmlFor="signin-password"
-                className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+                className={cn(styles.formLabel, "logic-auth-body")}
               >
                 Password
               </label>
               <Link
                 href="/forgot-password"
-                className="text-[10px] uppercase tracking-[0.14em] text-zinc-500 transition-colors hover:text-zinc-200"
+                className={cn(
+                  styles.supportLink,
+                  "logic-auth-body text-[10px] transition-colors",
+                )}
               >
                 Forgot
               </Link>
@@ -494,21 +511,20 @@ export default function CustomSignInFlow() {
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="Enter your password"
             />
             {passwordError ? (
-              <p className="text-xs text-red-300">{passwordError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {passwordError}
+              </p>
             ) : null}
           </div>
 
           <button
             type="submit"
             disabled={isAnyAuthFlowLoading}
-            className={cn(
-              "h-11 w-full border border-white bg-white text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors",
-              "hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60",
-            )}
+            className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isAnyAuthFlowLoading ? "Signing in..." : "Sign in"}
           </button>
@@ -516,24 +532,27 @@ export default function CustomSignInFlow() {
       )}
 
       {statusMessage ? (
-        <p className="border border-white/12 bg-black/50 px-3 py-2 text-xs text-zinc-300">
+        <p className={cn(styles.statusMessage, "logic-auth-body")}>
           {statusMessage}
         </p>
       ) : null}
 
       {globalMessages.length > 0 ? (
-        <ul className="space-y-1 border border-red-500/40 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+        <ul className={cn(styles.errorList, "logic-auth-body space-y-1")}>
           {globalMessages.map((message, index) => (
             <li key={`globalMessage-${index}`}>{message}</li>
           ))}
         </ul>
       ) : null}
 
-      <p className="text-[11px] text-zinc-500">
+      <p className={cn(styles.supportText, "logic-auth-body")}>
         No account yet?{" "}
         <Link
           href="/sign-up"
-          className="uppercase tracking-[0.14em] text-zinc-100 underline-offset-4 hover:underline"
+          className={cn(
+            styles.supportLink,
+            "underline-offset-4 hover:underline",
+          )}
         >
           Create account
         </Link>

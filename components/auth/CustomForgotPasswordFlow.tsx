@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
+import styles from "./auth-theme.module.css";
 import { cn } from "@/lib/utils";
 
 type ResetStep = "request" | "verify" | "password";
@@ -220,7 +221,11 @@ export default function CustomForgotPasswordFlow() {
   const passwordError = getFieldError(typedErrors, "password");
 
   if (!signIn) {
-    return <div className="text-zinc-400 text-sm">Loading reset flow...</div>;
+    return (
+      <div className="logic-auth-body text-sm text-(--logic-secondary)">
+        Loading reset flow...
+      </div>
+    );
   }
 
   return (
@@ -230,7 +235,7 @@ export default function CustomForgotPasswordFlow() {
           <div className="space-y-2">
             <label
               htmlFor="reset-email"
-              className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+              className={cn(styles.formLabel, "logic-auth-body")}
             >
               Account email
             </label>
@@ -242,21 +247,20 @@ export default function CustomForgotPasswordFlow() {
               onChange={(event) => setEmailAddress(event.target.value)}
               autoComplete="email"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="you@company.com"
             />
             {identifierError ? (
-              <p className="text-xs text-red-300">{identifierError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {identifierError}
+              </p>
             ) : null}
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className={cn(
-              "h-11 w-full border border-white bg-white text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors",
-              "hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60",
-            )}
+            className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isLoading ? "Sending..." : "Send reset code"}
           </button>
@@ -268,7 +272,7 @@ export default function CustomForgotPasswordFlow() {
           <div className="space-y-2">
             <label
               htmlFor="reset-code"
-              className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+              className={cn(styles.formLabel, "logic-auth-body")}
             >
               Verification code
             </label>
@@ -280,38 +284,43 @@ export default function CustomForgotPasswordFlow() {
               onChange={(event) => setCode(event.target.value)}
               autoComplete="one-time-code"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="Enter the code from email"
             />
             {codeError ? (
-              <p className="text-xs text-red-300">{codeError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {codeError}
+              </p>
             ) : null}
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className={cn(
-              "h-11 w-full border border-white bg-white text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors",
-              "hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60",
-            )}
+            className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isLoading ? "Verifying..." : "Verify code"}
           </button>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+          <div className="logic-auth-body flex flex-wrap items-center gap-2 text-xs text-(--logic-secondary)">
             <button
               type="button"
               onClick={handleResendCode}
               disabled={isLoading || isResendingCode}
-              className="border border-white/12 px-3 py-2 uppercase tracking-[0.14em] transition-colors hover:border-white/30 hover:text-white"
+              className={cn(
+                styles.formSecondaryButton,
+                "logic-auth-body px-3 py-2 text-xs",
+              )}
             >
               {isResendingCode ? "Sending..." : "Resend code"}
             </button>
             <button
               type="button"
               onClick={handleStartOver}
-              className="border border-white/12 px-3 py-2 uppercase tracking-[0.14em] transition-colors hover:border-white/30 hover:text-white"
+              className={cn(
+                styles.formSecondaryButton,
+                "logic-auth-body px-3 py-2 text-xs",
+              )}
             >
               Start over
             </button>
@@ -324,7 +333,7 @@ export default function CustomForgotPasswordFlow() {
           <div className="space-y-2">
             <label
               htmlFor="new-password"
-              className="text-[10px] uppercase tracking-[0.2em] text-zinc-400"
+              className={cn(styles.formLabel, "logic-auth-body")}
             >
               New password
             </label>
@@ -336,21 +345,20 @@ export default function CustomForgotPasswordFlow() {
               onChange={(event) => setNewPassword(event.target.value)}
               autoComplete="new-password"
               required
-              className="h-11 w-full border border-white/15 bg-black px-3 text-sm text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-white/35"
+              className={cn(styles.formInput, "logic-auth-body")}
               placeholder="Create your new password"
             />
             {passwordError ? (
-              <p className="text-xs text-red-300">{passwordError}</p>
+              <p className="logic-auth-body text-xs text-[#8f1515]">
+                {passwordError}
+              </p>
             ) : null}
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className={cn(
-              "h-11 w-full border border-white bg-white text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors",
-              "hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60",
-            )}
+            className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isLoading ? "Updating..." : "Set new password"}
           </button>
@@ -358,24 +366,27 @@ export default function CustomForgotPasswordFlow() {
       ) : null}
 
       {statusMessage ? (
-        <p className="border border-white/12 bg-black/50 px-3 py-2 text-xs text-zinc-300">
+        <p className={cn(styles.statusMessage, "logic-auth-body")}>
           {statusMessage}
         </p>
       ) : null}
 
       {globalMessages.length > 0 ? (
-        <ul className="space-y-1 border border-red-500/40 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+        <ul className={cn(styles.errorList, "logic-auth-body space-y-1")}>
           {globalMessages.map((message, index) => (
             <li key={`globalMessage-${index}`}>{message}</li>
           ))}
         </ul>
       ) : null}
 
-      <p className="text-[11px] text-zinc-500">
+      <p className={cn(styles.supportText, "logic-auth-body")}>
         Remembered your password?{" "}
         <Link
           href="/sign-in"
-          className="uppercase tracking-[0.14em] text-zinc-100 underline-offset-4 hover:underline"
+          className={cn(
+            styles.supportLink,
+            "underline-offset-4 hover:underline",
+          )}
         >
           Sign in
         </Link>

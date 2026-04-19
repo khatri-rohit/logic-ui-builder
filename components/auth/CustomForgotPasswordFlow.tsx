@@ -251,7 +251,7 @@ export default function CustomForgotPasswordFlow() {
               placeholder="you@company.com"
             />
             {identifierError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className="logic-auth-body text-xs text-[#c80808]">
                 {identifierError}
               </p>
             ) : null}

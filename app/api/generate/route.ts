@@ -158,6 +158,31 @@ function coerceSpec(
           (item): item is string => typeof item === "string" && !!item.trim(),
         )
       : [],
+    // Design DNA — pass through whatever Stage 1 extracted, validated lightly
+    ...(raw.visualPersonality && {
+      visualPersonality: raw.visualPersonality,
+    }),
+    ...(raw.dominantLayoutPattern && {
+      dominantLayoutPattern: raw.dominantLayoutPattern,
+    }),
+    ...(raw.typographyAuthority && {
+      typographyAuthority: raw.typographyAuthority,
+    }),
+    ...(raw.spacingPhilosophy && {
+      spacingPhilosophy: raw.spacingPhilosophy,
+    }),
+    ...(raw.primaryInteraction && {
+      primaryInteraction: raw.primaryInteraction,
+    }),
+    ...(typeof raw.keyEmotionalTone === "string" &&
+      raw.keyEmotionalTone && {
+        keyEmotionalTone: raw.keyEmotionalTone,
+      }),
+    ...(typeof raw.contentDensityScore === "number" &&
+      raw.contentDensityScore >= 1 &&
+      raw.contentDensityScore <= 5 && {
+        contentDensityScore: raw.contentDensityScore,
+      }),
   };
 }
 
@@ -456,6 +481,13 @@ export async function POST(req: NextRequest) {
         });
         const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         await write({ type: "tree", tree });
+
+        if (generationId) {
+          await prisma.generation.update({
+            where: { id: generationId },
+            data: { tree: tree as unknown as Prisma.InputJsonValue },
+          });
+        }
 
         logger.info("Stage 3: Code Synthesis");
         const screensWithDims = spec.screens.map((screenName) => ({

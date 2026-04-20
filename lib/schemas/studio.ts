@@ -129,6 +129,36 @@ export const webAppSpecSchema = z.object({
   stylingLib: z.enum(["css", "tailwind"]),
   layoutDensity: z.enum(["comfortable", "compact"]),
   components: z.array(z.string()),
+  // Design DNA — optional for backward compat with existing persisted specs
+  visualPersonality: z
+    .enum([
+      "corporate-precision",
+      "editorial-bold",
+      "minimal-utility",
+      "expressive-brand",
+      "data-dense",
+      "conversational-warm",
+    ])
+    .optional(),
+  dominantLayoutPattern: z
+    .enum([
+      "full-page-sections",
+      "dashboard-grid",
+      "sidebar-content",
+      "centered-focused",
+      "split-screen",
+      "data-table-primary",
+    ])
+    .optional(),
+  typographyAuthority: z
+    .enum(["display-driven", "body-balanced", "data-first", "label-dominant"])
+    .optional(),
+  spacingPhilosophy: z.enum(["airy", "balanced", "dense"]).optional(),
+  primaryInteraction: z
+    .enum(["read", "navigate", "input", "browse", "monitor"])
+    .optional(),
+  keyEmotionalTone: z.string().optional(),
+  contentDensityScore: z.number().int().min(1).max(5).optional(),
 });
 
 export const generationRequestBodySchema = z.object({

@@ -308,6 +308,7 @@ export async function POST(
         spec: true,
         prompt: true,
         screens: true,
+        tree: true,
       },
     });
 
@@ -384,14 +385,38 @@ export async function POST(
       sourcePlatform,
       sourceFrame.screenName,
     );
-    const tree: ComponentTreeNode[] = [
-      {
-        screen: sourceFrame.screenName,
-        components: spec.components,
-        canvasX: sourceFrame.x,
-        canvasY: sourceFrame.y,
-      },
-    ];
+
+    const storedTree = (() => {
+      if (!sourceGeneration.tree) return null;
+      try {
+        const parsed = z
+          .array(
+            z.object({
+              screen: z.string(),
+              components: z.array(z.string()),
+              canvasX: z.number(),
+              canvasY: z.number(),
+              layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
+              componentIntents: z.array(z.unknown()).optional(),
+            }),
+          )
+          .safeParse(sourceGeneration.tree);
+        return parsed.success ? parsed.data : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const tree: ComponentTreeNode[] = storedTree
+      ? (storedTree as ComponentTreeNode[])
+      : [
+          {
+            screen: sourceFrame.screenName,
+            components: spec.components,
+            canvasX: sourceFrame.x,
+            canvasY: sourceFrame.y,
+          },
+        ];
 
     const regeneratePrompt = buildFrameRegeneratePrompt({
       basePrompt: sourceGeneration.prompt,

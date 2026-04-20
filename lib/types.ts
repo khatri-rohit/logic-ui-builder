@@ -57,14 +57,54 @@ export interface WebAppSpec {
   stylingLib: "css" | "tailwind";
   layoutDensity: "comfortable" | "compact";
   components: string[];
-}
 
-// Backward-compatible alias while migration to WebAppSpec completes.
-export type MobileSpec = WebAppSpec;
+  // Design DNA — new fields from upgraded Stage 1
+  visualPersonality?:
+    | "corporate-precision"
+    | "editorial-bold"
+    | "minimal-utility"
+    | "expressive-brand"
+    | "data-dense"
+    | "conversational-warm";
+  dominantLayoutPattern?:
+    | "full-page-sections"
+    | "dashboard-grid"
+    | "sidebar-content"
+    | "centered-focused"
+    | "split-screen"
+    | "data-table-primary";
+  typographyAuthority?:
+    | "display-driven"
+    | "body-balanced"
+    | "data-first"
+    | "label-dominant";
+  spacingPhilosophy?: "airy" | "balanced" | "dense";
+  primaryInteraction?: "read" | "navigate" | "input" | "browse" | "monitor";
+  keyEmotionalTone?: string;
+  contentDensityScore?: number;
+}
 
 export interface ComponentTreeNode {
   screen: string;
   components: string[];
   canvasX: number;
   canvasY: number;
+
+  // Stage 2 layout architecture — consumed by buildScreenPrompt
+  layoutArchitecture?: {
+    outerContainer: string;
+    primaryGrid: string;
+    sectionBreaks: string[];
+    fixedElements: string[];
+    contentStartOffset: string;
+  };
+  componentIntents?: Array<{
+    component: string;
+    role: string;
+    spatialWeight: string;
+    visualPriority: number;
+    interactionType: string;
+  }>;
 }
+// Backward-compatible alias while migration to WebAppSpec completes.
+export type MobileSpec = WebAppSpec;

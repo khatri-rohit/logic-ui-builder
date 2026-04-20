@@ -121,14 +121,23 @@ function sanitizeImports(text: string): string {
 }
 
 function stripAnimationTokens(text: string): string {
-  return text
-    .replace(/\bframer-motion\b/g, "")
-    .replace(/\bmotion\/react\b/g, "")
-    .replace(
-      /\b(?:animate-[^\s'\"`]+|transition(?:-[^\s'\"`]+)?|duration-\d+|ease-[^\s'\"`]+|delay-\d+)\b/g,
-      "",
-    )
-    .replace(/[ \t]{2,}/g, " ");
+  return (
+    text
+      // Remove motion library references
+      .replace(/\bframer-motion\b/g, "")
+      .replace(/\bmotion\/react\b/g, "")
+      // Remove keyframe animations and entrance animations
+      .replace(/\banimate-(?:spin|bounce|ping|pulse|wiggle)\b/g, "")
+      .replace(/\bmotion\.\w+\b/g, "div") // framer-motion components → div
+      // Remove transition duration/delay (keep transition-colors for hover feedback)
+      .replace(/\bduration-\d+\b/g, "")
+      .replace(/\bdelay-\d+\b/g, "")
+      .replace(/\bease-\w+\b/g, "")
+      // Remove entrance animation classes (these animate on mount)
+      .replace(/\bfade-in\b|\bslide-in\b|\bzoom-in\b|\bspin-in\b/g, "")
+      // Keep: transition-colors, transition-all, hover:*, focus:* — these are interactive states not animations
+      .replace(/[ \t]{2,}/g, " ")
+  );
 }
 
 function ensureDefaultExport(text: string): string {

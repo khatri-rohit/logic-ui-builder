@@ -93,6 +93,7 @@ model Generation {
     spec           Json
     prompt         String
     screens        Json?
+    tree           Json? // ComponentTreeNode[] — stored after Stage 2
     status         GenerationStatus   @default(PENDING)
     terminalAt     DateTime?
     errorMessage   String?

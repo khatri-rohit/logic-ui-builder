@@ -3,6 +3,7 @@ import { Client } from "@upstash/qstash";
 
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import { projectWriteRatelimit } from "@/lib/ratelimit";
 import {
   createProjectBodySchema,
   toValidationIssues,
@@ -34,6 +35,41 @@ export async function POST(req: NextRequest) {
           data: null,
         },
         { status: 401 },
+      );
+    }
+
+    try {
+      const { success, limit, remaining, reset } =
+        await projectWriteRatelimit.limit(authContext.appUserId);
+
+      if (!success) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Rate limit exceeded",
+            data: null,
+          },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": limit.toString(),
+              "X-RateLimit-Remaining": remaining.toString(),
+              "X-RateLimit-Reset": reset.toString(),
+            },
+          },
+        );
+      }
+    } catch (rateLimitError) {
+      logger.error("projectWriteRatelimit.limit failed ", rateLimitError);
+
+      return NextResponse.json(
+        {
+          error: true,
+          message:
+            "Project creation is temporarily unavailable. Please try again.",
+          data: null,
+        },
+        { status: 503 },
       );
     }
 

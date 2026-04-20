@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
+import { projectWriteRatelimit } from "@/lib/ratelimit";
 import {
   projectRouteParamsSchema,
   toValidationIssues,
@@ -49,6 +50,44 @@ export async function PATCH(
           data: null,
         },
         { status: 401 },
+      );
+    }
+
+    try {
+      const { success, limit, remaining, reset } =
+        await projectWriteRatelimit.limit(authContext.appUserId);
+
+      if (!success) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Rate limit exceeded",
+            data: null,
+          },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": limit.toString(),
+              "X-RateLimit-Remaining": remaining.toString(),
+              "X-RateLimit-Reset": reset.toString(),
+            },
+          },
+        );
+      }
+    } catch (rateLimitError) {
+      logger.error(
+        `projectWriteRatelimit.limit failed for appUserId=${authContext.appUserId}`,
+        rateLimitError,
+      );
+
+      return NextResponse.json(
+        {
+          error: true,
+          message:
+            "Project thumbnail update is temporarily unavailable. Please try again.",
+          data: null,
+        },
+        { status: 503 },
       );
     }
 

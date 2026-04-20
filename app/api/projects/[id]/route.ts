@@ -19,7 +19,9 @@ import {
   toCanvasStateMetadata,
 } from "@/lib/canvas-state";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
+import { projectWriteRatelimit } from "@/lib/ratelimit";
 import {
   projectRouteParamsSchema,
   persistedGenerationScreenSchema,
@@ -33,6 +35,50 @@ import { z } from "zod";
 
 const CANVAS_SNAPSHOT_CLOCK_SKEW_MS = 2000;
 const GENERATION_NOT_FOUND = "GENERATION_NOT_FOUND";
+
+async function enforceProjectWriteRatelimit(
+  appUserId: string,
+  operation: string,
+) {
+  try {
+    const { success, limit, remaining, reset } =
+      await projectWriteRatelimit.limit(appUserId);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          error: true,
+          message: "Rate limit exceeded",
+          data: null,
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limit.toString(),
+            "X-RateLimit-Remaining": remaining.toString(),
+            "X-RateLimit-Reset": reset.toString(),
+          },
+        },
+      );
+    }
+
+    return null;
+  } catch (rateLimitError) {
+    logger.error(
+      `projectWriteRatelimit.limit failed for appUserId=${appUserId}`,
+      rateLimitError,
+    );
+
+    return NextResponse.json(
+      {
+        error: true,
+        message: `${operation} is temporarily unavailable. Please try again.`,
+        data: null,
+      },
+      { status: 503 },
+    );
+  }
+}
 
 const generationSelect = {
   id: true,
@@ -522,6 +568,14 @@ export async function DELETE(
       );
     }
 
+    const rateLimitResponse = await enforceProjectWriteRatelimit(
+      authContext.appUserId,
+      "Project deletion",
+    );
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
     const parsedParams = projectRouteParamsSchema.safeParse(await params);
     if (!parsedParams.success) {
       return NextResponse.json(
@@ -538,11 +592,14 @@ export async function DELETE(
 
     const { id } = parsedParams.data;
 
-    const project = await prisma.project.findUnique({
-      where: { id, userId: authContext.appUserId },
+    const deletionResult = await prisma.project.deleteMany({
+      where: {
+        id,
+        userId: authContext.appUserId,
+      },
     });
 
-    if (!project) {
+    if (deletionResult.count === 0) {
       return NextResponse.json(
         {
           error: true,
@@ -552,10 +609,6 @@ export async function DELETE(
         { status: 404 },
       );
     }
-
-    await prisma.project.delete({
-      where: { id },
-    });
 
     return NextResponse.json(
       {

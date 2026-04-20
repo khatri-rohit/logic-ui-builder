@@ -307,9 +307,10 @@ export async function POST(req: NextRequest) {
     const idempotencyHeaderResult = idempotencyHeaderSchema.safeParse(
       req.headers.get("Idempotency-Key"),
     );
-    const idempotencyKey = idempotencyHeaderResult.success
+    const requestIdempotencyKey = idempotencyHeaderResult.success
       ? idempotencyHeaderResult.data
       : (body.idempotencyKey ?? crypto.randomUUID());
+    const idempotencyKey = `${authContext.appUserId}:${requestIdempotencyKey}`;
 
     const project = await prisma.project.findUnique({
       where: {

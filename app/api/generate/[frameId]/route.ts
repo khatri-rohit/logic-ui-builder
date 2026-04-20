@@ -349,7 +349,7 @@ export async function POST(
       : body.idempotencyKey;
 
     const idempotencyKey = hasPromptOverride
-      ? (requestIdempotencyKey ?? crypto.randomUUID())
+      ? `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`
       : null;
 
     if (idempotencyKey) {

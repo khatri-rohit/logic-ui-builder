@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 // import { Client } from "@upstash/qstash";
+import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
+import { feedbackRatelimit } from "@/lib/ratelimit";
 import { sendFeedbackEmail } from "@/lib/feedback-mail";
 import {
   feedbackFormBodySchema,
@@ -19,6 +21,55 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
+    const authContext = await requireAuthContext({
+      request,
+      eventType: "feedback.submitted",
+    });
+
+    if (!authContext.appUserId) {
+      return new Response(
+        JSON.stringify({
+          error: "Unauthorized: Missing user ID in auth context",
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    try {
+      const { success, limit, remaining, reset } =
+        await feedbackRatelimit.limit(authContext.appUserId);
+
+      if (!success) {
+        return new Response(
+          JSON.stringify({
+            error: "Rate limit exceeded",
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "X-RateLimit-Limit": limit.toString(),
+              "X-RateLimit-Remaining": remaining.toString(),
+              "X-RateLimit-Reset": reset.toString(),
+            },
+          },
+        );
+      }
+    } catch (rateLimitError) {
+      logger.error(
+        `feedbackRatelimit.limit failed for appUserId=${authContext.appUserId}`,
+        rateLimitError,
+      );
+
+      return new Response(
+        JSON.stringify({
+          error:
+            "Feedback submission is temporarily unavailable. Please try again.",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     let formData: FormData;
     try {
       formData = await request.formData();
@@ -100,6 +151,20 @@ export async function POST(request: NextRequest) {
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
+    if (isAuthError(error)) {
+      return new Response(
+        JSON.stringify({
+          error: true,
+          code: error.code,
+          message: error.message,
+        }),
+        {
+          status: error.status,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
     logger.error("Error processing feedback:", { error });
     return new Response(
       JSON.stringify({ error: "An error occurred while processing feedback" }),

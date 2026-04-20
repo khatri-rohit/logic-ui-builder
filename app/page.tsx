@@ -7,14 +7,14 @@ import { getSiteUrl } from "@/lib/seo";
 const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
-  title: "AI UI/UX Builder for Product Teams",
+  title: "LOGIC | AI-Powered UI/UX Builder",
   description:
     "Build production-ready, responsive UI flows from natural language. LOGIC helps teams move from product idea to frontend implementation faster.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "AI UI/UX Builder for Product Teams",
+    title: "LOGIC | AI-Powered UI/UX Builder",
     description:
       "Build production-ready, responsive UI flows from natural language with LOGIC.",
     url: "/",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI UI/UX Builder for Product Teams",
+    title: "LOGIC | AI-Powered UI/UX Builder",
     description:
       "Build production-ready, responsive UI flows from natural language with LOGIC.",
     images: ["/og-image.png"],

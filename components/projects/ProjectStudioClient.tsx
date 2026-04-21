@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as htmlToImage from "html-to-image";
 import { JetBrains_Mono } from "next/font/google";
 
 import { CanvasFrame } from "@/components/canvas/CanvasFrame";
@@ -19,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import SelectModel from "@/components/SelectModel";
 import ProjectMenuPanel from "@/components/projects/TopMenu";
 import {
-  useDeleteGenerationScreenMutation,
   useProjectCanvasStateUpdateMutation,
   useProjectDeleteMutation,
   useProjectQuery,
@@ -327,9 +325,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   }, [frames]);
 
   const frameRects = useMemo(() => toFrameRects(frameList), [frameList]);
-
-  const { data: deleteGenerationScreenData } =
-    useDeleteGenerationScreenMutation();
 
   const applyFrames = useCallback(
     (
@@ -755,30 +750,38 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   );
 
   const onCapture = useCallback(async () => {
-    if (isUploadingThumbnailRef.current || !domRef.current) {
+    if (isUploadingThumbnailRef.current) {
       return;
     }
 
     isUploadingThumbnailRef.current = true;
     try {
-      const captureTarget = domRef.current;
+      const url = new URL(
+        `/projects/${projectId}`,
+        window.location.origin,
+      ).toString();
 
-      const thumbnailBlob = await htmlToImage.toBlob(captureTarget, {
-        cacheBust: false,
-        pixelRatio: 1,
-        backgroundColor: "#111111",
+      const response = await fetch("/api/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectId, url }),
       });
 
-      if (!thumbnailBlob) {
-        logger.warn("Thumbnail capture returned an empty blob.");
-        return;
+      if (!response.ok) {
+        throw new Error(await readResponseErrorMessage(response));
+      }
+
+      const thumbnailBlob = await response.blob();
+      if (thumbnailBlob.size === 0) {
+        throw new Error("Capture API returned an empty screenshot.");
       }
 
       await updateProjectThumbnail({
         id: projectId,
         thumbnail: thumbnailBlob,
       });
-      logger.info("Project thumbnail updated.", { projectId });
+      logger.info("Project thumbnail updated via Puppeteer.", { projectId });
     } catch (error) {
       logger.error("Failed to capture and upload project thumbnail:", error);
     } finally {
@@ -1760,32 +1763,35 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     ],
   );
 
-  const handleDelete = useCallback((frameId: string) => {
-    applyFrames((current) => {
-      const frame = current.get(frameId);
-      if (!frame) return current;
-      const next = new Map(current);
-      next.delete(frameId);
-      return next;
-    });
+  const handleDelete = useCallback(
+    (frameId: string) => {
+      applyFrames((current) => {
+        const frame = current.get(frameId);
+        if (!frame) return current;
+        const next = new Map(current);
+        next.delete(frameId);
+        return next;
+      });
 
-    updateStudioRuntime((runtime) => {
-      const nextFrameIdsByScreen = new Map(runtime.frameIdsByScreen);
-      const screenName = framesRef.current.get(frameId)?.screenName;
-      if (screenName) {
-        const frameIds = nextFrameIdsByScreen.get(screenName) ?? [];
-        nextFrameIdsByScreen.set(
-          screenName,
-          frameIds.filter((id) => id !== frameId),
-        );
-      }
-      return {
-        ...runtime,
-        frameIdsByScreen: nextFrameIdsByScreen,
-      };
-    });
-    scheduleSnapshotPersist();
-  }, []);
+      updateStudioRuntime((runtime) => {
+        const nextFrameIdsByScreen = new Map(runtime.frameIdsByScreen);
+        const screenName = framesRef.current.get(frameId)?.screenName;
+        if (screenName) {
+          const frameIds = nextFrameIdsByScreen.get(screenName) ?? [];
+          nextFrameIdsByScreen.set(
+            screenName,
+            frameIds.filter((id) => id !== frameId),
+          );
+        }
+        return {
+          ...runtime,
+          frameIdsByScreen: nextFrameIdsByScreen,
+        };
+      });
+      scheduleSnapshotPersist();
+    },
+    [applyFrames, scheduleSnapshotPersist, updateStudioRuntime],
+  );
 
   useEffect(() => {
     if (projectLoading || isError) return;
@@ -1994,6 +2000,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
                   if (frame) {
                     setStudioSelectedGenerationId(frame.generationId);
                   }
+                  onCapture();
                 }}
                 onActivate={(id) => {
                   setSelectedFrameId(id);

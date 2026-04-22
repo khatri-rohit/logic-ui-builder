@@ -2000,7 +2000,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
                   if (frame) {
                     setStudioSelectedGenerationId(frame.generationId);
                   }
-                  onCapture();
+                  // onCapture();
                 }}
                 onActivate={(id) => {
                   setSelectedFrameId(id);

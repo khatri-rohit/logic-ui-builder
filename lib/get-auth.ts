@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { auth, clerkClient as getClerkClient } from "@clerk/nextjs/server";
+import type { OrgMemberRole } from "@/app/generated/prisma/client";
 
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
@@ -16,6 +17,15 @@ export interface AppAuthContext {
   clerkSessionId: string;
   organizationId: string | null;
   organizationSlug: string | null;
+  // NEW
+  planId: "FREE" | "STANDARD" | "PRO";
+  subscriptionStatus: string;
+  // NEW
+  effectivePlanId: "FREE" | "STANDARD" | "PRO"; // Personal OR inherited from org
+  orgId: string | null; // Our Organisation.id
+  orgRole: OrgMemberRole | null;
+  isOrgOwner: boolean;
+  isOrgMember: boolean; // true = active member of a live PRO org
 }
 
 interface RequireAuthContextOptions {
@@ -349,6 +359,50 @@ export async function requireAuthContext(
     },
   });
 
+  // Auto-provision or load subscription — single indexed @unique lookup
+  const subscription = await prisma.subscription.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, planId: "FREE", status: "ACTIVE" },
+    update: {},
+    select: { planId: true, status: true },
+  });
+
+  // Check if this user is an ACTIVE member of an org whose owner has an ACTIVE PRO subscription
+  const orgMembership = await prisma.orgMembership.findFirst({
+    where: {
+      userId: user.id,
+      status: "ACTIVE",
+    },
+    select: {
+      id: true,
+      role: true,
+      organisationId: true,
+      organisation: {
+        select: {
+          id: true,
+          ownerId: true,
+          maxSeats: true,
+          owner: {
+            select: {
+              subscription: {
+                select: { planId: true, status: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const orgOwnerSub = orgMembership?.organisation?.owner?.subscription;
+  const orgIsLive =
+    !!orgOwnerSub &&
+    orgOwnerSub.planId === "PRO" &&
+    ["ACTIVE", "AUTHENTICATED", "TRIALING"].includes(orgOwnerSub.status);
+
+  const personalPlanId = subscription.planId as "FREE" | "STANDARD" | "PRO";
+  const effectivePlanId = orgIsLive ? "PRO" : personalPlanId;
+
   return {
     appUserId: user.id,
     role: user.role,
@@ -357,5 +411,14 @@ export async function requireAuthContext(
     clerkSessionId,
     organizationId: user.organizationId,
     organizationSlug: user.organizationSlug,
+    // NEW
+    planId: subscription.planId as "FREE" | "STANDARD" | "PRO",
+    subscriptionStatus: subscription.status,
+    // NEW — org-aware fields
+    effectivePlanId,
+    orgId: orgMembership?.organisationId ?? null,
+    orgRole: (orgMembership?.role as OrgMemberRole) ?? null,
+    isOrgOwner: orgMembership?.role === "OWNER",
+    isOrgMember: orgIsLive && !!orgMembership,
   };
 }

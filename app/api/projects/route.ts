@@ -10,6 +10,8 @@ import {
 } from "@/lib/schemas/studio";
 
 import logger from "@/lib/logger";
+import { guardProjectCreation } from "@/lib/plan-guard";
+import { incrementProjectUsage } from "@/lib/usage";
 
 const client = new Client({
   token: process.env.QSTASH_TOKEN,
@@ -73,6 +75,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const guardResult = await guardProjectCreation(authContext);
+    if (!guardResult.allowed) return guardResult.response;
+
     let rawBody: unknown;
 
     try {
@@ -111,6 +116,8 @@ export async function POST(req: NextRequest) {
         status: "PENDING",
       },
     });
+
+    await incrementProjectUsage(guardResult.usage.usagePeriodId);
 
     try {
       const queueBaseUrl = process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;

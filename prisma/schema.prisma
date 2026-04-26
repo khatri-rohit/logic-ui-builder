@@ -22,6 +22,13 @@ model User {
     createdAt        DateTime         @default(now())
     updatedAt        DateTime         @updatedAt
     projects         Project[]
+    subscription     Subscription? // for billing info and plan limits
+
+    // Org relations — NEW
+    ownedOrganisation   Organisation?   @relation("OrgOwner") // null unless PRO owner
+    orgMemberships      OrgMembership[] @relation("OrgMember") // all orgs this user belongs to
+    orgInvitesSent      OrgInvitation[] @relation("OrgInvitations") // invites this user has sent
+    orgInvitesAsInviter OrgMembership[] @relation("OrgInviter") // memberships this user triggered
 }
 
 model AppSession {
@@ -108,6 +115,182 @@ model Generation {
     @@index([projectId, status])
     @@index([status, createdAt])
     @@map("Generation")
+}
+
+model Subscription {
+    id     String             @id @default(cuid())
+    userId String             @unique
+    planId PlanId             @default(FREE)
+    status SubscriptionStatus @default(ACTIVE)
+
+    // Razorpay identifiers (null on FREE plan)
+    razorpayCustomerId     String? @unique
+    razorpaySubscriptionId String? @unique
+    razorpayPlanId         String? // Razorpay plan_id (plan_XXXX)
+    razorpayPaymentId      String? // Last successful payment_id
+
+    // Billing period — populated from Razorpay webhook payload
+    currentPeriodStart DateTime?
+    currentPeriodEnd   DateTime?
+    billingAnchorDay   Int? // 1-31
+    cancelAtPeriodEnd  Boolean   @default(false)
+    cancelledAt        DateTime?
+    trialStart         DateTime?
+    trialEnd           DateTime?
+
+    // Per-user overrides (admin grants, beta access)
+    generationLimit Int? // null = use plan default
+    projectLimit    Int? // null = use plan default
+
+    scheduledPlanId   PlanId? // Target plan for scheduled downgrade
+    scheduledChangeAt DateTime? // When the change takes effect (= currentPeriodEnd)
+
+    chargeFailures      Int       @default(0) // Incremented on each failed payment; reset on success
+    chargeRetries       Int       @default(0) // Incremented on each retry attempt by Razorpay
+    chargeHaltCount     Int       @default(0) // Incremented each time Razorpay halts the subscription after repeated failures
+    chargeFailureReason String? // Last failure reason from Razorpay (e.g. "insufficient_funds")
+    chargeFailureAt     DateTime? // Timestamp of last failed charge
+
+    chargeSuccessAt DateTime? // Timestamp of last successful charge
+    chargeSuccesses Int       @default(0) // Total successful charges
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    usagePeriods UsagePeriod[]
+
+    @@index([razorpayCustomerId])
+    @@index([razorpaySubscriptionId])
+    @@index([razorpayPlanId])
+    @@index([planId, status])
+}
+
+model UsagePeriod {
+    id             String   @id @default(cuid())
+    subscriptionId String
+    userId         String
+    periodStart    DateTime
+    periodEnd      DateTime
+
+    // Counters — incremented atomically via $executeRaw
+    generationsUsed Int @default(0)
+    framesRegenUsed Int @default(0)
+    projectsCreated Int @default(0)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+    @@unique([subscriptionId, periodStart])
+    @@index([userId, periodStart])
+}
+
+model RazorpayWebhookEvent {
+    id          String    @id // Razorpay event ID (e.g. "ev_XXXX")
+    type        String
+    processedAt DateTime?
+    errorAt     DateTime?
+    errorMsg    String?
+    rawPayload  Json
+    receivedAt  DateTime  @default(now())
+
+    @@index([type, processedAt])
+}
+
+model Organisation {
+    id        String   @id @default(cuid())
+    name      String
+    slug      String   @unique // URL-safe identifier, e.g. "acme-design"
+    ownerId   String   @unique // Only one org per PRO user
+    maxSeats  Int      @default(5) // Enforced on invite; PRO default is 5
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    owner       User            @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+    memberships OrgMembership[]
+    invitations OrgInvitation[]
+
+    @@index([ownerId])
+}
+
+model OrgMembership {
+    id             String          @id @default(cuid())
+    organisationId String
+    userId         String
+    role           OrgMemberRole   @default(MEMBER)
+    status         OrgMemberStatus @default(ACTIVE)
+    invitedBy      String? // userId of inviter
+    joinedAt       DateTime        @default(now())
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+
+    organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+    user         User         @relation("OrgMember", fields: [userId], references: [id], onDelete: Cascade)
+    inviter      User?        @relation("OrgInviter", fields: [invitedBy], references: [id], onDelete: SetNull)
+
+    @@unique([organisationId, userId]) // One membership per user per org
+    @@index([userId])
+    @@index([organisationId, status])
+}
+
+model OrgInvitation {
+    id             String              @id @default(cuid())
+    organisationId String
+    email          String // Invitee email — may not be a User yet
+    role           OrgMemberRole       @default(MEMBER)
+    status         OrgInvitationStatus @default(PENDING)
+    token          String              @unique // crypto.randomBytes(32).toString('hex')
+    invitedBy      String // userId
+    expiresAt      DateTime // createdAt + 7 days
+    acceptedAt     DateTime?
+    createdAt      DateTime            @default(now())
+    updatedAt      DateTime            @updatedAt
+
+    organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+    inviter      User         @relation("OrgInvitations", fields: [invitedBy], references: [id])
+
+    @@unique([organisationId, email]) // One pending invite per email per org
+    @@index([token])
+    @@index([email, status])
+}
+
+enum OrgMemberRole {
+    OWNER // Created the org — can manage billing, invite, remove, dissolve
+    ADMIN // Can invite and remove MEMBER-role users; cannot touch billing
+    MEMBER // Standard PRO access; cannot manage org
+}
+
+enum OrgMemberStatus {
+    ACTIVE // Full PRO feature access
+    SUSPENDED // Temporarily removed from active roster; membership record preserved
+}
+
+enum OrgInvitationStatus {
+    PENDING // Email sent, awaiting response
+    ACCEPTED // User clicked accept link and OrgMembership was created
+    DECLINED // User clicked decline link
+    EXPIRED // 7-day TTL elapsed without response
+    REVOKED // Owner/Admin cancelled before acceptance
+}
+
+enum PlanId {
+    FREE
+    STANDARD
+    PRO
+}
+
+enum SubscriptionStatus {
+    CREATED // Subscription created, payment not yet collected
+    AUTHENTICATED // Mandate registered (first payment authorised)
+    ACTIVE // Subscription is live and payments are being collected
+    PENDING // Awaiting mandate authentication
+    HALTED // Payment failed repeatedly — Razorpay has halted
+    CANCELLED // Cancelled by user or admin
+    COMPLETED // All total_count charges done (fixed-term plan)
+    EXPIRED // Expired without activation
+    PAUSED // Temporarily paused
 }
 
 enum Role {

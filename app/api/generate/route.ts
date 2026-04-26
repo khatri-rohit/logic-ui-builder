@@ -18,7 +18,7 @@ import logger from "@/lib/logger";
 import { buildEnhancedPrompt } from "@/lib/promptEnhancer";
 import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
-import { generationRatelimit } from "@/lib/ratelimit";
+import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 import {
   generationRequestBodySchema,
@@ -30,6 +30,8 @@ import {
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { z } from "zod";
+import { guardGenerationRequest } from "@/lib/plan-guard";
+import { incrementGenerationUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 
@@ -267,25 +269,32 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const { success, limit, remaining, reset } =
-        await generationRatelimit.limit(authContext.appUserId);
-
+      const burstLimiter = getGenerationBurstLimit(authContext.planId);
+      const { success, limit, remaining, reset } = await burstLimiter.limit(
+        authContext.appUserId,
+      );
+      logger.info("Burst rate limit check for generation request", {
+        userId: authContext.appUserId,
+        planId: authContext.planId,
+        success,
+        limit,
+        remaining,
+        reset,
+      });
       if (!success) {
         return NextResponse.json(
-          { error: true, message: "Rate limit exceeded" },
+          { error: true, message: "Too many requests in a short period." },
           {
             status: 429,
             headers: {
-              "X-RateLimit-Limit": limit.toString(),
-              "X-RateLimit-Remaining": remaining.toString(),
-              "X-RateLimit-Reset": reset.toString(),
+              "Retry-After": String(Math.ceil((reset - Date.now()) / 1000)),
             },
           },
         );
       }
     } catch (rateLimitError) {
       logger.error(
-        `generationRatelimit.limit failed for authContext.appUserId=${authContext.appUserId}`,
+        `getGenerationBurstLimit(${authContext.planId}).limit failed for authContext.appUserId=${authContext.appUserId}`,
         rateLimitError,
       );
 
@@ -311,6 +320,15 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Plan guard — checks quota and model access
+    const guardResult = await guardGenerationRequest(
+      authContext,
+      (rawBody as Record<string, unknown> | null)?.model as string | undefined,
+    );
+    if (!guardResult.allowed) return guardResult.response;
+    const { usage } = guardResult;
+    logger.info("Plan guard passed for generation request", { usage });
 
     const parsedBody = generationBodySchema.safeParse(rawBody);
     if (!parsedBody.success) {
@@ -426,20 +444,21 @@ export async function POST(req: NextRequest) {
       try {
         logger.info("Starting Stage 1: Spec Extraction");
 
-        const { text: rawSpec, usage } = await generateTextWithFallback({
-          stage: "Stage 1 Spec Extraction",
-          models: stage1ModelPriority,
-          ollama,
-          system: STAGE1_SYSTEM,
-          prompt: `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
-        });
+        const { text: rawSpec, usage: stage1Usage } =
+          await generateTextWithFallback({
+            stage: "Stage 1 Spec Extraction",
+            models: stage1ModelPriority,
+            ollama,
+            system: STAGE1_SYSTEM,
+            prompt: `User prompt: ${enhancedPrompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
+          });
 
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
         const spec = splitMobileScreensIfNeeded(
           coerceSpec(rawParsedSpec, requestedPlatform),
           enhancedPrompt,
         );
-        logger.info("Stage 1 Spec Extraction complete", { usage });
+        logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
         const requestedModelForPersistence =
           preferredModel ?? stage3ModelPriority[0];
 
@@ -466,6 +485,9 @@ export async function POST(req: NextRequest) {
         });
 
         generationId = createdGeneration.id;
+
+        // Increment on confirmed start — prevents concurrent request race conditions
+        await incrementGenerationUsage(usage.usagePeriodId);
 
         await write({ type: "generation_id", generationId });
         await write({ type: "design_context", designContext });
@@ -526,7 +548,7 @@ export async function POST(req: NextRequest) {
               logger.info(
                 `Stage 3 screen '${screen}' via model: ${candidateModel}`,
               );
-              const { usage, textStream } = streamText({
+              const { usage: stage3Usage, textStream } = streamText({
                 model: ollama("kimi-k2-thinking:cloud"),
                 system: STAGE3_SYSTEM,
                 prompt: buildScreenPrompt(
@@ -543,7 +565,9 @@ export async function POST(req: NextRequest) {
                 finalCode += token;
                 await write({ type: "code_chunk", screen, token });
               }
-              logger.info("Response stream complete for screen", { usage });
+              logger.info("Response stream complete for screen", {
+                usage: stage3Usage,
+              });
               screenGenerated = true;
               break;
             } catch (err) {

@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useSignUp } from "@clerk/nextjs";
 
 import styles from "./auth-theme.module.css";
-import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { cn } from "@/lib/utils";
+import logger from "@/lib/logger";
 
 type ClerkFieldError = { message?: string };
 
@@ -89,7 +89,6 @@ export default function CustomSignUpFlow() {
   const [statusMessage, setStatusMessage] = useState("");
   const [oauthLoadingProvider, setOauthLoadingProvider] =
     useState<OAuthProvider | null>(null);
-  const { mutateAsync: createProjectFromPrompt } = useCreateProjectMutation();
 
   const isLoading = fetchStatus === "fetching";
   const isAnyAuthFlowLoading = isLoading || oauthLoadingProvider !== null;
@@ -174,11 +173,6 @@ export default function CustomSignUpFlow() {
           getTaskNavigationTarget(session as SessionWithTask) ?? "/";
         const url = decorateUrl(target);
 
-        // Keep the user on this page while we provision the first project after session hydration.
-        if (sessionStorage.getItem("initialPrompt")?.trim()) {
-          return;
-        }
-
         if (url.startsWith("http")) {
           window.location.href = url;
           return;
@@ -245,38 +239,51 @@ export default function CustomSignUpFlow() {
   };
 
   useEffect(() => {
-    if (!signUp || !isSignedIn || postAuthHandledRef.current) {
-      return;
-    }
-
+    if (!signUp || !isSignedIn || postAuthHandledRef.current) return;
     postAuthHandledRef.current = true;
 
-    const initialPrompt = sessionStorage.getItem("initialPrompt")?.trim();
+    const pendingPlanId = sessionStorage.getItem("pendingPlanId") as
+      | "STANDARD"
+      | "PRO"
+      | null;
+    const inviteToken =
+      new URLSearchParams(window.location.search).get("invite_token") ||
+      sessionStorage.getItem("pendingInviteToken");
 
-    if (!initialPrompt) {
-      router.replace("/");
+    // Priority: invite > plan > prompt > dashboard
+    if (inviteToken) {
+      void fetch("/api/org/invite/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: inviteToken }),
+      })
+        .then(() => sessionStorage.removeItem("pendingInviteToken"))
+        .catch(() => {})
+        .finally(() => router.replace("/"));
       return;
     }
 
-    void createProjectFromPrompt({ prompt: initialPrompt })
-      .then((project) => {
-        sessionStorage.removeItem("initialPrompt");
-
-        if (project.projectId) {
-          router.replace(`/projects/${project.projectId}`);
-          return;
-        }
-
-        router.replace("/");
+    if (pendingPlanId) {
+      sessionStorage.removeItem("pendingPlanId");
+      void fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: pendingPlanId }),
       })
-      .catch((error: unknown) => {
-        console.error("Failed to create post-sign-up project", error);
-        setStatusMessage(
-          "Account created, but project setup failed. You can create one from the dashboard.",
-        );
-        router.replace("/");
-      });
-  }, [createProjectFromPrompt, isSignedIn, router, signUp]);
+        .then((res) => res.json() as Promise<{ data?: { shortUrl?: string } }>)
+        .then((data) => {
+          if (data.data?.shortUrl) {
+            window.location.href = data.data.shortUrl; // Razorpay hosted checkout
+          } else {
+            router.replace("/");
+          }
+        })
+        .catch(() => router.replace("/"));
+      return;
+    }
+
+    router.replace("/");
+  }, [isSignedIn, router, signUp]);
 
   if (!signUp) {
     return (

@@ -47,8 +47,8 @@ import { toast } from "sonner";
 
 const DASHBOARD_MODEL_ALIASES: string[] = [
   "gemma4:31b",
-  "gpt-oss:120b",
   "deepseek-v3.1:671b",
+  "llama3.1:8b",
   "qwen3.5",
   "deepseek-v3.2:cloud",
 ];

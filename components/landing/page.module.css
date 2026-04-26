@@ -118,6 +118,93 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05);
 }
 
+.pricingFeaturedCard {
+  transform: translateY(-16px);
+  border-color: color-mix(in srgb, var(--logic-primary-fixed) 34%, transparent);
+  box-shadow: 0 28px 56px rgba(18, 74, 240, 0.16);
+}
+
+.pricingBadge {
+  border: 1px solid
+    color-mix(in srgb, var(--logic-primary-fixed) 50%, transparent);
+  background: linear-gradient(
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
+  );
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.35rem 0.8rem;
+  text-transform: uppercase;
+}
+
+.pricingPrimaryCta,
+.pricingSecondaryCta {
+  border-radius: 0.625rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.95rem 1.15rem;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease;
+  width: 100%;
+}
+
+.pricingPrimaryCta {
+  background: linear-gradient(
+    135deg,
+    var(--logic-primary-fixed),
+    var(--logic-primary-deep)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--logic-primary-fixed) 65%, transparent);
+  box-shadow: 0 10px 24px rgba(18, 74, 240, 0.22);
+  color: #ffffff;
+}
+
+.pricingPrimaryCta:hover {
+  box-shadow: 0 14px 30px rgba(18, 74, 240, 0.28);
+  transform: translateY(-1px);
+}
+
+.pricingSecondaryCta {
+  background: var(--logic-surface-container);
+  border: 1px solid var(--logic-border-soft);
+  color: var(--logic-on-surface);
+}
+
+.pricingSecondaryCta:hover {
+  background: var(--logic-surface-container-high);
+  transform: translateY(-1px);
+}
+
+:global(.dark) .pricingFeaturedCard {
+  box-shadow: 0 24px 48px rgba(6, 10, 16, 0.42);
+}
+
+:global(.dark) .pricingPrimaryCta {
+  border-color: color-mix(in srgb, var(--logic-primary-fixed) 54%, transparent);
+}
+
+:global(.dark) .pricingSecondaryCta {
+  background: var(--logic-surface-container-low);
+  border-color: var(--logic-border);
+  color: var(--logic-on-surface);
+}
+
+:global(.dark) .pricingSecondaryCta:hover {
+  background: var(--logic-surface-container);
+}
+
 .canvasNoise {
   background-image: radial-gradient(
     circle at 1px 1px,
@@ -139,12 +226,29 @@
 
 @media (prefers-reduced-motion: reduce) {
   .btnPrimary,
-  .btnSecondary {
+  .btnSecondary,
+  .pricingPrimaryCta,
+  .pricingSecondaryCta {
     transition: none;
   }
 
   .btnPrimary:hover {
     box-shadow: 0 8px 16px rgba(18, 74, 240, 0.15);
+    transform: none;
+  }
+
+  .pricingPrimaryCta:hover,
+  .pricingSecondaryCta:hover {
+    transform: none;
+  }
+
+  .pricingFeaturedCard {
+    transform: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .pricingFeaturedCard {
     transform: none;
   }
 }

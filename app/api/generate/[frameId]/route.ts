@@ -13,7 +13,7 @@ import logger from "@/lib/logger";
 import { initializeOllama } from "@/lib/ollama";
 import prisma from "@/lib/prisma";
 import { buildScreenPrompt, STAGE3_SYSTEM } from "@/lib/prompts";
-import { generationRatelimit } from "@/lib/ratelimit";
+import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import {
   frameRegenerateRequestBodySchema,
   persistedGenerationScreenSchema,
@@ -21,6 +21,8 @@ import {
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
+import { guardFrameRegeneration } from "@/lib/plan-guard";
+import { incrementFrameRegenUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 
@@ -204,18 +206,25 @@ export async function POST(
     }
 
     try {
-      const { success, limit, remaining, reset } =
-        await generationRatelimit.limit(authContext.appUserId);
-
+      const burstLimiter = getGenerationBurstLimit(authContext.planId);
+      const { success, limit, remaining, reset } = await burstLimiter.limit(
+        authContext.appUserId,
+      );
+      logger.info("Burst rate limit check for generation request", {
+        userId: authContext.appUserId,
+        planId: authContext.planId,
+        success,
+        limit,
+        remaining,
+        reset,
+      });
       if (!success) {
         return NextResponse.json(
-          { error: true, message: "Rate limit exceeded" },
+          { error: true, message: "Too many requests in a short period." },
           {
             status: 429,
             headers: {
-              "X-RateLimit-Limit": limit.toString(),
-              "X-RateLimit-Remaining": remaining.toString(),
-              "X-RateLimit-Reset": reset.toString(),
+              "Retry-After": String(Math.ceil((reset - Date.now()) / 1000)),
             },
           },
         );
@@ -248,6 +257,8 @@ export async function POST(
         { status: 400 },
       );
     }
+    const guardResult = await guardFrameRegeneration(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     const parsedBody = frameRegenerateBodySchema.safeParse(rawBody);
     if (!parsedBody.success) {
@@ -473,6 +484,8 @@ export async function POST(
           frameId: sourceFrame.id,
           screen: sourceFrame.screenName,
         });
+
+        await incrementFrameRegenUsage(guardResult.usage.usagePeriodId);
 
         let generated = false;
         let streamError: unknown = null;

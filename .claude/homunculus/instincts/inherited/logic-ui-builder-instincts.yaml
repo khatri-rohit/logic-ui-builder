@@ -1,0 +1,398 @@
+# Instincts generated from https://github.com/khatri-rohit/logic-ui-builder
+# Generated: 2026-04-26T19:14:30.814Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: logic-ui-builder-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Commit Length
+
+## Action
+
+Write moderate-length commit messages (~77 characters)
+
+## Evidence
+
+- Average commit message length: 77 chars
+- Based on 5 commits
+
+---
+id: logic-ui-builder-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: logic-ui-builder-import-alias
+trigger: "when importing modules"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Import Alias
+
+## Action
+
+Use path aliases (@/, ~/) instead of relative imports
+
+## Evidence
+
+- Import analysis shows alias pattern
+- Example: import { x } from '@/lib/x'
+
+---
+id: logic-ui-builder-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: logic-ui-builder-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: logic-ui-builder-workflow-add-new-ui-section-or-component
+trigger: "when doing add new ui section or component"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Workflow Add New Ui Section Or Component
+
+## Action
+
+Follow the add-new-ui-section-or-component workflow:
+1. Create new component file(s) under components/[area]/
+2. Update the parent page/component to include the new section/component
+3. Optionally update related style files (e.g., page.module.css)
+4. Optionally update navigation or related UI
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: components/landing/*.tsx, components/dashboard/*.tsx, components/billing/*.tsx
+
+---
+id: logic-ui-builder-workflow-integrate-new-billing-or-pricing-feature
+trigger: "when doing integrate new billing or pricing feature"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Workflow Integrate New Billing Or Pricing Feature
+
+## Action
+
+Follow the integrate-new-billing-or-pricing-feature workflow:
+1. Create or update API route(s) under app/api/billing/
+2. Update or add new components under components/billing/ or components/dashboard/
+3. Modify or extend billing logic in lib/ (e.g., lib/billing, lib/plans, lib/razorpay)
+4. Update Prisma schema and generate new migration(s)
+5. Update or add relevant pages (e.g., app/billing/...)
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: app/api/billing/*.ts, components/billing/*.tsx, components/dashboard/*.tsx
+
+---
+id: logic-ui-builder-instinct-file-naming
+trigger: "When creating a new file (component, utility, etc.)"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct File Naming
+
+## Action
+
+Name the file using camelCase (e.g., pricingModel.tsx, dashboardHeader.tsx)
+
+## Evidence
+
+- Pattern in naming conventions: files use camelCase
+- Seen in files: components/landing/cta.tsx, components/dashboard/pricingModel.tsx
+
+---
+id: logic-ui-builder-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Function Naming
+
+## Action
+
+Name the function using camelCase (e.g., handleCheckout, fetchUserData)
+
+## Evidence
+
+- Pattern in naming conventions: functions use camelCase
+- Seen in codebase and commit diffs
+
+---
+id: logic-ui-builder-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase (e.g., PricingModel, CheckoutButton)
+
+## Evidence
+
+- Pattern in naming conventions: classes use PascalCase
+- Seen in commit: 'Add PricingModel component and integrate into Dashboard'
+
+---
+id: logic-ui-builder-instinct-constant-naming
+trigger: "When declaring a constant that is intended to be immutable and shared"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MAX_PLAN_LIMIT)
+
+## Evidence
+
+- Pattern in naming conventions: constants use SCREAMING_SNAKE_CASE
+- Seen in codebase
+
+---
+id: logic-ui-builder-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Import Style
+
+## Action
+
+Use alias-based import paths where possible (e.g., import { X } from '@/components/landing/X')
+
+## Evidence
+
+- Pattern in codeStyle: importStyle is alias
+- Seen in codebase imports
+
+---
+id: logic-ui-builder-instinct-export-style
+trigger: "When exporting modules or components"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Export Style
+
+## Action
+
+Use both default and named exports as appropriate (mixed export style)
+
+## Evidence
+
+- Pattern in codeStyle: exportStyle is mixed
+- Seen in codebase
+
+---
+id: logic-ui-builder-instinct-error-handling
+trigger: "When handling errors in code"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Error Handling
+
+## Action
+
+Use try-catch blocks for error handling; do not use custom error classes or global handlers
+
+## Evidence
+
+- Pattern in errorHandling: style is try-catch, no customErrorClasses
+- Seen in codebase
+
+---
+id: logic-ui-builder-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Test Location
+
+## Action
+
+Place test files in a separate directory from src code
+
+## Evidence
+
+- Pattern in architecture: testLocation is separate
+- Seen in folder structure
+
+---
+id: logic-ui-builder-instinct-test-file-naming
+trigger: "When naming a test file"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Test File Naming
+
+## Action
+
+Use the same base name as the source file, with a .test.ts or .test.tsx suffix
+
+## Evidence
+
+- Pattern in TypeScript projects
+- Common convention for separate test files
+
+---
+id: logic-ui-builder-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Commit Format
+
+## Action
+
+Write a freeform, descriptive commit message without a specific prefix; keep the message concise (~77 characters on average)
+
+## Evidence
+
+- Pattern in commits: type is freeform, no prefixes
+- Average commit length: 77
+- Examples: 'Add PricingModel component and integrate into Dashboard'
+
+---
+id: logic-ui-builder-instinct-add-ui-section
+trigger: "When someone wants to introduce a new section or feature to a page (e.g., landing, dashboard, billing)"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Add Ui Section
+
+## Action
+
+Create new component file(s) under components/[area]/, update the parent page/component to include the new section/component, and optionally update related style files and navigation
+
+## Evidence
+
+- Workflow: add-new-ui-section-or-component
+- Commit sequence and file patterns in workflow definition
+
+---
+id: logic-ui-builder-instinct-integrate-billing-feature
+trigger: "When someone wants to add or update billing, pricing, or subscription management functionality"
+confidence: 0.88
+domain: workflow
+source: repo-analysis
+source_repo: khatri-rohit/logic-ui-builder
+---
+
+# Logic Ui Builder Instinct Integrate Billing Feature
+
+## Action
+
+Create or update API route(s) under app/api/billing/, update or add new components under components/billing/ or components/dashboard/, modify or extend billing logic in lib/, update Prisma schema and generate new migration(s), and update or add relevant pages
+
+## Evidence
+
+- Workflow: integrate-new-billing-or-pricing-feature
+- Commit sequence and file patterns in workflow definition
+

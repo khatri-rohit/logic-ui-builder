@@ -65,8 +65,11 @@ export async function POST(req: NextRequest) {
         notify_phone: "",
         notify_email: authContext.email,
       },
+      // ADD THESE TWO LINES:
+      // callback_url: `${process.env.NEXT_PUBLIC_SITE_URL}/billing/success`,
+      // callback_method: "get",
     });
-
+    logger.info("Razorpay subscription created", { razorpaySub });
     // Store the pending subscription ID — will be activated via webhook
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
       error: false,
       data: {
         subscriptionId: razorpaySub.id,
-        shortUrl: razorpaySub.short_url,
+        shortUrl: null,
         // Also return key_id for client-side Razorpay.js modal
         razorpayKeyId: process.env.RAZORPAY_KEY_ID,
       },
@@ -94,8 +97,7 @@ export async function POST(req: NextRequest) {
         { status: error.status },
       );
     }
-    const err = error instanceof Error ? error : new Error("Unknown error");
-    logger.error("Error creating subscription: ", { err });
+    logger.error("Error creating subscription: ", { error });
     return NextResponse.json(
       { error: true, message: "Failed to create subscription." },
       { status: 500 },

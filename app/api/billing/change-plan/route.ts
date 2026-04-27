@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
@@ -160,15 +159,12 @@ export async function POST(req: NextRequest) {
 
       // If currently scheduled for cancellation, undo that first
       // Razorpay: update plan_id on a cancel-scheduled subscription reactivates it
-      await (razorpay.subscriptions as Record<string, Function>).update(
-        subscriptionId,
-        {
-          plan_id: targetConfig.razorpayPlanId,
-          quantity: 1,
-          remaining_count: 0,
-          schedule_change_at: "now",
-        },
-      );
+      await razorpay.subscriptions.update(subscriptionId, {
+        plan_id: targetConfig.razorpayPlanId,
+        quantity: 1,
+        remaining_count: 0,
+        schedule_change_at: "now",
+      });
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },
@@ -219,15 +215,12 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      await (razorpay.subscriptions as Record<string, Function>).update(
-        subscriptionId,
-        {
-          plan_id: targetConfig.razorpayPlanId,
-          quantity: 1,
-          remaining_count: 0,
-          schedule_change_at: "cycle_end",
-        },
-      );
+      await razorpay.subscriptions.update(subscriptionId, {
+        plan_id: targetConfig.razorpayPlanId,
+        quantity: 1,
+        remaining_count: 0,
+        schedule_change_at: "cycle_end",
+      });
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },

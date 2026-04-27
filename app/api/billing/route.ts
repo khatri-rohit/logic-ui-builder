@@ -1,4 +1,5 @@
 import { requireAuthContext } from "@/lib/get-auth";
+import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,7 +7,7 @@ export async function GET(req: NextRequest) {
   try {
     const authContext = await requireAuthContext({
       request: req,
-      eventType: "billing.redirect.initiated",
+      eventType: "billing.subscription.fetched",
     });
 
     if (!authContext.appUserId) {
@@ -44,11 +45,11 @@ export async function GET(req: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
+    logger.error("GET /api/billing failed", { error });
     return NextResponse.json(
       {
         error: true,
         message: "An unexpected error occurred.",
-        details: error instanceof Error ? error.message : null,
       },
       { status: 500 },
     );

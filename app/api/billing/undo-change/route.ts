@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { razorpay } from "@/lib/razorpay";
@@ -46,15 +45,15 @@ export async function POST(req: NextRequest) {
     const currentConfig = getPlanConfig(subscription.planId);
 
     // Restore the current plan on Razorpay (clears the scheduled change)
-    await (razorpay.subscriptions as Record<string, Function>).update(
-      subscription.razorpaySubscriptionId,
-      {
-        plan_id: currentConfig.razorpayPlanId ?? subscription.razorpayPlanId,
-        quantity: 1,
-        remaining_count: 0,
-        schedule_change_at: "now",
-      },
-    );
+    await razorpay.subscriptions.update(subscription.razorpaySubscriptionId, {
+      plan_id:
+        currentConfig.razorpayPlanId ||
+        subscription.razorpayPlanId ||
+        undefined,
+      quantity: 1,
+      // remaining_count: 0,
+      schedule_change_at: "now",
+    });
 
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
@@ -75,11 +74,23 @@ export async function POST(req: NextRequest) {
         "Your plan change has been cancelled. Your subscription continues as normal.",
       data: { planId: subscription.planId, changed: true },
     });
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: true, code: error.code, message: error.message },
         { status: error.status },
+      );
+    }
+    logger.error("Error undoing plan change", { error });
+    if (error.error) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: error.error.code,
+          message: error.error.description,
+        },
+        { status: error.statusCode || 500 },
       );
     }
     return NextResponse.json(

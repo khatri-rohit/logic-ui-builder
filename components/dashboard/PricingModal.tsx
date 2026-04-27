@@ -21,6 +21,9 @@ import {
   useChangePlanMutation,
   useUndoPlanChangeMutation,
 } from "@/lib/billing/queries";
+import { useUser } from "@clerk/nextjs";
+import { useRazorpayCheckout } from "../billing/RazorpayCheckout";
+import logger from "@/lib/logger";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "700"] });
 
@@ -95,6 +98,15 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   const { mutateAsync: undoChange, isPending: undoing } =
     useUndoPlanChangeMutation();
 
+  // Inside PricingPanel component, replace the subscribe logic:
+  const { user } = useUser();
+  const { openCheckout } = useRazorpayCheckout({
+    email: user?.primaryEmailAddress?.emailAddress,
+    onClose: () => {
+      /* panel can stay open or close */
+    },
+  });
+
   const [loading, setLoading] = useState(false);
 
   const anyLoading = subscribing || changing || undoing;
@@ -120,69 +132,22 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     }
   };
 
-  const loadRazorpay = () =>
-    new Promise<boolean>((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any).Razorpay) return resolve(true);
-
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-
+  // Replace handleSubscribeOrChange for FREE users:
   const handleSubscribeOrChange = async (targetPlan: "STANDARD" | "PRO") => {
-    // FREE user: go through checkout
     if (currentPlan === "FREE") {
       try {
+        // 1. Server creates subscription → returns subscriptionId + keyId
         const data = await subscribe(targetPlan);
-
-        const loaded = await loadRazorpay();
-        if (!loaded) {
-          toast.error("Razorpay SDK failed to load");
-          return;
-        }
-
-        const options = {
-          key: data.razorpayKeyId,
-          subscription_id: data.subscriptionId,
-
-          name: "LOGIC UI/UX",
-          description: `${targetPlan} Plan Subscription`,
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          handler: function (response: any) {
-            // Payment completed (NOT final truth)
-            setLoading(true);
-          },
-
-          modal: {
-            ondismiss: function () {
-              setLoading(false);
-              console.log("Checkout closed");
-            },
-          },
-
-          theme: {
-            color: "#0f0f0f",
-          },
-        };
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rzp = new (window as any).Razorpay(options);
-        rzp.open();
-
-        setLoading(false);
-        onOpenChange(false);
-        if (data.shortUrl) router.push(data.shortUrl);
+        logger.info("Subscription created, opening checkout", { data });
+        // 2. Open Razorpay.js modal — no redirect, stays in your app
+        await openCheckout(data.subscriptionId, data.razorpayKeyId);
       } catch {
         toast.error("Failed to start checkout. Please try again.");
       }
       return;
     }
 
-    // Paid user: use change-plan
+    // Paid users: use change-plan (no checkout needed)
     try {
       const result = await changePlan(targetPlan);
       if (result.changed) {
@@ -462,8 +427,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                     plan.cta.disabled ||
                     anyLoading ||
                     loading ||
-                    subscribeIdle ||
-                    changePlanIdle
+                    !subscribeIdle ||
+                    !changePlanIdle
                   }
                   size="sm"
                   className={cn(

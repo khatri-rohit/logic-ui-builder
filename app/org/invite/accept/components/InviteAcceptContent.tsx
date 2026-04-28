@@ -83,7 +83,7 @@ export function InviteAcceptContent() {
   // Fetch invitation details on mount
   useEffect(() => {
     if (isSignedIn && token && status === "idle") {
-      (() => fetchInvitationDetails())();
+      fetchInvitationDetails();
     }
   }, [isSignedIn, token, status]);
 

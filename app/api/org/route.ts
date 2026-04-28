@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
     const guardResult = await guardOrgCreation(authContext);
     if (!guardResult.allowed) return guardResult.response;
 
-    const body = createBodySchema.safeParse(await req.json());
+    const rawBody = await req.json().catch(() => null);
+    const body = createBodySchema.safeParse(rawBody);
     if (!body.success)
       return NextResponse.json(
         { error: true, message: "Invalid payload." },

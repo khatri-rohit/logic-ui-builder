@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import { Trash2, Loader2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { MemberRowProps } from "../types";
 import { RoleBadge } from "./RoleBadge";
 import { UserAvatar } from "./UserAvatar";
@@ -54,8 +53,11 @@ export function MemberRow({
             className="text-destructive hover:text-destructive"
             onClick={() => onRemove(membership.id)}
             disabled={isRemoving}
+            aria-label={`Remove ${membership.user.name} from organisation`}
+            title="Remove member"
           >
             {isRemoving ? <LoadingSpinner /> : <Trash2 className="h-4 w-4" />}
+            <span className="sr-only">Remove member</span>
           </Button>
         )}
       </TableCell>

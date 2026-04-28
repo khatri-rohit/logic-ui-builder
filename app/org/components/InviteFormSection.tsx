@@ -60,8 +60,11 @@ export function InviteFormSection({
       <div className="rounded-lg border p-4">
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <div className="flex-1 space-y-1">
-            <label className="text-sm font-medium">Email address</label>
+            <label htmlFor="invite-email" className="text-sm font-medium">
+              Email address
+            </label>
             <Input
+              id="invite-email"
               type="email"
               placeholder="colleague@company.com"
               value={email}
@@ -70,12 +73,14 @@ export function InviteFormSection({
             />
           </div>
           <div className="w-32 space-y-1">
-            <label className="text-sm font-medium">Role</label>
+            <label htmlFor="invite-role" className="text-sm font-medium">
+              Role
+            </label>
             <Select
               value={role}
               onValueChange={(v) => setRole(v as "ADMIN" | "MEMBER")}
             >
-              <SelectTrigger>
+              <SelectTrigger id="invite-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -45,10 +45,10 @@ export function InvitationCard({
   onDecline,
   isLoading = false,
 }: InvitationCardProps) {
-  const roleConfig =
-    ROLE_CONFIG[role as keyof typeof ROLE_CONFIG] || ROLE_CONFIG.MEMBER;
+  const roleKey: keyof typeof ROLE_CONFIG =
+    role === "OWNER" || role === "ADMIN" || role === "MEMBER" ? role : "MEMBER";
+  const roleConfig = ROLE_CONFIG[roleKey];
   const Icon = roleConfig.icon;
-
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
@@ -70,11 +70,11 @@ export function InvitationCard({
             <span
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                role === "OWNER" &&
+                roleKey === "OWNER" &&
                   "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-                role === "ADMIN" &&
+                roleKey === "ADMIN" &&
                   "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
-                role === "MEMBER" &&
+                roleKey === "MEMBER" &&
                   "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
               )}
             >

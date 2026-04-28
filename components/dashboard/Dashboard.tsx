@@ -114,8 +114,8 @@ const Dashboard = () => {
     clearTranscript,
     onTranscriptReady,
   } = useSpeechRecognition("en-US");
-  logger.log("Speech recognition support:", isSpeechSupported);
-  logger.log("Speech recognition speechError:", speechError);
+  // logger.log("Speech recognition support:", isSpeechSupported);
+  // logger.log("Speech recognition speechError:", speechError);
 
   const canSubmit = command.trim().length > 0 && !isCreatingProject;
 
@@ -496,13 +496,6 @@ const Dashboard = () => {
                       }
                       aria-pressed={isListening}
                       onClick={() => {
-                        if (!isSpeechSupported) {
-                          toast.error(
-                            "Speech recognition is not supported in this browser.",
-                          );
-                          return;
-                        }
-
                         if (isListening) {
                           stopListening();
                           return;

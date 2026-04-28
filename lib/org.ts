@@ -8,27 +8,28 @@ export const ORG_INVITE_TTL_DAYS = 7;
 // Slug generation
 // ---------------------------------------------------------------------------
 export function generateOrgSlug(name: string): string {
-  return name
+  const slug = name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .slice(0, 48);
+  return slug || `org-${crypto.randomBytes(4).toString("hex")}`;
 }
 
+const MAX_SLUG_ATTEMPTS = 25;
 export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
-  let slug = baseSlug;
-  let attempt = 0;
-  while (true) {
+  for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt++) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt}`;
     const existing = await prisma.organisation.findUnique({
       where: { slug },
       select: { id: true },
     });
     if (!existing) return slug;
-    attempt++;
-    slug = `${baseSlug}-${attempt}`;
   }
+  // Final fallback: append a short random suffix to defeat collisions / races.
+  return `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,23 +145,24 @@ export async function acceptInvitation(token: string, acceptingUserId: string) {
       409,
     );
   if (invitation.expiresAt < new Date()) {
-    await prisma.orgInvitation.update({
-      where: { id: invitation.id },
-      data: { status: "EXPIRED" },
-    });
+    await prisma.orgInvitation
+      .update({ where: { id: invitation.id }, data: { status: "EXPIRED" } })
+      .catch(() => {
+        // best-effort marking; the user-visible error below is what matters
+      });
     throw new OrgError("INVITE_EXPIRED", "This invitation has expired.", 410);
   }
 
-  const hasSeats = await hasAvailableSeat(
-    invitation.organisationId,
-    invitation.organisation.maxSeats,
-  );
-  if (!hasSeats)
-    throw new OrgError(
-      "SEAT_LIMIT_REACHED",
-      "This organisation has no available seats.",
-      402,
-    );
+  // const hasSeats = await hasAvailableSeat(
+  //   invitation.organisationId,
+  //   invitation.organisation.maxSeats,
+  // );
+  // if (!hasSeats)
+  //   throw new OrgError(
+  //     "SEAT_LIMIT_REACHED",
+  //     "This organisation has no available seats.",
+  //     402,
+  //   );
 
   // Check accepting user's email matches invite email (or allow any logged-in user — design choice)
   // We enforce email match to prevent invite hijacking
@@ -177,6 +179,28 @@ export async function acceptInvitation(token: string, acceptingUserId: string) {
   }
 
   return prisma.$transaction(async (tx) => {
+    const activeCount = await tx.orgMembership.count({
+      where: { organisationId: invitation.organisationId, status: "ACTIVE" },
+    });
+    // Allow re-activation of an existing membership without consuming a new seat.
+    const existing = await tx.orgMembership.findUnique({
+      where: {
+        organisationId_userId: {
+          organisationId: invitation.organisationId,
+          userId: acceptingUserId,
+        },
+      },
+      select: { status: true },
+    });
+    const consumesSeat = !existing || existing.status !== "ACTIVE";
+    if (consumesSeat && activeCount >= invitation.organisation.maxSeats) {
+      throw new OrgError(
+        "SEAT_LIMIT_REACHED",
+        "This organisation has no available seats.",
+        402,
+      );
+    }
+
     await tx.orgInvitation.update({
       where: { id: invitation.id },
       data: { status: "ACCEPTED", acceptedAt: new Date() },

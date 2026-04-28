@@ -8,7 +8,7 @@ export function UserAvatar({ name, className }: UserAvatarProps) {
     <div
       className={`flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium ${className || ""}`}
     >
-      {name.charAt(0).toUpperCase()}
+      {(name.trim().charAt(0) || "?").toUpperCase()}
     </div>
   );
 }

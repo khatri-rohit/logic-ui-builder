@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  compiler: {
+    removeConsole: true,
+  },
 };
 
 export default nextConfig;

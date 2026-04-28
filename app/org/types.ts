@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 export interface OrgMember {
   id: string;
   user: {
@@ -30,7 +31,7 @@ export interface OrgDetail {
 
 export interface RoleConfig {
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   badgeClass: string;
 }
 

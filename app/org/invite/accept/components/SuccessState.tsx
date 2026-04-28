@@ -15,7 +15,7 @@ export function SuccessState({
       <h3 className="text-lg font-semibold">Success!</h3>
       <p className="text-muted-foreground">{message}</p>
       <p className="text-sm text-muted-foreground">
-        Redirecting to dashboard...
+        Redirecting to {redirectUrl === "/" ? "home" : redirectUrl}...
       </p>
     </div>
   );

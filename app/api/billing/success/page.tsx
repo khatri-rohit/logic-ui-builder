@@ -57,7 +57,9 @@ function BillingSuccessPage() {
 }
 
 export default function BillingSuccessPageWrapper() {
-  <Suspense fallback={<p>Loading...</p>}>
-    <BillingSuccessPage />
-  </Suspense>;
+  return (
+    <Suspense fallback={<p>Loading...</p>}>
+      <BillingSuccessPage />
+    </Suspense>
+  );
 }

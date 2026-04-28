@@ -1,10 +1,11 @@
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ReactNode } from "react";
 
 interface ErrorStateProps {
   title?: string;
   message: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
 }
 
 export function ErrorState({
@@ -32,9 +33,11 @@ export function InvalidTokenState({ onGoHome }: InvalidTokenStateProps) {
       title="Invalid Invitation"
       message="This invitation link is invalid or has expired."
       action={
-        <Button onClick={onGoHome} variant="outline">
-          Go to Dashboard
-        </Button>
+        onGoHome ? (
+          <Button onClick={onGoHome} variant="outline">
+            Go to Dashboard
+          </Button>
+        ) : undefined
       }
     />
   );

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@upstash/qstash";
+import { revalidateTag } from "next/cache";
 
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
     });
 
     await incrementProjectUsage(guardResult.usage.usagePeriodId);
+    revalidateTag("projects:list", { expire: 0 });
 
     try {
       const queueBaseUrl = process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;

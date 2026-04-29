@@ -242,14 +242,14 @@ model OrgInvitation {
     role           OrgMemberRole       @default(MEMBER)
     status         OrgInvitationStatus @default(PENDING)
     token          String              @unique // crypto.randomBytes(32).toString('hex')
-    invitedBy      String // userId
+    invitedBy      String? // userId
     expiresAt      DateTime // createdAt + 7 days
     acceptedAt     DateTime?
     createdAt      DateTime            @default(now())
     updatedAt      DateTime            @updatedAt
 
     organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-    inviter      User         @relation("OrgInvitations", fields: [invitedBy], references: [id])
+    inviter      User?        @relation("OrgInvitations", fields: [invitedBy], references: [id])
 
     @@unique([organisationId, email]) // One pending invite per email per org
     @@index([token])

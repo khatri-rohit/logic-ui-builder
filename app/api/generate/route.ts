@@ -32,6 +32,7 @@ import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { z } from "zod";
 import { guardGenerationRequest } from "@/lib/plan-guard";
 import { incrementGenerationUsage } from "@/lib/usage";
+import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 
 export const runtime = "nodejs";
 
@@ -592,7 +593,7 @@ export async function POST(req: NextRequest) {
               w: dimensions.w,
               h: dimensions.h,
               screenName: screen,
-              content: finalCode,
+              content: sanitizeGeneratedCode(finalCode),
               editedContent: null,
               error: `All stage 3 models failed: ${String(streamErr)}`,
             });
@@ -611,7 +612,7 @@ export async function POST(req: NextRequest) {
             w: dimensions.w,
             h: dimensions.h,
             screenName: screen,
-            content: finalCode,
+            content: sanitizeGeneratedCode(finalCode),
             editedContent: null,
             error: finalCode.trim()
               ? null

@@ -157,14 +157,33 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // If currently scheduled for cancellation, undo that first
-      // Razorpay: update plan_id on a cancel-scheduled subscription reactivates it
-      await razorpay.subscriptions.update(subscriptionId, {
-        plan_id: targetConfig.razorpayPlanId,
-        quantity: 1,
-        remaining_count: 0,
-        schedule_change_at: "now",
+      await prisma.subscription.update({
+        where: { userId: authContext.appUserId },
+        data: { scheduledPlanId: targetPlanId }, // record intent
       });
+
+      try {
+        await razorpay.subscriptions.update(subscriptionId, {
+          plan_id: targetConfig.razorpayPlanId,
+          quantity: 1,
+          remaining_count: 0,
+          schedule_change_at: "now",
+        });
+      } catch (razorpayError) {
+        // Roll back intent — Razorpay call failed, nothing changed on their side
+        await prisma.subscription.update({
+          where: { userId: authContext.appUserId },
+          data: { scheduledPlanId: null },
+        });
+        logger.error("Razorpay subscription upgrade failed", { razorpayError });
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Failed to update subscription with payment provider.",
+          },
+          { status: 502 },
+        );
+      }
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },

@@ -1,3 +1,4 @@
+import "server-only";
 import * as ts from "typescript";
 
 const ALLOWED_IMPORT_PACKAGES = new Set([

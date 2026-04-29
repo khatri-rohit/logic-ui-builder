@@ -35,7 +35,9 @@ export const projectKeys = {
 };
 
 async function listProjects() {
-  return requestApi<ProjectSummary[]>("/api/projects/all");
+  return requestApi<ProjectSummary[]>("/api/projects/all", {
+    next: { tags: ["projects:list"] },
+  });
 }
 
 async function createProject({ prompt }: CreateProjectInput) {

@@ -30,6 +30,7 @@ import {
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
 import { GenerationPlatform } from "@/lib/types";
+import { revalidateTag } from "next/cache";
 import { NextResponse, NextRequest } from "next/server";
 import { z } from "zod";
 
@@ -606,6 +607,7 @@ export async function DELETE(
         { status: 404 },
       );
     }
+    revalidateTag("projects:list", { expire: 0 });
 
     return NextResponse.json(
       {

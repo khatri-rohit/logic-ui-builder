@@ -492,7 +492,13 @@ export async function POST(req: NextRequest) {
         generationId = createdGeneration.id;
 
         // Increment on confirmed start — prevents concurrent request race conditions
-        await incrementGenerationUsage(usage.usagePeriodId);
+        if (persistedScreens.length === 0) {
+          await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "generationsUsed" = GREATEST("generationsUsed" - 1, 0), "updatedAt" = NOW()
+    WHERE "id" = ${usage.usagePeriodId}
+  `;
+        }
 
         await write({ type: "generation_id", generationId });
         await write({ type: "design_context", designContext });

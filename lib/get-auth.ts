@@ -1,11 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { auth, clerkClient as getClerkClient } from "@clerk/nextjs/server";
+import { Redis } from "@upstash/redis";
 import type { OrgMemberRole } from "@/app/generated/prisma/client";
 
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 
 const EMAIL_FALLBACK_DOMAIN = "clerk.local";
+const redis = Redis.fromEnv();
+
+const CLERK_USER_TTL = 60; // seconds
+const SUBSCRIPTION_TTL = 60;
 
 type Provider = "GOOGLE" | "GITHUB" | "EMAIL";
 
@@ -236,7 +241,7 @@ export async function requireAuthContext(
 
   const clerkUserId = authState.userId;
   const clerkSessionId = authState.sessionId;
-  const clerkUser = await fetchClerkUser(clerkUserId);
+  const clerkUser = await getCachedClerkUser(clerkUserId);
 
   const fallbackEmail = `${clerkUserId}@${EMAIL_FALLBACK_DOMAIN}`;
   const clerkEmail = extractPrimaryEmail(clerkUser);
@@ -343,56 +348,70 @@ export async function requireAuthContext(
     },
   });
 
-  await prisma.authAuditEvent.create({
-    data: {
-      userId: user.id,
-      clerkUserId,
-      clerkSessionId,
-      eventType: options.eventType ?? "request.authenticated",
-      eventSource: "REQUEST",
-      metadata: {
-        path: getRequestPath(options.request),
-        method: options.request?.method ?? null,
-        ipAddress,
-        userAgent,
+  await prisma.authAuditEvent
+    .create({
+      data: {
+        userId: user.id,
+        clerkUserId,
+        clerkSessionId,
+        eventType: options.eventType ?? "request.authenticated",
+        eventSource: "REQUEST",
+        metadata: {
+          path: getRequestPath(options.request),
+          method: options.request?.method ?? null,
+          ipAddress,
+          userAgent,
+        },
       },
-    },
-  });
+    })
+    .catch((err) => {
+      logger.warn("Audit event write failed (non-fatal)", err);
+    });
 
   // Auto-provision or load subscription — single indexed @unique lookup
-  const subscription = await prisma.subscription.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, planId: "FREE", status: "ACTIVE" },
-    update: {},
-    select: { planId: true, status: true },
-  });
+  const subscription = await getCachedSubscription(user.id);
+
+  const hasOrgHistory =
+    user.role !== "USER" ||
+    (await redis.get<boolean>(`auth:has-org:${user.id}`));
+
+  let orgMembership = null;
 
   // Check if this user is an ACTIVE member of an org whose owner has an ACTIVE PRO subscription
-  const orgMembership = await prisma.orgMembership.findFirst({
-    where: {
-      userId: user.id,
-      status: "ACTIVE",
-    },
-    select: {
-      id: true,
-      role: true,
-      organisationId: true,
-      organisation: {
-        select: {
-          id: true,
-          ownerId: true,
-          maxSeats: true,
-          owner: {
-            select: {
-              subscription: {
-                select: { planId: true, status: true },
+  if (hasOrgHistory !== false) {
+    // skip if explicitly cached as false
+    orgMembership = await prisma.orgMembership.findFirst({
+      where: {
+        userId: user.id,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        role: true,
+        organisationId: true,
+        organisation: {
+          select: {
+            id: true,
+            ownerId: true,
+            maxSeats: true,
+            owner: {
+              select: {
+                subscription: {
+                  select: { planId: true, status: true },
+                },
               },
             },
           },
         },
       },
-    },
-  });
+    });
+    if (!orgMembership) {
+      // Cache the negative result for 5 minutes to avoid repeated lookups
+      await redis.setex(`auth:has-org:${user.id}`, 300, false);
+    } else {
+      await redis.setex(`auth:has-org:${user.id}`, 60, true);
+    }
+  }
 
   const orgOwnerSub = orgMembership?.organisation?.owner?.subscription;
   const orgIsLive =
@@ -421,4 +440,37 @@ export async function requireAuthContext(
     isOrgOwner: orgMembership?.role === "OWNER",
     isOrgMember: orgIsLive && !!orgMembership,
   };
+}
+
+async function getCachedClerkUser(
+  clerkUserId: string,
+): Promise<unknown | null> {
+  const cached = await redis.get<unknown>(`auth:clerk-user:${clerkUserId}`);
+  if (cached) return cached;
+  const clerkClient = await getClerkClient();
+  const user = await clerkClient.users.getUser(clerkUserId);
+  await redis.setex(`auth:clerk-user:${clerkUserId}`, CLERK_USER_TTL, user);
+  return user;
+}
+
+async function getCachedSubscription(userId: string) {
+  const cached = await redis.get<{
+    planId: string;
+    status: string;
+    cancelAtPeriodEnd: boolean;
+  }>(`auth:subscription:${userId}`);
+  if (cached) return cached;
+  const sub = await prisma.subscription.upsert({
+    where: { userId },
+    create: {
+      userId,
+      planId: "FREE",
+      status: "ACTIVE",
+      cancelAtPeriodEnd: false,
+    },
+    update: {},
+    select: { planId: true, status: true, cancelAtPeriodEnd: true },
+  });
+  await redis.setex(`auth:subscription:${userId}`, SUBSCRIPTION_TTL, sub);
+  return sub;
 }

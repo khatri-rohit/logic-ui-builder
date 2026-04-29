@@ -255,6 +255,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     (state) => state.setSelectedGenerationId,
   );
 
+  const studio = projectStudioStoreApi.getState().studio;
+
   const canvasRef = useRef<InfiniteCanvasHandle | null>(null);
   const domRef = useRef<HTMLDivElement | null>(null);
 
@@ -300,6 +302,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     enterFrame,
     exitFrame,
   } = usePointerMode();
+  console.log(selectedFrameId);
 
   const canGenerate = !!prompt.trim() && !isGenerating;
   // const models = [...DASHBOARD_MODEL_ALIASES];
@@ -1984,41 +1987,41 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           onFrameExit={exitFrame}
           onTransformChange={handleTransformChange}
         >
-          <SandpackProvider>
-            {frameList.map((frame) => (
-              <CanvasFrame
-                {...frame}
-                key={frame.id}
-                scale={canvasTransform.k}
-                isActive={activeFrameId === frame.id}
-                isSelected={selectedFrameId === frame.id}
-                onSelect={(id) => {
-                  setSelectedFrameId(id);
-                  selectedFrameIdRef.current = id;
-                  const frame = framesRef.current.get(id);
-                  if (frame) {
-                    setStudioSelectedGenerationId(frame.generationId);
-                  }
-                  // onCapture();
-                }}
-                onActivate={(id) => {
-                  setSelectedFrameId(id);
-                  enterFrame(id);
-                  selectedFrameIdRef.current = id;
-                  activeFrameIdRef.current = id;
-                  const frame = framesRef.current.get(id);
-                  if (frame) {
-                    setStudioSelectedGenerationId(frame.generationId);
-                  }
-                  scheduleSnapshotPersist();
-                }}
-                onMove={handleMoveFrame}
-                onResize={handleResizeFrame}
-                handleFrame={handleFrame}
-                handleDelete={handleDelete}
-              />
-            ))}
-          </SandpackProvider>
+          {/* <SandpackProvider> */}
+          {frameList.map((frame) => (
+            <CanvasFrame
+              {...frame}
+              key={frame.id}
+              scale={canvasTransform.k}
+              isActive={activeFrameId === frame.id}
+              isSelected={selectedFrameId === frame.id}
+              onSelect={(id) => {
+                setSelectedFrameId(id);
+                selectedFrameIdRef.current = id;
+                const frame = framesRef.current.get(id);
+                if (frame) {
+                  setStudioSelectedGenerationId(frame.generationId);
+                }
+                // onCapture();
+              }}
+              onActivate={(id) => {
+                setSelectedFrameId(id);
+                enterFrame(id);
+                selectedFrameIdRef.current = id;
+                activeFrameIdRef.current = id;
+                const frame = framesRef.current.get(id);
+                if (frame) {
+                  setStudioSelectedGenerationId(frame.generationId);
+                }
+                scheduleSnapshotPersist();
+              }}
+              onMove={handleMoveFrame}
+              onResize={handleResizeFrame}
+              handleFrame={handleFrame}
+              handleDelete={handleDelete}
+            />
+          ))}
+          {/* </SandpackProvider> */}
         </InfiniteCanvas>
       </div>
 
@@ -2078,6 +2081,18 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
               </Button>
             </div>
             <div className="flex items-center gap-3">
+              {activeFrameId && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-md border border-border bg-muted px-2 py-1 text-[10px] text-muted-foreground",
+                    mono.className,
+                  )}
+                >
+                  Selected Frame:{" "}
+                  {studio?.frames.find((f) => f.id === activeFrameId)
+                    ?.screenName || "Unnamed"}
+                </span>
+              )}
               {isGenerating && (
                 <span
                   className={cn(
@@ -2127,7 +2142,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
                   }
                 }
               }}
-              placeholder="What would you like to change or create?"
+              placeholder={
+                activeFrameId
+                  ? "Enter a prompt to regenerate the selected frame, or leave blank to reuse the original prompt."
+                  : "Enter a prompt to generate a new layout, or leave blank to reuse the original prompt."
+              }
               className={cn(
                 "scrolling flex-1 resize-none rounded-md border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none transition",
                 "placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30",
@@ -2138,13 +2157,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
             <Button
               onClick={() => handleGenerate()}
-              disabled={!canGenerate}
+              // disabled={!canGenerate || activeFrameId}
               className="h-11 rounded-md px-4"
             >
               <Sparkles
                 className={`size-4 ${isGenerating ? "animate-spin" : ""}`}
               />
-              {isGenerating ? "Generating..." : "Generate"}
+              {isGenerating
+                ? "Generating..."
+                : activeFrameId
+                  ? "Regenerate"
+                  : "Generate"}
             </Button>
           </div>
         </div>

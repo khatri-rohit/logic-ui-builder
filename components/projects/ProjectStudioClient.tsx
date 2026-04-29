@@ -15,7 +15,6 @@ import {
 import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { Button } from "@/components/ui/button";
-import SelectModel from "@/components/SelectModel";
 import ProjectMenuPanel from "@/components/projects/TopMenu";
 import {
   useProjectCanvasStateUpdateMutation,
@@ -45,13 +44,13 @@ import { SandpackProvider } from "@codesandbox/sandpack-react";
 import FeedbackForm from "./FeedbackForm";
 import { toast } from "sonner";
 
-const DASHBOARD_MODEL_ALIASES: string[] = [
-  "gemma4:31b",
-  "deepseek-v3.1:671b",
-  "llama3.1:8b",
-  "qwen3.5",
-  "deepseek-v3.2:cloud",
-];
+// const DASHBOARD_MODEL_ALIASES: string[] = [
+//   "gemma4:31b",
+//   "deepseek-v3.1:671b",
+//   "llama3.1:8b",
+//   "qwen3.5",
+//   "deepseek-v3.2:cloud",
+// ];
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -225,7 +224,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     useProjectThumbnailUpdateMutation();
 
   const model = useUserActivityStore((state) => state.model);
-  const setModel = useUserActivityStore((state) => state.setModel);
+  // const setModel = useUserActivityStore((state) => state.setModel);
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
 
@@ -303,7 +302,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   } = usePointerMode();
 
   const canGenerate = !!prompt.trim() && !isGenerating;
-  const models = [...DASHBOARD_MODEL_ALIASES];
+  // const models = [...DASHBOARD_MODEL_ALIASES];
 
   useEffect(() => {
     activeFrameIdRef.current = activeFrameId;
@@ -2102,19 +2101,19 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
                   {canvasSaveMessage}
                 </span>
               )}
-              <span
+              {/* <span
                 className={cn(
                   "text-[10px] uppercase tracking-[0.16em] text-muted-foreground",
                   mono.className,
                 )}
               >
                 Use Enter to generate and Shift+Enter for a new line
-              </span>
+              </span> */}
             </div>
           </div>
 
           <div className="flex items-end gap-2">
-            <SelectModel list={models} setModel={setModel} model={model} />
+            {/* <SelectModel list={models} setModel={setModel} model={model} /> */}
 
             <textarea
               ref={commandInputRef}

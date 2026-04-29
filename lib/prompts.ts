@@ -1,55 +1,5 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
 
-const CREATIVITY_DIRECTIVE = `
-Design quality bar (critical):
-- Avoid generic or templated layouts.
-- Build one clear visual concept per screen with intentional hierarchy.
-- Use distinctive typography pairings (no default/system-only look).
-- Use a cohesive color system with one dominant direction and sharp accents.
-- Keep output purely static: no animations, transitions, or motion effects.
-- Build atmosphere with gradients, overlays, patterns, or depth layers.
-- Keep accessibility: readable text, semantic landmarks, visible states.
-- Keep responsiveness: mobile-first and desktop-ready structure.
-`.trim();
-
-const INTENT_LOCK_DIRECTIVE = `
-Intent lock (critical):
-- Implement only what the user asks for; do not invent features, sections, or flows.
-- If details are missing, choose conservative defaults without adding new product scope.
-- Keep content and component choices tightly aligned to the prompt intent.
-`.trim();
-
-const SKILL_DIRECTIVE = `
-Skill-guided UI system:
-- Use design-system token logic: clear primitive -> semantic -> component styling structure.
-- Keep visual states explicit for controls without animation-driven behavior.
-- Avoid repetitive card-grid boilerplate unless explicitly requested.
-`.trim();
-
-const STATIC_LAYOUT_DIRECTIVE = `
-Static layout mode (critical):
-- Generate static design layouts only.
-- Do not use animations, transitions, keyframes, or motion libraries.
-`.trim();
-
-const COMPILE_GUARDRAILS = `
-Compilation guardrails (must pass):
-- Output valid TSX only. No markdown, no prose.
-- Write one complete component function with balanced (), {}, and [].
-- Close every JSX tag and every string/template literal.
-- Avoid unsupported syntax and avoid trailing partial lines.
-- Use inline mock data inside the file if needed.
-- imports allowed; but export the component at the end with: export default GeneratedScreen;
-`.trim();
-
-const MOBILE_SPLIT_DIRECTIVE = `
-Mobile segmentation (critical):
-- For platform = mobile, avoid forcing long, desktop-like pages into one screen.
-- If requested content is taller than a typical phone viewport, split into multiple screens.
-- Use clear screen names with sequence suffixes, e.g. "Home - 1", "Home - 2", "Checkout - 1", "Checkout - 2".
-- Keep each mobile screen focused and scroll length realistic for a handheld UI.
-`.trim();
-
 export const STAGE1_SYSTEM = `
 You are a Design Architect. Your job is to extract a complete design specification from a user's UI prompt.
 Output ONLY valid JSON. No markdown. No explanation. Pure JSON.

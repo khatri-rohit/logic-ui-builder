@@ -52,8 +52,8 @@ interface CanvasFrameProps extends CanvasFrameData {
   onMove: (id: string, x: number, y: number) => void;
   onResize: (id: string, w: number, h: number) => void;
   handleFrame: (id: string) => void;
-  handleSelectContext?: (frameId: string) => void;
   handleDelete: (id: string) => void;
+  handleEditCode: (id: string) => void;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -79,9 +79,9 @@ export const CanvasFrame = memo(function CanvasFrame({
   onActivate,
   onMove,
   onResize,
-  handleSelectContext,
   handleFrame,
   handleDelete,
+  handleEditCode,
 }: CanvasFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -275,8 +275,6 @@ export const CanvasFrame = memo(function CanvasFrame({
         if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
 
         onSelect(id);
-        handleSelectContext?.(id);
-
         const clientX = iframeBounds.left + localX;
         const clientY = iframeBounds.top + localY;
 
@@ -302,7 +300,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       const nextWidth =
         platform === "web"
           ? clamp(Math.ceil(reportedWidth), MIN_WEB_W, MAX_WEB_W)
-          : clamp(Math.ceil(reportedWidth), MIN_MOBILE_W, MAX_MOBILE_W);
+          : w;
 
       const nextHeight =
         platform === "web"
@@ -331,7 +329,6 @@ export const CanvasFrame = memo(function CanvasFrame({
     };
   }, [
     h,
-    handleSelectContext,
     id,
     onResize,
     onSelect,
@@ -483,7 +480,6 @@ export const CanvasFrame = memo(function CanvasFrame({
               }}
               onContextMenu={() => {
                 onSelect(id);
-                handleSelectContext?.(id);
               }}
             />
 
@@ -509,6 +505,14 @@ export const CanvasFrame = memo(function CanvasFrame({
       </ContextMenuTrigger>
       {/* Context menu content can be added here */}
       <ContextMenuContent onEscapeKeyDown={(event) => event.stopPropagation()}>
+        <ContextMenuItem onSelect={() => handleEditCode(id)}>
+          Edit Code
+        </ContextMenuItem>
+        {isCompileError && (
+          <ContextMenuItem onSelect={() => handleFrame(id)}>
+            Retry compile fix
+          </ContextMenuItem>
+        )}
         <ContextMenuItem onSelect={() => handleFrame(id)}>
           Regenerate
         </ContextMenuItem>

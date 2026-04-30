@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
-import { revalidateTag } from "next/cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,15 +31,13 @@ export async function GET(req: NextRequest) {
         title: true,
         description: true,
         thumbnailUrl: true,
+        status: true,
         updatedAt: true,
       },
       orderBy: {
         createdAt: "desc",
       },
     });
-
-    // Update list cache with new project
-    revalidateTag("list", "max");
 
     return NextResponse.json(
       {

@@ -300,13 +300,25 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
             </div>
           </DrawerHeader>
 
-          <div className="h-screen flex items-center justify-center bg-black text-white">
-            <div className="text-center space-y-3">
-              <p className="text-sm text-white/60">
-                Loading your subscription details...
-              </p>
-              <div className="animate-spin h-5 w-5 border border-white/20 border-t-white rounded-full mx-auto" />
-            </div>
+          <div className="grid gap-4 p-6 md:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="rounded-xl border border-white/8 bg-[#1a1a1a] p-5"
+              >
+                <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
+                <div className="mt-4 h-8 w-28 animate-pulse rounded bg-white/10" />
+                <div className="mt-6 space-y-3">
+                  {[0, 1, 2, 3].map((line) => (
+                    <div
+                      key={line}
+                      className="h-3 w-full animate-pulse rounded bg-white/8"
+                    />
+                  ))}
+                </div>
+                <div className="mt-8 h-10 w-full animate-pulse rounded bg-white/10" />
+              </div>
+            ))}
           </div>
         </DrawerContent>
       </Drawer>

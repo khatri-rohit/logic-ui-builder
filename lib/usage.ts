@@ -162,6 +162,29 @@ export async function reserveGenerationSlot(
   return (result as number) === 1;
 }
 
+export async function reserveProjectSlot(
+  usagePeriodId: string,
+  projectLimit: number,
+): Promise<boolean> {
+  if (projectLimit === -1) {
+    await prisma.$executeRaw`
+      UPDATE "UsagePeriod"
+      SET "projectsCreated" = "projectsCreated" + 1, "updatedAt" = NOW()
+      WHERE "id" = ${usagePeriodId}
+    `;
+    return true;
+  }
+
+  const result = await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "projectsCreated" = "projectsCreated" + 1, "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+      AND "projectsCreated" < ${projectLimit}
+  `;
+
+  return (result as number) === 1;
+}
+
 /** Atomic increment — avoids race conditions on concurrent requests */
 export async function incrementGenerationUsage(
   usagePeriodId: string,

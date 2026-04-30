@@ -3,6 +3,7 @@ import { AppAuthContext } from "@/lib/get-auth";
 import { getPlanConfig, isModelAllowed } from "@/lib/plans";
 import {
   getOrCreateUsagePeriod,
+  reserveProjectSlot,
   reserveGenerationSlot,
   UsageContext,
 } from "@/lib/usage";
@@ -60,22 +61,6 @@ export async function guardGenerationRequest(
     };
   }
 
-  const slotReserved = await reserveGenerationSlot(
-    usage.usagePeriodId,
-    usage.generationLimit,
-  );
-
-  if (!slotReserved) {
-    return {
-      allowed: false,
-      response: quotaExceededResponse(
-        usage.generationsUsed,
-        usage.generationLimit,
-        authContext.effectivePlanId,
-      ),
-    };
-  }
-
   if (
     requestedModel &&
     !isModelAllowed(authContext.effectivePlanId, requestedModel)
@@ -95,6 +80,22 @@ export async function guardGenerationRequest(
           },
         },
         { status: 403 },
+      ),
+    };
+  }
+
+  const slotReserved = await reserveGenerationSlot(
+    usage.usagePeriodId,
+    usage.generationLimit,
+  );
+
+  if (!slotReserved) {
+    return {
+      allowed: false,
+      response: quotaExceededResponse(
+        usage.generationsUsed,
+        usage.generationLimit,
+        authContext.effectivePlanId,
       ),
     };
   }
@@ -119,9 +120,9 @@ export async function guardProjectCreation(
     };
   }
 
-  const slotReserved = await reserveGenerationSlot(
+  const slotReserved = await reserveProjectSlot(
     usage.usagePeriodId,
-    usage.generationLimit,
+    usage.projectLimit,
   );
 
   if (!slotReserved) {

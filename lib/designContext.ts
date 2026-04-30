@@ -69,13 +69,47 @@ const FALLBACK_UX_PRIORITIES = [
 const BIAS_CORRECTIONS = [
   "NO EMOJIS: Replace symbols with high-quality icons (Radix, Phosphor) or clean SVG primitives.",
   "NO AI PURPLE: Avoid the 'AI Purple/Blue' aesthetic. Use neutral bases (Zinc/Slate) with singular high-contrast accents.",
-  "NO INTER FONT: Avoid Inter for premium/creative vibes. Use Geist, Outfit, Cabinet Grotesk, or Satoshi.",
+  "NO SYSTEM DEFAULT: Use the runtime font contract consistently; avoid browser-default serif fallbacks.",
   "NO GENERIC NAMES: Avoid 'John Doe' or 'Acme Corp'. Use realistic, contextual brand and user names.",
   "NO 3-COLUMN CARDS: Avoid the generic 3-equal-card feature row. Use asymmetric grids or zig-zags.",
   "NO PURE BLACK: Never use #000000. Use Off-Black, Zinc-950, or Charcoal.",
 ];
 
 const SHORT_DESIGN_TOKENS = new Set(["ui", "ux", "ai", "3d", "ar", "vr"]);
+const STOPWORDS = new Set([
+  "app",
+  "apps",
+  "web",
+  "site",
+  "page",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "into",
+  "make",
+  "build",
+  "create",
+  "need",
+  "want",
+  "user",
+  "users",
+]);
+
+function normalizeDesignText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\be[\s-]?commerce\b/g, "ecommerce")
+    .replace(/\bsaas\b/g, "software service")
+    .replace(/\bfin[\s-]?tech\b/g, "fintech finance")
+    .replace(/\bhealth[\s-]?care\b/g, "healthcare")
+    .replace(/\breal[\s-]?time\b/g, "realtime live")
+    .replace(/\bdata[\s-]?heavy\b/g, "data dense")
+    .replace(/[^a-z0-9\s]/g, " ");
+}
 
 function parseCsv(content: string): CsvRow[] {
   const lines = content
@@ -135,22 +169,39 @@ function parseCsvLine(line: string): string[] {
 }
 
 function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+  return normalizeDesignText(text)
     .split(/\s+/)
-    .filter((token) => token.length > 2 || SHORT_DESIGN_TOKENS.has(token));
+    .filter((token) => {
+      if (!token) return false;
+      if (STOPWORDS.has(token)) return false;
+      return token.length > 2 || SHORT_DESIGN_TOKENS.has(token);
+    });
 }
 
 function computeScore(inputTokens: string[], haystack: string): number {
-  const normalized = haystack.toLowerCase();
+  const normalized = normalizeDesignText(haystack);
+  const haystackTokens = new Set(tokenize(haystack));
   let score = 0;
 
   for (const token of inputTokens) {
-    if (normalized.includes(token)) score += 1;
+    if (haystackTokens.has(token)) {
+      score += 2;
+    } else if (token.length >= 5 && normalized.includes(token)) {
+      score += 1;
+    }
   }
 
   return score;
+}
+
+function computeWeightedScore(
+  inputTokens: string[],
+  fields: Array<{ text: string; weight: number }>,
+): number {
+  return fields.reduce(
+    (total, field) => total + computeScore(inputTokens, field.text) * field.weight,
+    0,
+  );
 }
 
 function pickBest<T>(items: T[], scoreFn: (item: T) => number, fallback: T): T {
@@ -390,56 +441,47 @@ export async function buildDesignContext(input: {
   const style = pickBest(
     index.styles,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.category,
-          candidate.keywords,
-          candidate.bestFor,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.keywords, weight: 4 },
+        { text: candidate.bestFor, weight: 3 },
+        { text: candidate.category, weight: 2 },
+        { text: candidate.name, weight: 1 },
+        { text: productType, weight: 2 },
+      ]),
     FALLBACK_STYLE,
   );
 
   const palette = pickBest(
     index.palettes,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.psychology,
-          candidate.primaryHex,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.psychology, weight: 4 },
+        { text: productType, weight: 3 },
+        { text: candidate.name, weight: 1 },
+      ]),
     FALLBACK_PALETTE,
   );
 
   const layout = pickBest(
     index.layouts,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.useCase,
-          candidate.cssStructure,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.useCase, weight: 4 },
+        { text: candidate.cssStructure, weight: 3 },
+        { text: productType, weight: 2 },
+        { text: candidate.name, weight: 1 },
+      ]),
     FALLBACK_LAYOUT,
   );
 
   const typography = pickBest(
     index.typography,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [candidate.contentType, layout.name, productType].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.contentType, weight: 4 },
+        { text: layout.name, weight: 2 },
+        { text: productType, weight: 2 },
+      ]),
     FALLBACK_TYPOGRAPHY,
   );
 

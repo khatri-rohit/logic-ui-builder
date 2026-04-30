@@ -227,14 +227,20 @@ export const createProjectBodySchema = z.object({
 
 export const projectPatchBodySchema = z
   .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(500).optional(),
     status: projectStatusSchema.optional(),
     canvasState: canvasSnapshotSchema.nullish(),
     generationId: z.string().trim().min(1).optional(),
   })
   .refine(
-    (value) => value.status !== undefined || value.canvasState !== undefined,
+    (value) =>
+      value.title !== undefined ||
+      value.description !== undefined ||
+      value.status !== undefined ||
+      value.canvasState !== undefined,
     {
-      message: "Either status or canvasState must be provided",
+      message: "At least one project field must be provided",
       path: ["status"],
     },
   );

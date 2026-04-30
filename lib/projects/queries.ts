@@ -67,7 +67,18 @@ export function projectsListQueryOptions() {
 }
 
 export function useProjectsQuery() {
-  return useQuery(projectsListQueryOptions());
+  return useQuery({
+    ...projectsListQueryOptions(),
+    refetchInterval: (query) => {
+      const projects = query.state.data;
+      return projects?.some(
+        (project) =>
+          project.status === "PENDING" || project.status === "GENERATING",
+      )
+        ? 5000
+        : false;
+    },
+  });
 }
 
 export function useCreateProjectMutation() {
@@ -136,6 +147,7 @@ function mergePatchedProjectDetail(
     return {
       id: patchResult.project.id,
       title: patchResult.project.title,
+      description: patchResult.project.description,
       initialPrompt: patchResult.project.initialPrompt,
       status: patchResult.project.status,
       canvasState: patchResult.project.canvasState,
@@ -164,6 +176,7 @@ function mergePatchedProjectDetail(
     ...previous,
     id: patchResult.project.id,
     title: patchResult.project.title,
+    description: patchResult.project.description,
     initialPrompt: patchResult.project.initialPrompt,
     status: patchResult.project.status,
     canvasState: patchResult.project.canvasState,
@@ -236,6 +249,51 @@ export function useProjectStatusUpdateMutation() {
     onSuccess: (data, { id }) => {
       queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
         mergePatchedProjectDetail(prev, data),
+      );
+    },
+  });
+}
+
+export async function updateProjectMetadata(
+  id: string,
+  input: { title: string; description: string },
+) {
+  return requestApi<ProjectPatchResult>(`/api/projects/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+export function useProjectMetadataUpdateMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      title,
+      description,
+    }: {
+      id: string;
+      title: string;
+      description: string;
+    }) => updateProjectMetadata(id, { title, description }),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
+        mergePatchedProjectDetail(prev, data),
+      );
+      queryClient.setQueryData<ProjectSummary[]>(projectKeys.list(), (prev) =>
+        prev?.map((project) =>
+          project.id === id
+            ? {
+                ...project,
+                title: data.project.title,
+                description: data.project.description,
+              }
+            : project,
+        ),
       );
     },
   });

@@ -38,6 +38,7 @@ export interface ProjectStudioHydration {
 export type ProjectDetail = {
   id: string;
   title: string;
+  description: string | null;
   initialPrompt: string;
   status: ProjectStatus;
   canvasState: CanvasStateMetadataV1 | null;
@@ -49,6 +50,7 @@ export type ProjectPatchResult = {
   project: {
     id: string;
     title: string;
+    description: string | null;
     initialPrompt: string;
     status: ProjectStatus;
     canvasState: CanvasStateMetadataV1 | null;
@@ -61,5 +63,6 @@ export type ProjectSummary = {
   title: string;
   description: string | null;
   thumbnailUrl: string | null;
+  status: ProjectStatus;
   updatedAt: string;
 };

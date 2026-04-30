@@ -1,12 +1,49 @@
 "use client";
+
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, XCircle } from "lucide-react";
+
 import { billingKeys } from "@/lib/billing/queries";
 
-// This page is the fallback for environments where Razorpay.js
-// can't execute the handler function (e.g., mobile WebView).
-// In normal desktop/mobile browser flow, the modal handler fires instead.
+function StatusPanel({
+  status,
+}: {
+  status: "verifying" | "success" | "error";
+}) {
+  const Icon =
+    status === "success" ? Check : status === "error" ? XCircle : Loader2;
+  const title =
+    status === "success"
+      ? "Subscription active"
+      : status === "error"
+        ? "Verification failed"
+        : "Verifying payment";
+  const message =
+    status === "success"
+      ? "Your billing status has been updated. Redirecting to LOGIC."
+      : status === "error"
+        ? "Contact support if you were charged and your plan did not update."
+        : "We are confirming the Razorpay payment response.";
+
+  return (
+    <main className="dark flex min-h-screen items-center justify-center bg-[#111111] px-6 text-white">
+      <section className="w-full max-w-md rounded-lg border border-white/10 bg-[#181818] p-6 text-center shadow-2xl shadow-black/30">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-md border border-white/10 bg-white/5">
+          <Icon
+            className={`size-5 ${
+              status === "verifying" ? "animate-spin" : ""
+            }`}
+          />
+        </div>
+        <h1 className="mt-5 text-lg font-semibold">{title}</h1>
+        <p className="mt-2 text-sm leading-6 text-white/60">{message}</p>
+      </section>
+    </main>
+  );
+}
+
 function BillingSuccessPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -16,15 +53,11 @@ function BillingSuccessPage() {
   );
 
   useEffect(() => {
-    // Razorpay POSTs params here in WebView fallback mode
-    // They arrive as query params when callback_method is 'get',
-    // or as POST body — check both
     const paymentId = searchParams.get("razorpay_payment_id");
     const subscriptionId = searchParams.get("razorpay_subscription_id");
     const signature = searchParams.get("razorpay_signature");
 
     if (!paymentId || !subscriptionId || !signature) {
-      // No params — user probably navigated here directly
       router.replace("/");
       return;
     }
@@ -43,7 +76,7 @@ function BillingSuccessPage() {
         if (!data.error) {
           await queryClient.invalidateQueries({ queryKey: billingKeys.all });
           setStatus("success");
-          setTimeout(() => router.replace("/"), 2000);
+          window.setTimeout(() => router.replace("/"), 2000);
         } else {
           setStatus("error");
         }
@@ -51,14 +84,12 @@ function BillingSuccessPage() {
       .catch(() => setStatus("error"));
   }, [searchParams, router, queryClient]);
 
-  if (status === "verifying") return <p>Verifying payment...</p>;
-  if (status === "success") return <p>Subscription active! Redirecting...</p>;
-  return <p>Verification failed. Contact support if you were charged.</p>;
+  return <StatusPanel status={status} />;
 }
 
 export default function BillingSuccessPageWrapper() {
   return (
-    <Suspense fallback={<p>Loading...</p>}>
+    <Suspense fallback={<StatusPanel status="verifying" />}>
       <BillingSuccessPage />
     </Suspense>
   );

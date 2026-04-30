@@ -2579,9 +2579,9 @@ npm run dev
       <Drawer
         direction="right"
         open={codeEditorOpen}
-        onOpenChange={handleCloseCodeEditor}
+        // onOpenChange={handleCloseCodeEditor}
       >
-        <DrawerContent className="w-[60%] max-w-none border-white/10 bg-[#111111] text-white">
+        <DrawerContent className="min-w-3xl border-white/10 bg-[#111111] text-white">
           <DrawerHeader className="border-b border-white/10">
             <DrawerTitle className="flex items-center gap-2 text-white">
               <Code2 className="size-4" />
@@ -2598,7 +2598,7 @@ npm run dev
               onChange={(event) => setCodeEditorValue(event.target.value)}
               spellCheck={false}
               className={cn(
-                "min-h-[calc(100vh-190px)] flex-1 resize-none border-white/10 bg-black/40 font-mono text-xs leading-5 text-white",
+                "min-h-[calc(100vh-190px)] flex-1 resize-none border-white/10 bg-black/40 font-mono text-xs leading-5 text-white scrollbar",
                 mono.className,
               )}
             />
@@ -2609,11 +2609,16 @@ npm run dev
                 type="button"
                 variant="secondary"
                 onClick={() => handleCloseCodeEditor(false)}
+                className="cursor-pointer"
               >
                 <X className="size-4" />
                 Cancel
               </Button>
-              <Button type="button" onClick={handleSaveCodeEditor}>
+              <Button
+                type="button"
+                onClick={handleSaveCodeEditor}
+                className="cursor-pointer"
+              >
                 <Check className="size-4" />
                 Save code
               </Button>
@@ -2671,7 +2676,7 @@ npm run dev
               {activeFrameId && (
                 <span
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-md border border-border bg-muted px-2 py-1 text-[10px] text-muted-foreground",
+                    "inline-flex items-center gap-2 rounded-xl border border-border px-2 py-1 text-[10px] text-black bg-white",
                     mono.className,
                   )}
                 >
@@ -2778,7 +2783,7 @@ npm run dev
               {isGenerating
                 ? "Generating..."
                 : activeFrameId
-                  ? "Regenerate"
+                  ? "Redesign"
                   : "Generate"}
             </Button>
           </div>

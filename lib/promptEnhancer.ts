@@ -60,3 +60,27 @@ export function buildEnhancedPrompt({
     "- Do not add features, sections, or data models not requested by the prompt.",
   ].join("\n");
 }
+
+export function buildFrameRegeneratePrompt({
+  basePrompt,
+  prompt,
+  screenName,
+}: {
+  basePrompt: string;
+  prompt?: string;
+  screenName: string;
+}) {
+  const normalizedPrompt = prompt?.trim();
+  if (!normalizedPrompt) {
+    return basePrompt;
+  }
+
+  return [
+    basePrompt,
+    "",
+    "FRAME MODIFICATION REQUEST:",
+    `- Target screen: ${screenName}`,
+    "- Apply changes only to this screen while preserving the established design language.",
+    normalizedPrompt,
+  ].join("\n");
+}

@@ -16,7 +16,10 @@ import {
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import logger from "@/lib/logger";
-import { buildEnhancedPrompt } from "@/lib/promptEnhancer";
+import {
+  buildEnhancedPrompt,
+  buildFrameRegeneratePrompt,
+} from "@/lib/promptEnhancer";
 import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
@@ -24,12 +27,14 @@ import prisma from "@/lib/prisma";
 import {
   generationRequestBodySchema,
   toValidationIssues,
+  webAppSpecSchema,
 } from "@/lib/schemas/studio";
 import {
   getGenerationLayout,
   getInitialDimensionsForPlatform,
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
+import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 import { guardGenerationRequest } from "@/lib/plan-guard";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
@@ -77,6 +82,10 @@ function toPrismaPlatform(
   platform: GenerationPlatform,
 ): PrismaGenerationPlatform {
   return platform === "mobile" ? "MOBILE" : "WEB";
+}
+
+function toApiPlatform(platform: PrismaGenerationPlatform): GenerationPlatform {
+  return platform === "MOBILE" ? "mobile" : "web";
 }
 
 const MOBILE_COMPLEXITY_KEYWORDS = [
@@ -457,19 +466,104 @@ export async function POST(req: NextRequest) {
     const { usage } = guardResult;
     logger.info("Plan guard passed for generation request", { usage });
 
+    const isFrameRegeneration = !!body.frameId && !!body.generationId;
+    const targetFrameId = isFrameRegeneration
+      ? (body.targetFrameId ?? body.frameId)
+      : null;
+
+    let sourceGeneration: {
+      id: string;
+      prompt: string;
+      model: string;
+      platform: PrismaGenerationPlatform;
+      spec: Prisma.JsonValue;
+      tree: Prisma.JsonValue | null;
+      screens: Prisma.JsonValue;
+    } | null = null;
+
+    let sourceFrame: PersistedGenerationScreen | null = null;
+
+    if (isFrameRegeneration) {
+      const generationCandidates = await prisma.generation.findMany({
+        where: {
+          projectId: project.id,
+          id: body.generationId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          prompt: true,
+          model: true,
+          platform: true,
+          spec: true,
+          tree: true,
+          screens: true,
+        },
+      });
+
+      for (const candidate of generationCandidates) {
+        const candidateScreens = parseGenerationScreens(candidate.screens);
+        const matchedFrame = candidateScreens.find(
+          (screen) => screen.id === body.frameId,
+        );
+        if (!matchedFrame) continue;
+
+        sourceGeneration = candidate;
+        sourceFrame = matchedFrame;
+        break;
+      }
+
+      if (!sourceGeneration || !sourceFrame) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Frame not found in the requested generation",
+            data: null,
+          },
+          { status: 404 },
+        );
+      }
+
+      logger.info("Frame regeneration detected", {
+        frameId: body.frameId,
+        targetFrameId,
+        generationId: body.generationId,
+        screenName: sourceFrame.screenName,
+      });
+    }
+
     const requestedPlatform = normalizePlatform(body.platform);
     const prompt = body.prompt.trim();
 
-    const designContext = await buildDesignContext({
-      prompt,
-      platform: requestedPlatform,
-    });
-    const stage3Prompt = buildEnhancedPrompt({
-      prompt,
-      platform: requestedPlatform,
-      designContext,
-    });
-    const designContextText = toDesignContextText(designContext);
+    let designContext: Awaited<ReturnType<typeof buildDesignContext>>;
+    let stage3Prompt: string;
+    let designContextText: string;
+
+    if (isFrameRegeneration && sourceGeneration) {
+      designContext = await buildDesignContext({
+        prompt: sourceGeneration.prompt,
+        platform: toApiPlatform(sourceGeneration.platform),
+      });
+      stage3Prompt = buildFrameRegeneratePrompt({
+        basePrompt: sourceGeneration.prompt,
+        prompt: prompt,
+        screenName: sourceFrame!.screenName,
+      });
+      designContextText = toDesignContextText(designContext);
+    } else {
+      designContext = await buildDesignContext({
+        prompt,
+        platform: requestedPlatform,
+      });
+      stage3Prompt = buildEnhancedPrompt({
+        prompt,
+        platform: requestedPlatform,
+        designContext,
+      });
+      designContextText = toDesignContextText(designContext);
+    }
 
     const stage1ModelPriority = buildModelPriority(
       preferredModel,
@@ -498,6 +592,232 @@ export async function POST(req: NextRequest) {
       const persistedScreens: PersistedGenerationScreen[] = [];
 
       try {
+        // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
+        if (isFrameRegeneration && sourceGeneration && sourceFrame) {
+          const requestedModelForPersistence =
+            preferredModel ?? sourceGeneration.model;
+
+          const createdGeneration = await prisma.$transaction(async (tx) => {
+            const generation = await tx.generation.create({
+              data: {
+                projectId: project.id,
+                prompt: prompt || sourceGeneration.prompt,
+                model: requestedModelForPersistence,
+                platform: sourceGeneration.platform,
+                spec: sourceGeneration.spec as any,
+                tree: sourceGeneration.tree as
+                  | Prisma.InputJsonValue
+                  | undefined,
+                status: "RUNNING",
+                idempotencyKey,
+              },
+              select: { id: true },
+            });
+
+            await tx.project.update({
+              where: { id: project.id },
+              data: { status: "GENERATING" },
+            });
+
+            return generation;
+          });
+
+          generationId = createdGeneration.id;
+
+          logger.info("Frame regeneration: skipping Stage 1 & 2", {
+            generationId,
+            frameId: body.frameId,
+            screenName: sourceFrame!.screenName,
+          });
+
+          await write({ type: "generation_id", generationId });
+
+          const sourcePlatform = toApiPlatform(sourceGeneration.platform);
+
+          const storedTree = (() => {
+            if (!sourceGeneration.tree) return null;
+            try {
+              const parsed = z
+                .array(
+                  z.object({
+                    screen: z.string(),
+                    components: z.array(z.string()),
+                    canvasX: z.number().optional(),
+                    canvasY: z.number().optional(),
+                    layoutArchitecture: z
+                      .record(z.string(), z.unknown())
+                      .optional(),
+                    componentIntents: z.array(z.unknown()).optional(),
+                  }),
+                )
+                .safeParse(sourceGeneration.tree);
+              return parsed.success ? parsed.data : null;
+            } catch {
+              return null;
+            }
+          })();
+
+          const tree: ComponentTreeNode[] = storedTree
+            ? (storedTree as ComponentTreeNode[])
+            : [
+                {
+                  screen: sourceFrame.screenName,
+                  components: [],
+                  canvasX: sourceFrame.x,
+                  canvasY: sourceFrame.y,
+                },
+              ];
+
+          const webAppSpecParsed = webAppSpecSchema.safeParse(
+            sourceGeneration.spec,
+          );
+          const spec: WebAppSpec = webAppSpecParsed.success
+            ? webAppSpecParsed.data
+            : {
+                screens: [sourceFrame.screenName],
+                navPattern: "none",
+                platform: sourcePlatform,
+                colorMode: "light",
+                primaryColor: "#2563eb",
+                accentColor: "#f59e0b",
+                stylingLib: "tailwind",
+                layoutDensity: "comfortable",
+                components: [],
+              };
+
+          await write({ type: "screen_start", screen: sourceFrame.screenName });
+
+          let screenGenerated = false;
+          let streamErr: unknown = null;
+          let finalCode = "";
+
+          for (let i = 0; i < stage3ModelPriority.length; i++) {
+            const candidateModel = stage3ModelPriority[i];
+            try {
+              if (i > 0) {
+                finalCode = "";
+                await write({
+                  type: "screen_reset",
+                  screen: sourceFrame.screenName,
+                  reason: `retry:${candidateModel}`,
+                });
+              }
+
+              logger.info(
+                `Frame regeneration Stage 3 '${sourceFrame.screenName}' via model: ${candidateModel}`,
+              );
+              const { usage: stage3Usage, textStream } = streamText({
+                model: ollama("minimax-m2.5:cloud"),
+                system: STAGE3_SYSTEM,
+                prompt: buildScreenPrompt(
+                  spec,
+                  tree,
+                  sourceFrame.screenName,
+                  stage3Prompt,
+                  designContext,
+                ),
+                temperature: 0.2,
+                abortSignal: abortController.signal,
+              });
+
+              for await (const token of textStream) {
+                if (abortController.signal.aborted) break;
+                finalCode += token;
+                await write({
+                  type: "code_chunk",
+                  screen: sourceFrame.screenName,
+                  token,
+                });
+              }
+              logger.info("Frame regeneration response stream complete", {
+                usage: stage3Usage,
+              });
+              screenGenerated = true;
+              break;
+            } catch (err) {
+              streamErr = err;
+              logger.warn(
+                `Frame regeneration model failed '${sourceFrame.screenName}': ${candidateModel}`,
+                err,
+              );
+              if ((err as Error)?.name === "AbortError") {
+                logger.info(
+                  "Frame regeneration aborted due to client disconnect",
+                );
+                return;
+              }
+            }
+          }
+
+          if (!screenGenerated) {
+            persistedScreens.push({
+              id: targetFrameId ?? body.frameId!,
+              state: "error",
+              x: sourceFrame!.x,
+              y: sourceFrame!.y,
+              w: sourceFrame!.w,
+              h: sourceFrame!.h,
+              screenName: sourceFrame!.screenName,
+              content: sanitizeGeneratedCode(finalCode),
+              editedContent: null,
+              error: `All stage 3 models failed: ${String(streamErr)}`,
+            });
+
+            await write({
+              type: "screen_done",
+              screen: sourceFrame!.screenName,
+            });
+            throw new Error(
+              `All stage 3 models failed for frame ${body.frameId}: ${String(streamErr)}`,
+            );
+          }
+
+          persistedScreens.push({
+            id: targetFrameId ?? body.frameId!,
+            state: finalCode.trim() ? "done" : "error",
+            x: sourceFrame!.x,
+            y: sourceFrame!.y,
+            w: sourceFrame!.w,
+            h: sourceFrame!.h,
+            screenName: sourceFrame!.screenName,
+            content: sanitizeGeneratedCode(finalCode),
+            editedContent: null,
+            error: finalCode.trim()
+              ? null
+              : "Generation ended before this screen completed.",
+          });
+
+          await write({ type: "screen_done", screen: sourceFrame.screenName });
+
+          if (generationId) {
+            await prisma.$transaction([
+              prisma.generation.update({
+                where: { id: generationId },
+                data: {
+                  screens: persistedScreens as unknown as Prisma.InputJsonValue,
+                  status: "COMPLETED",
+                  terminalAt: new Date(),
+                  errorMessage: null,
+                  errorMeta: Prisma.JsonNull,
+                },
+              }),
+              prisma.project.update({
+                where: { id: project.id },
+                data: { status: "ACTIVE" },
+              }),
+            ]);
+          }
+
+          logger.info("Frame regeneration complete", {
+            generationId,
+            frameId: body.frameId,
+            screenName: sourceFrame.screenName,
+          });
+          await write({ type: "done" });
+          return;
+        }
+
+        // Normal full generation flow - Stage 1, 2, 3
         logger.info("Starting Stage 1: Spec Extraction");
 
         const { text: rawSpec, usage: stage1Usage } =
@@ -606,7 +926,7 @@ export async function POST(req: NextRequest) {
                 `Stage 3 screen '${screen}' via model: ${candidateModel}`,
               );
               const { usage: stage3Usage, textStream } = streamText({
-                model: ollama("minimax-m2.7:cloud"),
+                model: ollama("minimax-m2.5:cloud"),
                 system: STAGE3_SYSTEM,
                 prompt: buildScreenPrompt(
                   spec,

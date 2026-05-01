@@ -167,6 +167,10 @@ export const generationRequestBodySchema = z.object({
   platform: generationPlatformSchema.optional(),
   model: z.string().trim().min(1).max(80).optional(),
   idempotencyKey: z.string().trim().min(8).max(128).optional(),
+  // Optional frame and generation IDs for regeneration requests; ignored for new generations
+  frameId: z.string().optional(),
+  generationId: z.string().cuid().optional(),
+  targetFrameId: z.string().optional(),
 });
 
 export const frameRegenerateRequestBodySchema = z.object({
@@ -175,6 +179,7 @@ export const frameRegenerateRequestBodySchema = z.object({
   prompt: z.string().trim().min(1).max(10000).optional(),
   model: z.string().trim().min(1).max(80).optional(),
   idempotencyKey: z.string().trim().min(8).max(128).optional(),
+  targetFrameId: z.string().optional(),
 });
 
 export const projectRouteParamsSchema = z.object({

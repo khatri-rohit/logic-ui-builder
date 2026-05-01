@@ -17,7 +17,6 @@ import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import { buildDesignContext } from "@/lib/designContext";
 import {
   frameRegenerateRequestBodySchema,
-  persistedGenerationScreenSchema,
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
@@ -25,6 +24,8 @@ import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { guardFrameRegeneration } from "@/lib/plan-guard";
 import { incrementFrameRegenUsage } from "@/lib/usage";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import { buildFrameRegeneratePrompt } from "@/lib/promptEnhancer";
+import { parseGenerationScreens } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -82,13 +83,6 @@ function buildModelPriority(
   return [preferredModel, ...defaults];
 }
 
-function parseGenerationScreens(
-  value: Prisma.JsonValue | null,
-): PersistedGenerationScreen[] {
-  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
-}
-
 function coerceSpec(
   rawSpec: Prisma.JsonValue,
   platform: GenerationPlatform,
@@ -117,30 +111,6 @@ function coerceSpec(
     layoutDensity: "comfortable",
     components: [],
   };
-}
-
-function buildFrameRegeneratePrompt({
-  basePrompt,
-  prompt,
-  screenName,
-}: {
-  basePrompt: string;
-  prompt?: string;
-  screenName: string;
-}) {
-  const normalizedPrompt = prompt?.trim();
-  if (!normalizedPrompt) {
-    return basePrompt;
-  }
-
-  return [
-    basePrompt,
-    "",
-    "FRAME MODIFICATION REQUEST:",
-    `- Target screen: ${screenName}`,
-    "- Apply changes only to this screen while preserving the established design language.",
-    normalizedPrompt,
-  ].join("\n");
 }
 
 export async function GET(
@@ -355,6 +325,8 @@ export async function POST(
       );
     }
 
+    const responseFrameId = body.targetFrameId ?? sourceFrame.id;
+
     const idempotencyHeaderResult = idempotencyHeaderSchema.safeParse(
       req.headers.get("Idempotency-Key"),
     );
@@ -430,6 +402,11 @@ export async function POST(
             canvasY: sourceFrame.y,
           },
         ];
+    logger.info("Using component tree for frame regeneration", {
+      tree,
+      sourceGenerationId: sourceGeneration.id,
+      sourceFrameId: sourceFrame.id,
+    });
 
     const regeneratePrompt = buildFrameRegeneratePrompt({
       basePrompt: sourceGeneration.prompt,
@@ -487,10 +464,12 @@ export async function POST(
         await write({ type: "generation_id", generationId });
         await write({
           type: "frame_start",
-          frameId: sourceFrame.id,
+          frameId: responseFrameId,
           screen: sourceFrame.screenName,
         });
-
+        logger.info(
+          `Starting frame regeneration for frame '${sourceFrame.screenName}' with generation ID ${generationId}`,
+        );
         await incrementFrameRegenUsage(guardResult.usage.usagePeriodId);
 
         let generated = false;
@@ -504,7 +483,7 @@ export async function POST(
               generatedCode = "";
               await write({
                 type: "frame_reset",
-                frameId: sourceFrame.id,
+                frameId: responseFrameId,
                 screen: sourceFrame.screenName,
                 reason: `retry:${candidateModel}`,
               });
@@ -515,7 +494,7 @@ export async function POST(
             );
 
             const result = streamText({
-              model: ollama("minimax-m2.7:cloud"),
+              model: ollama("minimax-m2.5:cloud"),
               system: STAGE3_SYSTEM,
               prompt: buildScreenPrompt(
                 spec,
@@ -531,7 +510,7 @@ export async function POST(
               generatedCode += token;
               await write({
                 type: "code_chunk",
-                frameId: sourceFrame.id,
+                frameId: responseFrameId,
                 token,
               });
             }
@@ -559,6 +538,7 @@ export async function POST(
 
         const updatedFrame: PersistedGenerationScreen = {
           ...sourceFrame,
+          id: responseFrameId,
           state: "done",
           content: sanitizeGeneratedCode(generatedCode),
           editedContent: null,
@@ -595,7 +575,7 @@ export async function POST(
 
         await write({
           type: "frame_done",
-          frameId: sourceFrame.id,
+          frameId: responseFrameId,
           screen: sourceFrame.screenName,
         });
         await write({ type: "done" });
@@ -605,6 +585,7 @@ export async function POST(
         if (createdPromptGeneration) {
           const failedFrame: PersistedGenerationScreen = {
             ...sourceFrame,
+            id: responseFrameId,
             state: "error",
             content: generatedCode.trim()
               ? sanitizeGeneratedCode(generatedCode)

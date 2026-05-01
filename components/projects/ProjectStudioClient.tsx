@@ -37,6 +37,7 @@ import { CanvasSnapshotV1, FrameState } from "@/lib/canvas-state";
 import {
   getGenerationLayout,
   getInitialDimensionsForPlatform,
+  getRegenerationClonePosition,
 } from "@/lib/canvasLayout";
 import logger from "@/lib/logger";
 import { GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -123,12 +124,15 @@ function normalizePosition(value: number) {
 function cloneFrameForRegeneration(
   sourceFrame: CanvasFrameData,
   targetFrameId: string,
+  existingFrames: CanvasFrameData[],
 ): CanvasFrameData {
+  const { x, y } = getRegenerationClonePosition(existingFrames, sourceFrame);
+
   return {
     ...sourceFrame,
     id: targetFrameId,
-    x: normalizePosition(sourceFrame.x + 48),
-    y: normalizePosition(sourceFrame.y + 48),
+    x: normalizePosition(x),
+    y: normalizePosition(y),
     state: "skeleton",
     editedContent: null,
     error: null,
@@ -1324,6 +1328,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         const clonedFrame = cloneFrameForRegeneration(
           regenerationSourceFrame,
           regenerationTargetFrameId,
+          [...framesRef.current.values()],
         );
 
         applyFrames((current) => {

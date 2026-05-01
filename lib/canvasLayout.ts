@@ -33,6 +33,25 @@ export function getGenerationLayout(
   });
 }
 
+export function getRegenerationClonePosition(
+  existingFrames: ExistingFrameBounds[],
+  sourceFrame: ExistingFrameBounds,
+): { x: number; y: number } {
+  const sameRowFrames = existingFrames.filter(
+    (frame) => frame.y === sourceFrame.y,
+  );
+
+  const rowRightEdge = Math.max(
+    sourceFrame.x + sourceFrame.w,
+    ...sameRowFrames.map((frame) => frame.x + frame.w),
+  );
+
+  return {
+    x: rowRightEdge + H_GAP,
+    y: sourceFrame.y,
+  };
+}
+
 export function getInitialDimensions(screenType: string): {
   w: number;
   h: number;

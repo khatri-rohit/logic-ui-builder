@@ -389,6 +389,46 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   >(null);
   const handleGenerateRef = useRef<() => Promise<void>>(async () => {});
 
+  const [history, setHistory] = useState<Array<Map<string, CanvasFrameData>>>(
+    [],
+  );
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const pushToHistory = useCallback(
+    (newFrames: Map<string, CanvasFrameData>) => {
+      setHistory((prev) => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(newFrames);
+        if (newHistory.length > 50) newHistory.shift();
+        setHistoryIndex(newHistory.length - 1);
+        return newHistory;
+      });
+    },
+    [historyIndex],
+  );
+
+  const undo = useCallback(() => {
+    if (canUndo) {
+      const prevFrames = history[historyIndex - 1];
+      setFrames(prevFrames);
+      framesRef.current = prevFrames;
+      setStudioFrames([...prevFrames.values()]);
+      setHistoryIndex(historyIndex - 1);
+    }
+  }, [canUndo, history, historyIndex, setStudioFrames]);
+
+  const redo = useCallback(() => {
+    if (canRedo) {
+      const nextFrames = history[historyIndex + 1];
+      setFrames(nextFrames);
+      framesRef.current = nextFrames;
+      setStudioFrames([...nextFrames.values()]);
+      setHistoryIndex(historyIndex + 1);
+    }
+  }, [canRedo, history, historyIndex, setStudioFrames]);
+
   const {
     activeFrameId,
     selectedFrameId,
@@ -432,15 +472,19 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       updater: (
         current: Map<string, CanvasFrameData>,
       ) => Map<string, CanvasFrameData>,
+      skipHistory = false,
     ) => {
       setFrames((current) => {
         const next = updater(current);
         framesRef.current = next;
         setStudioFrames([...next.values()]);
+        if (!skipHistory) {
+          pushToHistory(next);
+        }
         return next;
       });
     },
-    [setStudioFrames],
+    [setStudioFrames, pushToHistory],
   );
 
   const getStudioRuntime = useCallback(

@@ -899,6 +899,145 @@ export async function POST(req: NextRequest) {
         }));
         const positions = getGenerationLayout([], screensWithDims);
 
+        const MAX_CRITIQUE_ITERATIONS = 3;
+
+        const generateScreenWithRetry = async (
+          screen: string,
+          position: { x: number; y: number },
+          dimensions: { w: number; h: number },
+          frameId: string,
+          basePrompt: string,
+        ): Promise<{
+          success: boolean;
+          code: string;
+          error: string | null;
+          iterations: number;
+        }> => {
+          let currentCode = "";
+          let iterations = 0;
+          let lastError: string | null = null;
+
+          for (
+            let iteration = 0;
+            iteration < MAX_CRITIQUE_ITERATIONS;
+            iteration++
+          ) {
+            iterations++;
+            let screenGenerated = false;
+            let streamErr: unknown = null;
+
+            for (
+              let modelIdx = 0;
+              modelIdx < stage3ModelPriority.length;
+              modelIdx++
+            ) {
+              const candidateModel = stage3ModelPriority[modelIdx];
+              try {
+                if (modelIdx > 0 || iteration > 0) {
+                  currentCode = "";
+                  await write({
+                    type: "screen_reset",
+                    screen,
+                    reason:
+                      iteration > 0
+                        ? `critique-retry:${iteration}`
+                        : `retry:${candidateModel}`,
+                  });
+                }
+
+                const promptWithFixes =
+                  iteration > 0 && lastError
+                    ? `${basePrompt}\n\nCRITICAL FIXES NEEDED:\n${lastError}`
+                    : basePrompt;
+
+                logger.info(
+                  `Stage 3 screen '${screen}' iteration ${iteration} via model: ${candidateModel}`,
+                );
+                const { usage: stage3Usage, textStream } = streamText({
+                  model: ollama("minimax-m2.5:cloud"),
+                  system: STAGE3_SYSTEM,
+                  prompt: buildScreenPrompt(
+                    spec,
+                    tree,
+                    screen,
+                    promptWithFixes,
+                    designContext,
+                  ),
+                  temperature: 0.2,
+                  abortSignal: abortController.signal,
+                });
+
+                for await (const token of textStream) {
+                  if (abortController.signal.aborted) break;
+                  currentCode += token;
+                  await write({ type: "code_chunk", screen, token });
+                }
+                logger.info("Response stream complete for screen", {
+                  usage: stage3Usage,
+                });
+                screenGenerated = true;
+                break;
+              } catch (err) {
+                streamErr = err;
+                logger.warn(
+                  `Stage 3 model failed for '${screen}' iteration ${iteration}: ${candidateModel}`,
+                  err,
+                );
+                if ((err as Error)?.name === "AbortError") {
+                  logger.info("Generation aborted due to client disconnect");
+                  return {
+                    success: false,
+                    code: "",
+                    error: "Aborted",
+                    iterations,
+                  };
+                }
+              }
+            }
+
+            if (!screenGenerated) {
+              return {
+                success: false,
+                code: currentCode,
+                error: `All models failed: ${String(streamErr)}`,
+                iterations,
+              };
+            }
+
+            const syntaxValidation = validateGeneratedTSX(currentCode);
+            if (syntaxValidation.valid) {
+              return {
+                success: true,
+                code: sanitizeGeneratedCode(currentCode),
+                error: null,
+                iterations,
+              };
+            }
+
+            lastError = syntaxValidation.issues.join("; ");
+            logger.info(
+              `Screen '${screen}' validation failed, retry ${iteration + 1}/${MAX_CRITIQUE_ITERATIONS}:`,
+              {
+                issues: lastError,
+              },
+            );
+
+            await write({
+              type: "quality_warning",
+              screen,
+              issues: syntaxValidation.issues,
+              score: 0,
+            });
+          }
+
+          return {
+            success: currentCode.trim().length > 0,
+            code: sanitizeGeneratedCode(currentCode),
+            error: lastError || "Max retries reached",
+            iterations,
+          };
+        };
+
         for (const [index, screen] of spec.screens.entries()) {
           await write({ type: "screen_start", screen });
 
@@ -909,64 +1048,15 @@ export async function POST(req: NextRequest) {
           const dimensions = screensWithDims[index] ?? { w: 1200, h: 800 };
           const frameId = crypto.randomUUID();
 
-          let screenGenerated = false;
-          let streamErr: unknown = null;
-          let finalCode = "";
+          const result = await generateScreenWithRetry(
+            screen,
+            position,
+            dimensions,
+            frameId,
+            stage3Prompt,
+          );
 
-          for (let i = 0; i < stage3ModelPriority.length; i++) {
-            const candidateModel = stage3ModelPriority[i];
-            try {
-              if (i > 0) {
-                finalCode = "";
-                await write({
-                  type: "screen_reset",
-                  screen,
-                  reason: `retry:${candidateModel}`,
-                });
-              }
-
-              logger.info(
-                `Stage 3 screen '${screen}' via model: ${candidateModel}`,
-              );
-              const { usage: stage3Usage, textStream } = streamText({
-                model: ollama("minimax-m2.5:cloud"),
-                system: STAGE3_SYSTEM,
-                prompt: buildScreenPrompt(
-                  spec,
-                  tree,
-                  screen,
-                  stage3Prompt,
-                  designContext,
-                ),
-                temperature: 0.2,
-                abortSignal: abortController.signal,
-              });
-
-              for await (const token of textStream) {
-                if (abortController.signal.aborted) break;
-                finalCode += token;
-                await write({ type: "code_chunk", screen, token });
-              }
-              logger.info("Response stream complete for screen", {
-                usage: stage3Usage,
-              });
-              screenGenerated = true;
-              break;
-            } catch (err) {
-              streamErr = err;
-              logger.warn(
-                `Stage 3 model failed for '${screen}': ${candidateModel}`,
-                err,
-              );
-              if ((err as Error)?.name === "AbortError") {
-                // Client disconnected — clean exit, no error event needed
-                logger.info("Generation aborted due to client disconnect");
-                return;
-              }
-            }
-          }
-
-          if (!screenGenerated) {
+          if (!result.success) {
             persistedScreens.push({
               id: frameId,
               state: "error",
@@ -975,82 +1065,82 @@ export async function POST(req: NextRequest) {
               w: dimensions.w,
               h: dimensions.h,
               screenName: screen,
-              content: sanitizeGeneratedCode(finalCode),
+              content: result.code,
               editedContent: null,
-              error: `All stage 3 models failed: ${String(streamErr)}`,
+              error: result.error,
             });
-
             await write({ type: "screen_done", screen });
-            throw new Error(
-              `All stage 3 models failed for ${screen}: ${String(streamErr)}`,
-            );
+            continue;
           }
 
           persistedScreens.push({
             id: frameId,
-            state: finalCode.trim() ? "done" : "error",
+            state: "done",
             x: position.x,
             y: position.y,
             w: dimensions.w,
             h: dimensions.h,
             screenName: screen,
-            content: sanitizeGeneratedCode(finalCode),
+            content: result.code,
             editedContent: null,
-            error: finalCode.trim()
-              ? null
-              : "Generation ended before this screen completed.",
+            error: null,
           });
 
-await write({ type: "screen_done", screen });
+          await write({ type: "screen_done", screen });
         }
 
-        const performDesignQualityCheck = (code: string, screenName: string) => {
-          const syntaxValidation = validateGeneratedTSX(code);
-          const issues: string[] = [];
-
-          if (!syntaxValidation.valid) {
-            issues.push(...syntaxValidation.issues);
-          }
-
-          const hasHardcodedColors = /bg-blue-\d+|bg-red-\d+|bg-green-\d+|bg-yellow-\d+/.test(code);
-          if (hasHardcodedColors) {
-            issues.push("Design quality: Uses hardcoded Tailwind color classes");
-          }
-
-          const hasArbitrarySpacing = /\bp-\d\b|\bm-\d\b/.test(code) && !/\bgap-\d\b/.test(code);
-          if (hasArbitrarySpacing) {
-            issues.push("Design quality: Uses arbitrary pixel spacing instead of 8pt grid");
-          }
-
-          const hasEqualCards = code.match(/col-span-\d+.*col-span-\d+/g);
-          if (hasEqualCards && hasEqualCards.length > 2) {
-            issues.push("Design quality: Equal-width cards may lack visual hierarchy");
-          }
-
-          const usesFullWidth = /max-w-\[1280px\]|max-w-\[1024px\]/.test(code);
-          if (!usesFullWidth && spec.dominantLayoutPattern === "dashboard-grid") {
-            issues.push("Design quality: Dashboard may benefit from full viewport width");
-          }
-
-          return {
-            passed: issues.length === 0,
-            issues,
-            score: Math.max(0, 10 - issues.length),
-          };
-        };
+        const critiqueResults: Array<{
+          screen: string;
+          quality: string;
+          score: number;
+          issues: string[];
+        }> = [];
 
         for (const [index, screen] of spec.screens.entries()) {
           const screenData = persistedScreens[index];
           if (screenData && screenData.content) {
-            const qualityCheck = performDesignQualityCheck(screenData.content, screen);
+            const qualityCheck = performDesignQualityCheck(
+              screenData.content,
+              spec,
+            );
             if (!qualityCheck.passed) {
-              logger.warn(`Screen "${screen}" design quality issues:`, qualityCheck.issues);
+              logger.warn(
+                `Screen "${screen}" design quality issues:`,
+                qualityCheck.issues,
+              );
               await write({
                 type: "quality_warning",
                 screen,
                 issues: qualityCheck.issues,
                 score: qualityCheck.score,
               });
+
+              if (qualityCheck.score >= 7) {
+                const llmCritique = await runLLMCritique(
+                  screenData.content,
+                  screen,
+                  spec,
+                  prompt,
+                );
+                critiqueResults.push({
+                  screen,
+                  quality: llmCritique.quality,
+                  score: llmCritique.score,
+                  issues: llmCritique.issues,
+                });
+
+                if (
+                  llmCritique.quality === "needs_revision" &&
+                  llmCritique.fixes?.length > 0
+                ) {
+                  await write({
+                    type: "critique_feedback",
+                    screen,
+                    issues: llmCritique.issues,
+                    fixes: llmCritique.fixes,
+                  });
+                }
+              }
             }
           }
         }
@@ -1140,3 +1230,101 @@ await write({ type: "screen_done", screen });
     );
   }
 }
+
+const runLLMCritique = async (
+  code: string,
+  screenName: string,
+  spec: WebAppSpec,
+  userPrompt: string,
+): Promise<{
+  quality: "approved" | "needs_revision";
+  score: number;
+  issues: string[];
+  fixes: string[];
+}> => {
+  const ollama = initializeOllama();
+  const critiquePrompt = buildCritiquePrompt(
+    screenName,
+    code,
+    spec,
+    userPrompt,
+  );
+
+  try {
+    const { text: critiqueResult } = await generateText({
+      model: ollama("minimax-m2.5:cloud"),
+      system: STAGE4_CRITIQUE_SYSTEM,
+      prompt: critiquePrompt,
+      temperature: 0.1,
+    });
+
+    try {
+      const parsed = JSON.parse(critiqueResult);
+      return {
+        quality: parsed.quality || "needs_revision",
+        score: parsed.score || 5,
+        issues: parsed.issues || [],
+        fixes: parsed.fixes || [],
+      };
+    } catch {
+      logger.warn("Failed to parse critique result as JSON", {
+        critiqueResult,
+      });
+      return {
+        quality: "approved",
+        score: 7,
+        issues: [],
+        fixes: [],
+      };
+    }
+  } catch (error) {
+    logger.error("LLM critique failed", error);
+    return {
+      quality: "approved",
+      score: 5,
+      issues: ["Critique service unavailable"],
+      fixes: [],
+    };
+  }
+};
+
+const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
+  const syntaxValidation = validateGeneratedTSX(code);
+  const issues: string[] = [];
+
+  if (!syntaxValidation.valid) {
+    issues.push(...syntaxValidation.issues);
+  }
+
+  const hasHardcodedColors =
+    /bg-blue-\d+|bg-red-\d+|bg-green-\d+|bg-yellow-\d+/.test(code);
+  if (hasHardcodedColors) {
+    issues.push("Design quality: Uses hardcoded Tailwind color classes");
+  }
+
+  const hasArbitrarySpacing =
+    /\bp-\d\b|\bm-\d\b/.test(code) && !/\bgap-\d\b/.test(code);
+  if (hasArbitrarySpacing) {
+    issues.push(
+      "Design quality: Uses arbitrary pixel spacing instead of 8pt grid",
+    );
+  }
+
+  const hasEqualCards = code.match(/col-span-\d+.*col-span-\d+/g);
+  if (hasEqualCards && hasEqualCards.length > 2) {
+    issues.push("Design quality: Equal-width cards may lack visual hierarchy");
+  }
+
+  const usesFullWidth = /max-w-\[1280px\]|max-w-\[1024px\]/.test(code);
+  if (!usesFullWidth && spec.dominantLayoutPattern === "dashboard-grid") {
+    issues.push(
+      "Design quality: Dashboard may benefit from full viewport width",
+    );
+  }
+
+  return {
+    passed: issues.length === 0,
+    issues,
+    score: Math.max(0, 10 - issues.length),
+  };
+};

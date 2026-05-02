@@ -1367,13 +1367,15 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         },
         body: JSON.stringify({
           projectId: project.id,
-          generationId: generationId ?? "",
-          frameId:
-            isFrameRegeneration && sourceFrame ? sourceFrame.id : undefined,
-          targetFrameId: regenerationTargetFrameId ?? undefined,
           model,
           prompt: generationPrompt,
           platform: spec ?? "web",
+          ...(isFrameRegeneration && {
+            generationId: generationId ?? "",
+            frameId:
+              isFrameRegeneration && sourceFrame ? sourceFrame.id : undefined,
+            targetFrameId: regenerationTargetFrameId ?? undefined,
+          }),
         }),
       });
 

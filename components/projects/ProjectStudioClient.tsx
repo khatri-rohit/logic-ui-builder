@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JetBrains_Mono } from "next/font/google";
 
 import { CanvasFrame } from "@/components/canvas/CanvasFrame";
+import { CanvasErrorBoundary } from "@/components/canvas/CanvasErrorBoundary";
 import {
   InfiniteCanvas,
   InfiniteCanvasHandle,
@@ -391,6 +392,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const {
     activeFrameId,
     selectedFrameId,
+    setActiveFrameId,
     setSelectedFrameId,
     enterFrame,
     exitFrame,
@@ -2357,6 +2359,62 @@ npm run dev
     [applyFrames, scheduleSnapshotPersist, updateStudioRuntime],
   );
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      // Ignore if user is typing in an input/textarea
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        // Still allow Escape in inputs
+        if (event.key === "Escape") {
+          target.blur();
+          setSelectedFrameId(null);
+          setPrompt("");
+        }
+        return;
+      }
+
+      // Delete selected frame
+      if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        selectedFrameId &&
+        !isGenerating
+      ) {
+        event.preventDefault();
+        const frame = framesRef.current.get(selectedFrameId);
+        if (frame) {
+          handleDelete(selectedFrameId);
+          toast.info("Frame deleted");
+        }
+      }
+
+      // Escape to deselect
+      if (event.key === "Escape") {
+        setSelectedFrameId(null);
+        setActiveFrameId(null);
+        exitFrame();
+      }
+
+      // Ctrl/Cmd + Enter to generate
+      if (
+        event.key === "Enter" &&
+        (event.ctrlKey || event.metaKey) &&
+        canGenerate &&
+        !isGenerating
+      ) {
+        event.preventDefault();
+        void handleGenerate();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate]);
+
   useEffect(() => {
     if (!generationRecoveryPrompt) return;
 
@@ -2554,55 +2612,64 @@ npm run dev
       )}
     >
       <div className="absolute inset-0 z-40" ref={domRef}>
-        <InfiniteCanvas
-          ref={canvasRef}
-          frames={frameRects}
-          activeFrameId={activeFrameId}
-          onFrameExit={exitFrame}
-          onTransformChange={handleTransformChange}
-        >
-          {/* <SandpackProvider> */}
-          {frameList.map((frame) => (
-            <CanvasFrame
-              {...frame}
-              key={frame.id}
-              scale={canvasTransform.k}
-              isActive={activeFrameId === frame.id}
-              isSelected={selectedFrameId === frame.id}
-              onSelect={(id) => {
-                setSelectedFrameId(id);
-                selectedFrameIdRef.current = id;
-                const frame = framesRef.current.get(id);
-                if (frame) {
-                  setStudioSelectedGenerationId(frame.generationId);
-                }
-                // onCapture();
-              }}
-              onActivate={(id) => {
-                setSelectedFrameId(id);
-                enterFrame(id);
-                selectedFrameIdRef.current = id;
-                activeFrameIdRef.current = id;
-                const frame = framesRef.current.get(id);
-                if (frame) {
-                  setStudioSelectedGenerationId(frame.generationId);
-                }
-                scheduleSnapshotPersist();
-              }}
-              onMove={handleMoveFrame}
-              onResize={handleResizeFrame}
-              handleFrame={handleFrame}
-              handleDelete={handleDelete}
-              handleEditCode={handleOpenCodeEditor}
-            />
-          ))}
-          {/* </SandpackProvider> */}
-        </InfiniteCanvas>
+        <CanvasErrorBoundary>
+          <InfiniteCanvas
+            ref={canvasRef}
+            frames={frameRects}
+            activeFrameId={activeFrameId}
+            onFrameExit={exitFrame}
+            onTransformChange={handleTransformChange}
+          >
+            {/* <SandpackProvider> */}
+            {frameList.map((frame) => (
+              <CanvasFrame
+                {...frame}
+                key={frame.id}
+                scale={canvasTransform.k}
+                isActive={activeFrameId === frame.id}
+                isSelected={selectedFrameId === frame.id}
+                onSelect={(id) => {
+                  setSelectedFrameId(id);
+                  selectedFrameIdRef.current = id;
+                  const frame = framesRef.current.get(id);
+                  if (frame) {
+                    setStudioSelectedGenerationId(frame.generationId);
+                  }
+                  // onCapture();
+                }}
+                onActivate={(id) => {
+                  setSelectedFrameId(id);
+                  enterFrame(id);
+                  selectedFrameIdRef.current = id;
+                  activeFrameIdRef.current = id;
+                  const frame = framesRef.current.get(id);
+                  if (frame) {
+                    setStudioSelectedGenerationId(frame.generationId);
+                  }
+                  scheduleSnapshotPersist();
+                }}
+                onMove={handleMoveFrame}
+                onResize={handleResizeFrame}
+                handleFrame={handleFrame}
+                handleDelete={handleDelete}
+                handleEditCode={handleOpenCodeEditor}
+              />
+            ))}
+            {/* </SandpackProvider> */}
+          </InfiniteCanvas>
+        </CanvasErrorBoundary>
 
         {frameList.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            role="status"
+            aria-live="polite"
+          >
             <div className="pointer-events-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-white/10 bg-[#181818]/95 p-6 text-center shadow-2xl shadow-black/40">
-              <div className="mx-auto flex size-10 items-center justify-center rounded-md border border-white/10 bg-white/5">
+              <div
+                className="mx-auto flex size-10 items-center justify-center rounded-md border border-white/10 bg-white/5"
+                aria-hidden="true"
+              >
                 {isGenerating ? (
                   <Sparkles className="size-5 animate-spin text-white/80" />
                 ) : (
@@ -2619,6 +2686,12 @@ npm run dev
                   ? "LOGIC is extracting the app spec and will place preview screens here shortly."
                   : "Use the prompt bar below to generate a new UI, or restore a project from history."}
               </p>
+              {!isGenerating && frameList.length === 0 && (
+                <p className="sr-only">
+                  Type a description of your desired UI in the prompt bar below
+                  and press Enter to generate screens.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -2739,7 +2812,11 @@ npm run dev
       <div className="pointer-events-none absolute inset-0 z-50">
         <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-md border border-input bg-card/90 p-2.5 shadow-2xl shadow-black/30 backdrop-blur-[1px]">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1 border border-input bg-muted p-1">
+            <div
+              className="flex items-center gap-1 border border-input bg-muted p-1"
+              role="group"
+              aria-label="Platform selection"
+            >
               <Button
                 type="button"
                 size="xs"
@@ -2749,8 +2826,14 @@ npm run dev
                   "h-7 px-2",
                   spec === "mobile" && "text-muted-foreground",
                 )}
+                aria-pressed={spec === "web"}
+                aria-label="Generate for web platform (desktop)"
               >
-                <Monitor data-icon="inline-start" className="size-4" />
+                <Monitor
+                  data-icon="inline-start"
+                  className="size-4"
+                  aria-hidden="true"
+                />
                 <span
                   className={cn(
                     "text-[10px] uppercase tracking-[0.18em]",
@@ -2818,14 +2901,19 @@ npm run dev
                 </span>
               )}
               {/* <span
-                className={cn(
-                  "text-[10px] uppercase tracking-[0.16em] text-muted-foreground",
-                  mono.className,
-                )}
-              >
-                Use Enter to generate and Shift+Enter for a new line
-              </span> */}
+className={cn(
+                    "text-[10px] uppercase tracking-[0.16em] text-muted-foreground",
+                    mono.className,
+                  )}
+                >
+                  Use Enter to generate and Shift+Enter for a new line
+                </span> */}
             </div>
+            {/* Screen reader hint for prompt input */}
+            <span id="prompt-hint" className="sr-only">
+              Type a description of the UI you want to create. Press Enter to
+              generate or Escape to clear.
+            </span>
           </div>
 
           {(generationErrorMessage || generationRecoveryPrompt) && (
@@ -2867,6 +2955,10 @@ npm run dev
                     void handleGenerate();
                   }
                 }
+                if (event.key === "Escape") {
+                  setPrompt("");
+                  setSelectedFrameId(null);
+                }
               }}
               placeholder={
                 activeFrameId
@@ -2879,6 +2971,10 @@ npm run dev
                 isGenerating && "cursor-not-allowed opacity-80",
                 mono.className,
               )}
+              aria-label="UI generation prompt input"
+              aria-describedby="prompt-hint"
+              aria-disabled={isGenerating}
+              disabled={isGenerating}
             />
 
             {activeFrameId ? (
@@ -2886,9 +2982,18 @@ npm run dev
                 <Button
                   onClick={() => handleGenerate()}
                   className="h-11 rounded-md px-4"
+                  aria-label={
+                    isGenerating
+                      ? "Generating UI, please wait"
+                      : generationMode === "regenerate"
+                        ? "Regenerate selected frame"
+                        : "Generate new UI layout"
+                  }
+                  disabled={isGenerating}
                 >
                   <Sparkles
                     className={`size-4 ${isGenerating ? "animate-spin" : ""}`}
+                    aria-hidden="true"
                   />
                   {isGenerating
                     ? "Generating..."
@@ -2907,6 +3012,16 @@ npm run dev
                     )
                   }
                   disabled={isGenerating}
+                  aria-label={
+                    generationMode === "generate"
+                      ? "Switch to regenerate mode"
+                      : "Switch to generate mode"
+                  }
+                  title={
+                    generationMode === "generate"
+                      ? "Generate new layout"
+                      : "Regenerate existing frame"
+                  }
                 >
                   <span className="text-[10px] font-medium">
                     {generationMode === "generate" ? "G" : "R"}

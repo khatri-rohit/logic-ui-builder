@@ -9,10 +9,13 @@ import { initializeOllama } from "@/lib/ollama";
 import { generateText, streamText } from "ai";
 import {
   buildScreenPrompt,
+  buildCritiquePrompt,
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
   STAGE3_SYSTEM,
+  STAGE4_CRITIQUE_SYSTEM,
+  validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import logger from "@/lib/logger";
@@ -998,7 +1001,58 @@ export async function POST(req: NextRequest) {
               : "Generation ended before this screen completed.",
           });
 
-          await write({ type: "screen_done", screen });
+await write({ type: "screen_done", screen });
+        }
+
+        const performDesignQualityCheck = (code: string, screenName: string) => {
+          const syntaxValidation = validateGeneratedTSX(code);
+          const issues: string[] = [];
+
+          if (!syntaxValidation.valid) {
+            issues.push(...syntaxValidation.issues);
+          }
+
+          const hasHardcodedColors = /bg-blue-\d+|bg-red-\d+|bg-green-\d+|bg-yellow-\d+/.test(code);
+          if (hasHardcodedColors) {
+            issues.push("Design quality: Uses hardcoded Tailwind color classes");
+          }
+
+          const hasArbitrarySpacing = /\bp-\d\b|\bm-\d\b/.test(code) && !/\bgap-\d\b/.test(code);
+          if (hasArbitrarySpacing) {
+            issues.push("Design quality: Uses arbitrary pixel spacing instead of 8pt grid");
+          }
+
+          const hasEqualCards = code.match(/col-span-\d+.*col-span-\d+/g);
+          if (hasEqualCards && hasEqualCards.length > 2) {
+            issues.push("Design quality: Equal-width cards may lack visual hierarchy");
+          }
+
+          const usesFullWidth = /max-w-\[1280px\]|max-w-\[1024px\]/.test(code);
+          if (!usesFullWidth && spec.dominantLayoutPattern === "dashboard-grid") {
+            issues.push("Design quality: Dashboard may benefit from full viewport width");
+          }
+
+          return {
+            passed: issues.length === 0,
+            issues,
+            score: Math.max(0, 10 - issues.length),
+          };
+        };
+
+        for (const [index, screen] of spec.screens.entries()) {
+          const screenData = persistedScreens[index];
+          if (screenData && screenData.content) {
+            const qualityCheck = performDesignQualityCheck(screenData.content, screen);
+            if (!qualityCheck.passed) {
+              logger.warn(`Screen "${screen}" design quality issues:`, qualityCheck.issues);
+              await write({
+                type: "quality_warning",
+                screen,
+                issues: qualityCheck.issues,
+                score: qualityCheck.score,
+              });
+            }
+          }
         }
 
         if (generationId) {

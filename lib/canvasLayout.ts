@@ -2,6 +2,13 @@ import { GenerationPlatform } from "./types";
 
 const H_GAP = 100; // gap between screens in same generation
 
+export const WEB_VIEWPORT_STANDARDS = {
+  min: 1024,
+  standard: 1280,
+  max: 1440,
+  wide: 1920,
+} as const;
+
 interface ExistingFrameBounds {
   x: number;
   y: number;
@@ -75,21 +82,29 @@ export function getInitialDimensionsForPlatform(
     return { w: 390, h: 844 };
   }
 
-  if (
-    type.includes("landing") ||
-    type.includes("home") ||
-    type.includes("hero")
-  )
-    return { w: 1200, h: 800 }; // wide landing page
+  if (type.includes("landing") || type.includes("home") || type.includes("hero"))
+    return { w: WEB_VIEWPORT_STANDARDS.standard, h: 800 };
 
   if (type.includes("dashboard") || type.includes("admin"))
-    return { w: 1280, h: 900 }; // wide dashboard
+    return { w: WEB_VIEWPORT_STANDARDS.standard, h: 900 };
 
-  if (type.includes("tablet")) return { w: 768, h: 1024 };
+  if (type.includes("settings") || type.includes("profile") || type.includes("account"))
+    return { w: WEB_VIEWPORT_STANDARDS.min, h: 700 };
 
   if (type.includes("modal") || type.includes("dialog"))
-    return { w: 480, h: 400 };
+    return { w: 560, h: 480 };
 
-  // Default — medium web page with stable desktop baseline width
-  return { w: 960, h: 700 };
+  if (type.includes("article") || type.includes("blog") || type.includes("post"))
+    return { w: 768, h: 900 };
+
+  if (type.includes("pricing") || type.includes("features") || type.includes("about"))
+    return { w: WEB_VIEWPORT_STANDARDS.standard, h: 700 };
+
+  if (type.includes("contact") || type.includes("faq") || type.includes("terms"))
+    return { w: WEB_VIEWPORT_STANDARDS.min, h: 600 };
+
+  if (type.includes("login") || type.includes("signin") || type.includes("signup") || type.includes("register"))
+    return { w: 480, h: 600 };
+
+  return { w: WEB_VIEWPORT_STANDARDS.min, h: 700 };
 }

@@ -67,12 +67,19 @@ const FALLBACK_UX_PRIORITIES = [
 ];
 
 const BIAS_CORRECTIONS = [
-  "NO EMOJIS: Replace symbols with high-quality icons (Radix, Phosphor) or clean SVG primitives.",
+  "NO EMOJIS: Replace symbols with high-quality icons (Radix, Phosphor, Lucide) or clean SVG primitives.",
   "NO AI PURPLE: Avoid the 'AI Purple/Blue' aesthetic. Use neutral bases (Zinc/Slate) with singular high-contrast accents.",
   "NO SYSTEM DEFAULT: Use the runtime font contract consistently; avoid browser-default serif fallbacks.",
   "NO GENERIC NAMES: Avoid 'John Doe' or 'Acme Corp'. Use realistic, contextual brand and user names.",
   "NO 3-COLUMN CARDS: Avoid the generic 3-equal-card feature row. Use asymmetric grids or zig-zags.",
   "NO PURE BLACK: Never use #000000. Use Off-Black, Zinc-950, or Charcoal.",
+  "CRITICAL: NO HARDCODED COLORS - Use design tokens only (var(--surface), var(--primary), var(--accent)). Never use bg-blue-500, #3b82f6, rgb(), or hex codes directly.",
+  "CRITICAL: NO ARBITRARY SPACING - Use 8pt grid only (gap-2, gap-4, gap-6, gap-8). Never use p-5, p-7, m-3, m-5.",
+  "NO EQUAL-WEIGHT KPI CARDS: Vary KPI card sizes to create visual hierarchy. Don't make all cards the same size.",
+  "NO NARROW CENTERED COLUMNS: On desktop, use full viewport width. Never trap content in a narrow centered container.",
+  "NO TEXT-GRAY-500: Use text-[var(--text-secondary)] or text-[var(--text-tertiary)] for secondary text.",
+  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested. Keep surfaces flat.",
+  "NO GENERIC EMPTY STATES: Empty states need specific copy, a compact visual element, and one clear action.",
 ];
 
 const SHORT_DESIGN_TOKENS = new Set(["ui", "ux", "ai", "3d", "ar", "vr"]);

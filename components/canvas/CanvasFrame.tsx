@@ -504,22 +504,26 @@ export const CanvasFrame = memo(function CanvasFrame({
         </div>
       </ContextMenuTrigger>
       {/* Context menu content can be added here */}
-      <ContextMenuContent onEscapeKeyDown={(event) => event.stopPropagation()}>
-        <ContextMenuItem onSelect={() => handleEditCode(id)}>
-          Edit Code
-        </ContextMenuItem>
-        {isCompileError && (
-          <ContextMenuItem onSelect={() => handleFrame(id)}>
-            Retry compile fix
+      {!(state === "skeleton" || state === "streaming") && (
+        <ContextMenuContent
+          onEscapeKeyDown={(event) => event.stopPropagation()}
+        >
+          <ContextMenuItem onSelect={() => handleEditCode(id)}>
+            Edit Code
           </ContextMenuItem>
-        )}
-        <ContextMenuItem onSelect={() => handleFrame(id)}>
-          Regenerate
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => handleDelete(id)}>
-          Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
+          {isCompileError && (
+            <ContextMenuItem onSelect={() => handleFrame(id)}>
+              Retry compile fix
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onSelect={() => handleFrame(id)}>
+            Regenerate
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleDelete(id)}>
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   );
 });

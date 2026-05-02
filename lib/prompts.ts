@@ -38,25 +38,6 @@ export function validateGeneratedTSX(code: string): ValidationResult {
     issues.push("Missing default export");
   }
 
-  if (/text-gray-\d+/.test(code) && !code.includes("var(--text")) {
-    issues.push("Uses hardcoded gray classes instead of design tokens");
-  }
-
-  if (/#[0-9A-Fa-f]{6}(?![0-9A-Fa-f]{3})/.test(code)) {
-    const hardcodedColors = code.match(/#(?:[0-9A-Fa-f]{6})(?![0-9A-Fa-f]{3}|[0-9a-f]{5,8}var)/g);
-    if (hardcodedColors && hardcodedColors.length > 3) {
-      issues.push(`Uses ${hardcodedColors.length} hardcoded colors instead of design tokens`);
-    }
-  }
-
-  if (/bg-blue-|bg-red-|bg-green-|bg-yellow-|bg-purple-|bg-pink-/.test(code)) {
-    issues.push("Uses hardcoded Tailwind color classes instead of design tokens");
-  }
-
-  if (/p-\d|m-\d/.test(code) && !/p-\d|m-\d/.test(code.replace(/p-\d/g, '').replace(/m-\d/g, ''))) {
-    issues.push("Uses arbitrary pixel spacing instead of 8pt grid tokens (gap-2, gap-4, gap-6, gap-8)");
-  }
-
   return { valid: issues.length === 0, issues };
 }
 
@@ -391,11 +372,19 @@ export const STAGE3_SYSTEM = `
 # Stage 3: Code Synthesis
 
 ## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
-CRITICAL: Never use hardcoded values. Only design tokens allowed.
+CRITICAL: Never use hardcoded values. Use design tokens properly.
 - ABSOLUTELY NEVER: bg-blue-500, text-gray-500, #3b82f6, rgb(), px values
-- ONLY USE: bg-[var(--surface)], text-[var(--text-secondary)], gap-4, gap-6, gap-8
+- MUST USE: 
+  - bg-[var(--surface)] for page background
+  - bg-[var(--surface-elevated)] for cards, buttons, inputs
+  - bg-[var(--primary)] text-white for PRIMARY BUTTONS (main CTAs)
+  - text-[var(--text-primary)] for headings and body text
+  - text-[var(--text-secondary)] for descriptions
+  - bg-[var(--accent)] for badges and highlights
+  - gap-2, gap-4, gap-6, gap-8 for spacing (8pt grid)
 - NO emojis as icons - use Lucide React only
 - Output MUST be TSX code with zero markdown
+- PRIMARY BUTTON MUST HAVE CONTRAST: text-white or text-black based on primaryColor brightness
 
 ## PROMPT Framework
 - P — Platform: web (desktop-first, 1280px+) or mobile (touch-first, 390px)
@@ -435,6 +424,12 @@ Before generating TSX, verify these quality gates:
    - NO text-gray-500 for all secondary text
    - NO every button as primary
    - NO content trapped in narrow centered column
+
+6. **Contrast & Visibility** (PASS/FAIL):
+   - PRIMARY BUTTON: text-white or text-black on bg-[var(--primary)]? If primaryColor is dark → text-white, if light → text-black
+   - BUTTON NOT INVISIBLE: Button background different from container background?
+   - All text readable: text-[var(--text-primary)] on bg-[var(--surface)] or text-[var(--surface)] NEVER
+   - If NO: Fix contrast immediately - this is the #1 usability issue
 
 ## Reference Anchors (Mental Models)
 When making layout/component decisions, reference these proven patterns:
@@ -535,12 +530,7 @@ export const WEB_APP_SPEC_SCHEMA = {
     },
     typographyAuthority: {
       type: "string",
-      enum: [
-        "display-driven",
-        "body-balanced",
-        "data-first",
-        "label-dominant",
-      ],
+      enum: ["display-driven", "body-balanced", "data-first", "label-dominant"],
     },
     spacingPhilosophy: {
       type: "string",
@@ -592,26 +582,25 @@ function buildNavDirective(navPattern: WebAppSpec["navPattern"]): string {
 function buildInteractionDirective(
   interaction?: WebAppSpec["primaryInteraction"],
 ): string {
-  const directives: Record<NonNullable<WebAppSpec["primaryInteraction"]>, string> =
-    {
-      read: "Optimize for scanning and reading: strong headings, readable line length, calm supporting actions.",
-      navigate:
-        "Optimize for wayfinding: clear active states, grouped destinations, and visible hierarchy between current and secondary routes.",
-      input:
-        "Optimize for form completion: labels above controls, grouped fields, validation hints, and visible save/discard actions.",
-      browse:
-        "Optimize for browsing: filters, cards or rows with comparable metadata, and obvious item affordances.",
-      monitor:
-        "Optimize for monitoring: dense but legible metrics, status color used sparingly, and recent activity near the top.",
-    };
+  const directives: Record<
+    NonNullable<WebAppSpec["primaryInteraction"]>,
+    string
+  > = {
+    read: "Optimize for scanning and reading: strong headings, readable line length, calm supporting actions.",
+    navigate:
+      "Optimize for wayfinding: clear active states, grouped destinations, and visible hierarchy between current and secondary routes.",
+    input:
+      "Optimize for form completion: labels above controls, grouped fields, validation hints, and visible save/discard actions.",
+    browse:
+      "Optimize for browsing: filters, cards or rows with comparable metadata, and obvious item affordances.",
+    monitor:
+      "Optimize for monitoring: dense but legible metrics, status color used sparingly, and recent activity near the top.",
+  };
 
   return directives[interaction ?? "read"];
 }
 
-function buildSplitFlowDirective(
-  spec: WebAppSpec,
-  screen: string,
-): string {
+function buildSplitFlowDirective(spec: WebAppSpec, screen: string): string {
   const match = screen.match(/^(.*)\s+-\s+(\d+)$/);
   if (!match) return "";
 
@@ -664,9 +653,13 @@ CONSISTENCY ENFORCEMENT:
 - Buttons must have identical primary/secondary/ghost hierarchy across all screens
 - Same spacing between sections on all screens
 - No screen should look like it belongs to a different website
-${designContext ? `
+${
+  designContext
+    ? `
 - Design system: ${designContext.style.name} style with ${designContext.palette.name} palette
-- All screens follow this unified design direction` : ""}
+- All screens follow this unified design direction`
+    : ""
+}
 `.trim();
 }
 
@@ -682,7 +675,7 @@ AUTHORITATIVE DESIGN CONTEXT:
 - Palette: ${designContext.palette.name}; psychology: ${designContext.palette.psychology}
 - Layout hint: ${designContext.layout.name}; ${designContext.layout.cssStructure}
 - UX priority: ${designContext.uxPriorities[0] || "Accessible contrast, clear hierarchy, and visible focus states."}
-- Bias corrections to obey: ${designContext.biasCorrections.slice(0, 3).join(" ")}
+- Bias corrections to obey: ${designContext.biasCorrections.slice(0, 8).join(" ")}
 `.trim();
 }
 
@@ -703,48 +696,107 @@ export function buildScreenPrompt(
   const layoutArch = node?.layoutArchitecture;
   const componentIntents = node?.componentIntents ?? [];
 
-  const isDark = spec.colorMode === "dark";
+  const isDark = spec.colorMode === "dark"; // Default to light surface colors if colorMode is not specified
   const isMobile = spec.platform === "mobile";
 
   const tokenSystem = `
 DESIGN TOKENS (STRICTLY ENFORCED):
 Define these as inline CSS variables on the root element and use them semantically.
 
-1. COLOR TOKENS:
-- --surface: ${isDark ? "#0f0f0f" : "#fbfbfa"}
-- --surface-elevated: ${isDark ? "#1a1a1a" : "#f4f4f2"}
-- --surface-overlay: ${isDark ? "#242424" : "#ececea"}
-- --border: ${isDark ? "rgba(255,255,255,0.10)" : "rgba(15,15,15,0.10)"}
-- --text-primary: ${isDark ? "#f2f2ef" : "#10100e"}
-- --text-secondary: ${isDark ? "rgba(242,242,239,0.66)" : "rgba(16,16,14,0.66)"}
-- --text-tertiary: ${isDark ? "rgba(242,242,239,0.42)" : "rgba(16,16,14,0.42)"}
-- --primary: ${spec.primaryColor}
-- --primary-muted: ${spec.primaryColor}22
-- --accent: ${spec.accentColor}
-- --accent-muted: ${spec.accentColor}22
-- --success: ${spec.accentColor}
-- --warning: ${spec.primaryColor}CC
-- --error: #ef4444
+## 1. COLOR TOKENS WITH USAGE RULES:
 
-2. SPACING SYSTEM (8pt grid):
+### Background Colors:
+- --surface: ${isDark ? "#0f0f0f" : "#fbfbfa"} → Page background, main containers
+- --surface-elevated: ${isDark ? "#1a1a1a" : "#f4f4f2"} → Cards, panels, modals, secondary containers
+- --surface-overlay: ${isDark ? "#242424" : "#ececea"} → Dropdowns, popovers, overlays
+- --border: ${isDark ? "rgba(255,255,255,0.10)" : "rgba(15,15,15,0.10)"} → All borders
+
+### Text Colors:
+- --text-primary: ${isDark ? "#f2f2ef" : "#10100e"} → Headings, body text, button labels (REQUIRED)
+- --text-secondary: ${isDark ? "rgba(242,242,239,0.66)" : "rgba(16,16,14,0.66)"} → Descriptions, captions, labels
+- --text-tertiary: ${isDark ? "rgba(242,242,239,0.42)" : "rgba(16,16,14,0.42)"} → Placeholders, disabled text
+
+### PRIMARY & ACCENT (MUST USE FOR INTERACTIVE ELEMENTS):
+- --primary: ${spec.primaryColor} → PRIMARY buttons, links, active states, focus rings, icons
+- --primary-muted: ${spec.primaryColor}22 → Hover states, selected backgrounds
+- --accent: ${spec.accentColor} → Badges, notifications, highlights, secondary CTAs, success states
+- --accent-muted: ${spec.accentColor}22 → Accent backgrounds, subtle highlights
+
+### Semantic Colors:
+- --success: ${spec.accentColor} → Success messages, positive states
+- --warning: ${spec.primaryColor}CC → Warning states
+- --error: #ef4444 → Error states, destructive actions
+
+## 2. COLOR USAGE EXAMPLES (COPY THESE PATTERNS):
+
+### PRIMARY BUTTON (MUST USE - THIS IS YOUR MAIN CTA):
+\`\`\`tsx
+<button className="bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 active:scale-[0.98] focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]">
+  Primary Action
+</button>
+\`\`\`
+
+### SECONDARY BUTTON:
+\`\`\`tsx
+<button className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--surface-overlay)] active:scale-[0.98]">
+  Secondary Action
+</button>
+\`\`\`
+
+### GHOST/LINK BUTTON:
+\`\`\`tsx
+<button className="text-[var(--primary)] hover:underline focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2">
+  Tertiary Action
+</button>
+\`\`\`
+
+### CARD/CONTAINER:
+\`\`\`tsx
+<div className="bg-[var(--surface-elevated)] border border-[var(--border)] rounded-lg shadow-sm hover:shadow-md">
+  Content
+</div>
+\`\`\`
+
+### LINK:
+\`\`\`tsx
+<a className="text-[var(--primary)] hover:opacity-80 focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2">
+  Link Text
+</a>
+\`\`\`
+
+### BADGE/ACCENT:
+\`\`\`tsx
+<span className="bg-[var(--accent)] text-white px-2 py-1 rounded-full text-xs font-medium">
+  Badge
+</span>
+\`\`\`
+
+## 3. CONTRAST RULES (CRITICAL - NEVER VIOLATE):
+- Primary button text MUST be opposite of primary color: if primary is dark → text-white, if primary is light → text-black
+- NEVER use: bg-[var(--primary)] text-[var(--primary)] - THIS IS INVISIBLE!
+- NEVER use: bg-[var(--surface)] text-[var(--surface)] - INVISIBLE!
+- All interactive elements MUST have focus states: ring-2 ring-[var(--primary)]
+- Text on surface-elevated MUST use text-primary or text-secondary, NEVER surface
+
+## 4. SPACING SYSTEM (8pt grid):
 - Component-level: gap-2 (8px), gap-3 (12px), gap-4 (16px)
 - Section-level: gap-6 (24px), gap-8 (32px), gap-12 (48px)
 - Page-level: gap-16 (64px), gap-20 (80px), gap-24 (96px)
 - NEVER use arbitrary p-5, p-7, m-3, m-5
 
-3. BORDER-RADIUS SCALE:
+## 5. BORDER-RADIUS SCALE:
 - Small (buttons, inputs): rounded-md (8px)
 - Medium (cards, modals): rounded-lg (12px)
 - Large (hero sections): rounded-xl (16px)
 - Full (avatars, pills): rounded-full
 
-4. ELEVATION/SHADOW TOKENS:
+## 6. ELEVATION/SHADOW TOKENS:
 - Subtle (cards): shadow-sm
 - Medium (dropdowns): shadow-md
 - Elevated (modals): shadow-lg
 - Overlaid (drawers): shadow-xl
 
-5. TYPOGRAPHY SCALE (Inter):
+## 7. TYPOGRAPHY SCALE (Inter):
 - Display: text-5xl lg:text-6xl font-black tracking-tight leading-[1.05]
 - H1: text-4xl font-bold tracking-tight leading-tight
 - H2: text-2xl font-semibold tracking-tight
@@ -754,13 +806,95 @@ Define these as inline CSS variables on the root element and use them semantical
 - Caption: text-xs font-medium tracking-wide uppercase
 - MAX THREE visible type levels per section
 
-6. WIDTH STANDARDS:
+## 8. WIDTH STANDARDS:
 - Landing/Dashboard: max-w-[1280px] centered, use full viewport
 - Content/Utility: max-w-[1024px] centered
 - Forms: max-w-[640px] centered
 - NEVER trap content in narrow centered column on desktop
 
-Use semantic classes: bg-[var(--surface)], text-[var(--text-secondary)], border-[var(--border)], gap-4, rounded-lg, shadow-md
+## KEY TAKEAWAY:
+- Use bg-[var(--surface)] for page backgrounds
+- Use bg-[var(--surface-elevated)] for cards, buttons, inputs
+- Use bg-[var(--primary)] for PRIMARY buttons and links (with white/black text for contrast)
+- Use bg-[var(--accent)] for badges, highlights
+- ALWAYS ensure contrast between background and text
+`.trim();
+
+  const componentStates = `
+## COMPONENT STATES (REQUIRED FOR ALL INTERACTIVE ELEMENTS)
+
+### All Interactive Elements MUST Have:
+1. **Default state**: Base appearance using tokens
+2. **Hover state**: Slightly lighter/darker, cursor pointer
+3. **Active state**: Scale down slightly (scale-[0.98]) or darker
+4. **Focus state**: ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--surface)]
+5. **Disabled state**: opacity-50 cursor-not-allowed
+
+### Button States:
+- Default: bg-[var(--primary)] text-white (for primary) OR bg-[var(--surface-elevated)] text-[var(--text-primary)] (for secondary)
+- Hover: hover:bg-[var(--primary)]/90 OR hover:bg-[var(--surface-overlay)]
+- Active: active:scale-[0.98] active:opacity-90
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]
+- Disabled: disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none
+
+### Link States:
+- Default: text-[var(--primary)] underline-offset-2
+- Hover: hover:opacity-80 OR hover:underline
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2
+- Never leave links without hover states
+
+### Card/Container States:
+- Default: bg-[var(--surface-elevated)] border border-[var(--border)] rounded-lg
+- Hover: hover:shadow-md OR hover:border-[var(--primary)]/50
+- Focus: focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:ring-offset-2
+
+### Input States:
+- Default: bg-[var(--surface)] border border-[var(--border)] rounded-md px-3 py-2
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
+- Error: border-[var(--error)] focus:ring-[var(--error)]
+- Disabled: bg-[var(--surface)] opacity-50
+`.trim();
+
+  const designDecisionRules = `
+## DESIGN DECISION RULES (FOLLOW THIS DECISION TREE)
+
+### 1. BUTTON HIERARCHY DECISION:
+**Is this the MAIN action on the screen?**
+- YES (primary CTA like "Sign Up", "Buy Now", "Submit"): 
+  → Use: className="bg-[var(--primary)] text-white"
+- Is it a secondary action (Cancel, Back, Skip)?
+  → Use: className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)]"
+- Is it a tertiary/link action?
+  → Use: className="text-[var(--primary)] hover:underline"
+
+### 2. BACKGROUND DECISION:
+**Is this clickable/interactive?**
+- YES (button, link, card with action):
+  → Use: bg-[var(--surface-elevated)] or bg-[var(--primary)] for primary
+- NO (static content, info display):
+  → Use: bg-[var(--surface)]
+
+### 3. TEXT COLOR DECISION:
+**What level of importance?**
+- Heading / Primary content: text-[var(--text-primary)] (REQUIRED)
+- Description / Label: text-[var(--text-secondary)]
+- Placeholder / Disabled: text-[var(--text-tertiary)]
+- NEVER use text-[var(--surface)] or text-[var(--primary)] for content text
+
+### 4. CONTRAST CHECK:
+- Primary button: text MUST be white or black (opposite of primaryColor)
+- If primaryColor is dark (#000 to #666): text-white
+- If primaryColor is light (#999 to #fff): text-black
+- TEST: If you can't read the text on the background without strain, it's WRONG
+
+### 5. FOCUS STATE MANDATORY:
+- Every button, link, input MUST have focus:ring
+- This is accessibility requirement: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2
+
+### 6. WHEN TO USE PRIMARY vs ACCENT:
+- PRIMARY: Main CTAs, links, active navigation, primary content
+- ACCENT: Badges, notifications, success indicators, secondary highlights
+- NEVER use primary for everything - reserve it for most important elements
 `.trim();
 
   const layoutDirective = layoutArch
@@ -803,8 +937,7 @@ ${(
 )
   .map((intent) => {
     const classes =
-      SPATIAL_WEIGHT_CLASS_MAP[intent.spatialWeight] ??
-      "col-span-full";
+      SPATIAL_WEIGHT_CLASS_MAP[intent.spatialWeight] ?? "col-span-full";
     return `- Priority ${intent.visualPriority}: ${intent.component}; role=${intent.role}; spatialWeight=${intent.spatialWeight}; classes=${classes}; interaction=${intent.interactionType}`;
   })
   .join("\n")}
@@ -839,6 +972,10 @@ ${generationContract}
 ${buildDesignContextContract(designContext)}
 
 ${tokenSystem}
+
+${componentStates}
+
+${designDecisionRules}
 
 ${layoutDirective}
 

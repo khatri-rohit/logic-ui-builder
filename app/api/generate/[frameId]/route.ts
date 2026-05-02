@@ -494,7 +494,7 @@ export async function POST(
             );
 
             const result = streamText({
-              model: ollama("minimax-m2.5:cloud"),
+              model: ollama(candidateModel),
               system: STAGE3_SYSTEM,
               prompt: buildScreenPrompt(
                 spec,

@@ -71,7 +71,6 @@ export const CanvasFrame = memo(function CanvasFrame({
   content,
   editedContent,
   state,
-  error,
   isActive,
   isSelected,
   scale,
@@ -346,16 +345,6 @@ export const CanvasFrame = memo(function CanvasFrame({
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
   const iframeHeight = h - chromeTopHeight - chromeBottomHeight;
-  const resolvedErrorMessage =
-    error?.trim() || "Generation failed before a valid preview could render.";
-  const isCompileError = /\b(compile|syntax|typescript|tsx|jsx|module)\b/i.test(
-    resolvedErrorMessage,
-  );
-  const errorTitle = isCompileError ? "Compile error" : "Generation failed";
-  const errorDetail =
-    resolvedErrorMessage.length > 220
-      ? `${resolvedErrorMessage.slice(0, 217)}...`
-      : resolvedErrorMessage;
 
   return (
     <ContextMenu
@@ -438,15 +427,32 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 flex items-center justify-center bg-[#1a0000]"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0f0f0f]"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white/40"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
                 <div className="max-w-[86%] px-4 text-center">
-                  <span className="font-mono text-[10px] text-red-300/90">
-                    {errorTitle}
+                  <span className="font-mono text-[11px] text-white/60">
+                    This frame didn&apos;t compile
                   </span>
-                  <p className="mt-1 font-mono text-[9px] leading-snug text-red-200/80">
-                    {errorDetail}
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-white/35">
+                    Right-click this frame and select &quot;Regenerate&quot; to try again.
                   </p>
                 </div>
               </div>
@@ -508,12 +514,9 @@ export const CanvasFrame = memo(function CanvasFrame({
         <ContextMenuContent
           onEscapeKeyDown={(event) => event.stopPropagation()}
         >
-          <ContextMenuItem onSelect={() => handleEditCode(id)}>
-            Edit Code
-          </ContextMenuItem>
-          {isCompileError && (
-            <ContextMenuItem onSelect={() => handleFrame(id)}>
-              Retry compile fix
+          {state === "done" && (
+            <ContextMenuItem onSelect={() => handleEditCode(id)}>
+              Edit Code
             </ContextMenuItem>
           )}
           <ContextMenuItem onSelect={() => handleFrame(id)}>

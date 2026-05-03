@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { RefObject, useCallback, useEffect, useRef } from "react";
 import {
   loadSandpackClient,
@@ -82,7 +83,7 @@ export function useFrameLifecycle({
             code: content.slice(0, 200),
           });
         }
-        if (msg.type === "done" && (msg as any).compilatonError) {
+        if (msg.type === "done" && (msg as any).compilationError) {
           logger.warn("Sandbox compilation failed", {
             code: content.slice(0, 200),
           });

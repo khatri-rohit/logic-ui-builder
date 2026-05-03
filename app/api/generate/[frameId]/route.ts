@@ -12,7 +12,7 @@ import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import { initializeOllama } from "@/lib/ollama";
 import prisma from "@/lib/prisma";
-import { buildScreenPrompt, STAGE3_SYSTEM } from "@/lib/prompts";
+import { buildScreenPrompt, STAGE3_SYSTEM, validateGeneratedTSX } from "@/lib/prompts";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import { buildDesignContext } from "@/lib/designContext";
 import {
@@ -524,6 +524,13 @@ export async function POST(
 
         if (!generatedCode.trim()) {
           throw new Error("Generation ended before this frame completed.");
+        }
+
+        const syntaxValidation = validateGeneratedTSX(generatedCode);
+        if (!syntaxValidation.valid) {
+          throw new Error(
+            `Frame TSX validation failed: ${syntaxValidation.issues.join("; ")}`,
+          );
         }
 
         const updatedFrame: PersistedGenerationScreen = {

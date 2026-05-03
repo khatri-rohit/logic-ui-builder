@@ -750,10 +750,6 @@ export async function POST(req: NextRequest) {
               error: `All stage 3 models failed: ${String(streamErr)}`,
             });
 
-            await write({
-              type: "screen_done",
-              screen: sourceFrame!.screenName,
-            });
             throw new Error(
               `All stage 3 models failed for frame ${body.frameId}: ${String(streamErr)}`,
             );
@@ -1037,10 +1033,11 @@ export async function POST(req: NextRequest) {
             });
           }
 
+          const isValid = validateGeneratedTSX(currentCode).valid;
           return {
-            success: currentCode.trim().length > 0,
+            success: isValid,
             code: sanitizeGeneratedCode(currentCode),
-            error: lastError || "Max retries reached",
+            error: isValid ? null : (lastError || "Max retries reached without valid TSX"),
             iterations,
           };
         };

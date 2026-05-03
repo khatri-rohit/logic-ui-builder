@@ -749,37 +749,40 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       dirtyScreens: new Set(),
     }));
 
-    applyFrames((current) => {
-      let changed = false;
-      const next = new Map(current);
+    applyFrames(
+      (current) => {
+        let changed = false;
+        const next = new Map(current);
 
-      for (const screenName of dirtyScreens) {
-        const frameId = resolveFrameIdForScreenFromState({
-          screenName,
-          frames: next,
-          activeFrameIds: activeFrameIdsSnapshot,
-          frameIdsByScreen: frameIdsSnapshot,
-        });
-        if (!frameId) continue;
+        for (const screenName of dirtyScreens) {
+          const frameId = resolveFrameIdForScreenFromState({
+            screenName,
+            frames: next,
+            activeFrameIds: activeFrameIdsSnapshot,
+            frameIdsByScreen: frameIdsSnapshot,
+          });
+          if (!frameId) continue;
 
-        const frame = next.get(frameId);
-        if (!frame) continue;
+          const frame = next.get(frameId);
+          if (!frame) continue;
 
-        const bufferedContent = buffersSnapshot.get(screenName) ?? "";
-        if (bufferedContent === frame.content && frame.state === "streaming") {
-          continue;
+          const bufferedContent = buffersSnapshot.get(screenName) ?? "";
+          if (bufferedContent === frame.content && frame.state === "streaming") {
+            continue;
+          }
+
+          changed = true;
+          next.set(frameId, {
+            ...frame,
+            content: bufferedContent,
+            state: "streaming",
+          });
         }
 
-        changed = true;
-        next.set(frameId, {
-          ...frame,
-          content: bufferedContent,
-          state: "streaming",
-        });
-      }
-
-      return changed ? next : current;
-    });
+        return changed ? next : current;
+      },
+      true,
+    );
   }, [applyFrames, getStudioRuntime, updateStudioRuntime]);
 
   const startChunkFlusher = useCallback(() => {

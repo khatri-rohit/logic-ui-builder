@@ -1,64 +1,43 @@
-// lib/dependencyExtractor.ts
-
-// Known package versions — curated list of what LLMs commonly generate
 const KNOWN_VERSIONS: Record<string, string> = {
-  // Charts
-  recharts: "^2.10.0",
-  "chart.js": "^4.4.0",
-  "react-chartjs-2": "^5.2.0",
-  d3: "^7.9.0",
-
-  // UI
-  "lucide-react": "^0.400.0",
-  "@heroicons/react": "^2.1.0",
-  "react-icons": "^5.0.0",
-  clsx: "^2.1.0",
-  "class-variance-authority": "^0.7.0",
-  "tailwind-merge": "^2.3.0",
-  "radix-ui": "^1.4.3",
-  "tw-animate-css": "^1.4.0",
-
-  // Dates
-  "date-fns": "^3.6.0",
-  dayjs: "^1.11.0",
-
-  // State
-  zustand: "^4.5.0",
-  jotai: "^2.8.0",
-
-  // Forms
-  "react-hook-form": "^7.51.0",
-
-  // Utility
-  lodash: "^4.17.21",
-  uuid: "^9.0.0",
-
-  // Always present
   react: "19.2.4",
   "react-dom": "19.2.4",
+  "lucide-react": "^0.577.0",
+  recharts: "^2.10.0",
+  clsx: "^2.1.1",
+  "tailwind-merge": "^3.5.0",
+  "date-fns": "^3.6.0",
+  dayjs: "^1.11.0",
+  lodash: "^4.17.21",
 };
+
+const CACHE = new Map<string, ExtractedDeps>();
+const MAX_CACHE_SIZE = 200;
 
 export interface ExtractedDeps {
   dependencies: Record<string, string>;
-  unknownPackages: string[]; // imports we couldn't resolve — log for future additions
+  unknownPackages: string[];
 }
 
 export function extractDependencies(code: string): ExtractedDeps {
+  const cached = CACHE.get(code);
+  if (cached) return cached;
+
   const dependencies: Record<string, string> = {
     react: "19.2.4",
     "react-dom": "19.2.4",
   };
   const unknownPackages: string[] = [];
+  const seen = new Set<string>();
 
-  // Match all import statements
-  // Handles: import X from 'pkg', import { X } from 'pkg', import 'pkg'
-  const importRegex = /import\s+(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]/g;
-  let match;
+  const importRegex =
+    /(?:import\s+(?:type\s+)?(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
+
+  let match: RegExpExecArray | null;
 
   while ((match = importRegex.exec(code)) !== null) {
-    const importPath = match[1];
+    const importPath = match[1] ?? match[2];
+    if (!importPath) continue;
 
-    // Skip local imports — those are not npm dependencies
     if (
       importPath.startsWith(".") ||
       importPath.startsWith("/") ||
@@ -67,34 +46,41 @@ export function extractDependencies(code: string): ExtractedDeps {
       continue;
     }
 
-    // Extract package name — handle scoped packages (@scope/pkg) and sub-paths (pkg/sub)
     const packageName = importPath.startsWith("@")
-      ? importPath.split("/").slice(0, 2).join("/") // @scope/package
-      : importPath.split("/")[0]; // package or package/sub
+      ? importPath.split("/").slice(0, 2).join("/")
+      : importPath.split("/")[0];
 
-    // Skip built-ins
-    if (isBuiltin(packageName)) continue;
+    if (isBuiltin(packageName) || seen.has(packageName)) continue;
+    seen.add(packageName);
 
     if (KNOWN_VERSIONS[packageName]) {
       dependencies[packageName] = KNOWN_VERSIONS[packageName];
     } else {
       unknownPackages.push(packageName);
-      // Use 'latest' as fallback — Sandpack will fetch whatever is current
-      dependencies[packageName] = "latest";
     }
   }
 
   if (unknownPackages.length > 0) {
-    console.info("[deps] Unknown packages, using latest:", unknownPackages);
+    console.info(
+      "[deps] Unsupported generated packages skipped:",
+      unknownPackages,
+    );
   }
 
-  return { dependencies, unknownPackages };
+  const result: ExtractedDeps = { dependencies, unknownPackages };
+
+  if (CACHE.size >= MAX_CACHE_SIZE) {
+    const firstKey = CACHE.keys().next().value;
+    if (firstKey) CACHE.delete(firstKey);
+  }
+  CACHE.set(code, result);
+
+  return result;
 }
 
-// Node/browser built-ins that don't need npm
 function isBuiltin(name: string): boolean {
-  const builtins = new Set([
-    "react", // already added above explicitly
+  return new Set([
+    "react",
     "path",
     "fs",
     "http",
@@ -105,6 +91,5 @@ function isBuiltin(name: string): boolean {
     "util",
     "events",
     "buffer",
-  ]);
-  return builtins.has(name);
+  ]).has(name);
 }

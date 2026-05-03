@@ -1,220 +1,565 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
 
-const CREATIVITY_DIRECTIVE = `
-Design quality bar (critical):
-- Avoid generic or templated layouts.
-- Build one clear visual concept per screen with intentional hierarchy.
-- Use distinctive typography pairings (no default/system-only look).
-- Use a cohesive color system with one dominant direction and sharp accents.
-- Keep output purely static: no animations, transitions, or motion effects.
-- Build atmosphere with gradients, overlays, patterns, or depth layers.
-- Keep accessibility: readable text, semantic landmarks, visible states.
-- Keep responsiveness: mobile-first and desktop-ready structure.
-`.trim();
+export const GENERATED_SCREEN_LIMITS = {
+  web: 4,
+  mobile: 3,
+} as const;
 
-const INTENT_LOCK_DIRECTIVE = `
-Intent lock (critical):
-- Implement only what the user asks for; do not invent features, sections, or flows.
-- If details are missing, choose conservative defaults without adding new product scope.
-- Keep content and component choices tightly aligned to the prompt intent.
-`.trim();
+export const MAX_PROMPT_LENGTH = 5000;
 
-const SKILL_DIRECTIVE = `
-Skill-guided UI system:
-- Use design-system token logic: clear primitive -> semantic -> component styling structure.
-- Keep visual states explicit for controls without animation-driven behavior.
-- Avoid repetitive card-grid boilerplate unless explicitly requested.
-`.trim();
+export function truncatePrompt(prompt: string): string {
+  if (prompt.length <= MAX_PROMPT_LENGTH) return prompt;
 
-const STATIC_LAYOUT_DIRECTIVE = `
-Static layout mode (critical):
-- Generate static design layouts only.
-- Do not use animations, transitions, keyframes, or motion libraries.
-`.trim();
-
-const COMPILE_GUARDRAILS = `
-Compilation guardrails (must pass):
-- Output valid TSX only. No markdown, no prose.
-- Write one complete component function with balanced (), {}, and [].
-- Close every JSX tag and every string/template literal.
-- Avoid unsupported syntax and avoid trailing partial lines.
-- Use inline mock data inside the file if needed.
-- imports allowed; but export the component at the end with: export default GeneratedScreen;
-`.trim();
-
-const MOBILE_SPLIT_DIRECTIVE = `
-Mobile segmentation (critical):
-- For platform = mobile, avoid forcing long, desktop-like pages into one screen.
-- If requested content is taller than a typical phone viewport, split into multiple screens.
-- Use clear screen names with sequence suffixes, e.g. "Home - 1", "Home - 2", "Checkout - 1", "Checkout - 2".
-- Keep each mobile screen focused and scroll length realistic for a handheld UI.
-`.trim();
-
-export const STAGE1_SYSTEM = `
-You are a Design Architect. Your job is to extract a complete design specification from a user's UI prompt.
-Output ONLY valid JSON. No markdown. No explanation. Pure JSON.
-
-Extract the following — think carefully about each field:
-
-{
-  "screens": ["string"],
-  "navPattern": "top-nav|sidebar|hybrid|none",
-  "platform": "web|mobile",
-  "colorMode": "dark|light",
-  "primaryColor": "#hex",
-  "accentColor": "#hex",
-  "stylingLib": "css|tailwind",
-  "layoutDensity": "comfortable|compact",
-  "components": ["string"],
-
-  // Design DNA — these fields drive visual quality
-  "visualPersonality": "corporate-precision|editorial-bold|minimal-utility|expressive-brand|data-dense|conversational-warm",
-  "contentHierarchyDepth": 2|3,
-  "dominantLayoutPattern": "full-page-sections|dashboard-grid|sidebar-content|centered-focused|split-screen|data-table-primary",
-  "typographyAuthority": "display-driven|body-balanced|data-first|label-dominant",
-  "spacingPhilosophy": "airy|balanced|dense",
-  "primaryInteraction": "read|navigate|input|browse|monitor",
-  "brandPersonality": ["string"],
-  "contentDensityScore": 1|2|3|4|5,
-  "keyEmotionalTone": "trustworthy|energetic|calm|authoritative|playful|urgent"
+  const summary = `... [Input truncated. Original length: ${prompt.length} chars]`;
+  return prompt.slice(0, MAX_PROMPT_LENGTH - summary.length) + summary;
 }
 
-For visualPersonality: "corporate-precision" = Stripe/Linear style, "editorial-bold" = agency/portfolio, "minimal-utility" = Vercel/Notion, "data-dense" = Bloomberg/analytics, "expressive-brand" = consumer app.
-For dominantLayoutPattern: choose what best matches the primary use case.
-For typographyAuthority: "display-driven" = big hero text leads, "data-first" = numbers/metrics lead, "label-dominant" = form/settings dense.
+export interface ValidationResult {
+  valid: boolean;
+  issues: string[];
+}
+
+export function validateGeneratedTSX(code: string): ValidationResult {
+  const issues: string[] = [];
+
+  const braceCount = (code.match(/{/g) || []).length;
+  const closeBraceCount = (code.match(/}/g) || []).length;
+  if (braceCount !== closeBraceCount) {
+    issues.push("Unbalanced braces");
+  }
+
+  const openTags = (code.match(/<[A-Z][a-zA-Z]*[^/>]*>/g) || []).length;
+  const closeTags = (code.match(/<\/[A-Z][a-zA-Z]*>/g) || []).length;
+  if (openTags !== closeTags) {
+    issues.push("Unclosed JSX tags");
+  }
+
+  if (!code.includes("export default GeneratedScreen")) {
+    issues.push("Missing default export");
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
+export const STAGE4_CRITIQUE_SYSTEM = `
+# Stage 4: Design Quality Critique
+
+You are a Senior Design Reviewer. Evaluate generated UI against explicit quality criteria.
+
+## CRITICAL: This is about DESIGN QUALITY, not just syntax
+
+## Evaluation Criteria (Rate 1-10 for each)
+
+1. **Visual Hierarchy** (1-10): 
+   - Is there ONE clear focal point in first 200px?
+   - Are secondary elements properly de-emphasized?
+   - Score: _ /10
+
+2. **Spacing Consistency** (1-10):
+   - Follows 8pt grid (gap-2, gap-4, gap-6, gap-8)?
+   - Are gaps intentional, not arbitrary p-4 everywhere?
+   - Score: _ /10
+
+3. **Component Selection** (1-10):
+   - Right pattern for data? (Table vs Grid vs List)
+   - Navigation appropriate for content?
+   - Score: _ /10
+
+4. **Token Compliance** (1-10):
+   - No hardcoded colors (bg-blue-500, #hex)?
+   - No arbitrary spacing (p-5, p-7)?
+   - Uses design tokens consistently?
+   - Score: _ /10
+
+5. **Reference Quality** (1-10):
+   - Would fit alongside Linear/Stripe/Vercel/Notion?
+   - Professional polish present?
+   - Score: _ /10
+
+6. **Accessibility Compliance** (1-10):
+   - Semantic HTML elements?
+   - Proper heading hierarchy?
+   - Score: _ /10
+
+## Output Format
+
+If average score >= 7:
+{"quality": "approved", "score": X, "summary": "Brief quality summary"}
+
+If score < 7:
+{"quality": "needs_revision", "score": X, "issues": ["specific issue 1", "specific issue 2"], "fixes": ["fix 1", "fix 2"], "priority_fix": "most important fix to address"}
+
+IMPORTANT: Provide specific, actionable feedback. NOT vague "make better".
+Example good feedback: "KPI cards have equal visual weight - vary sizes to create hierarchy"
+Example bad feedback: "Improve the design"
+`.trim();
+
+const IMPORT_ALLOWLIST = [
+  "react",
+  "react-dom",
+  "lucide-react",
+  "recharts",
+  "clsx",
+  "tailwind-merge",
+  "date-fns",
+  "dayjs",
+  "lodash",
+].join(", ");
+
+export const STAGE1_SYSTEM = `
+# Stage 1: Design Specification Extraction
+
+## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
+- NO hardcoded hex colors - use semantic color requests only
+- NO arbitrary pixel values - specify spacing as relative concepts (compact, comfortable, airy)
+- NO specific font choices - let system use Inter
+- Output MUST be valid JSON with zero markdown
+
+## PROMPT Framework
+- P — Platform: web (desktop-first) or mobile (touch-first)
+- R — Role & User: Who is the target user, what is their goal
+- O — Output: Screen type, key elements, specific content
+- M — Mood & Style: Design style, emotional feeling
+- P — Patterns & Components: Navigation pattern, component types
+- T — Technical: Framework (React/Tailwind), accessibility requirements
+
+## Design Intent Extraction (BEFORE outputting spec)
+Analyze the user request and explicitly extract:
+
+1. **Page Purpose**: What type of page?
+   - Landing/Marketing: hero, social-proof, features, pricing, CTA
+   - Dashboard: KPI cards, data tables, filters, time ranges
+   - Settings: form sections, grouped preferences
+   - Admin: CRUD operations, bulk actions
+   - Ecommerce: product grid, cart, checkout
+   - Portfolio: case studies, hero, about
+
+2. **User Goal**: Primary action user wants?
+   - Convert (sign up, buy, subscribe)
+   - Analyze (monitor metrics, compare data, filter)
+   - Manage (create, edit, delete, configure)
+   - Learn (read, understand, explore)
+   - Connect (contact, collaborate)
+
+3. **Emotional Tone**: How should interface feel?
+   - Trustworthy: More whitespace, established typography
+   - Energetic: Bold colors, dynamic layouts
+   - Calm: Minimal, plenty of breathing room
+   - Authoritative: Dense but organized
+   - Playful: Rounded, vibrant
+   - Urgent: Clear CTAs, contrast emphasis
+
+4. **Density Preference**: How much info per screen?
+   - Compact (1-2): Focused, mobile-first
+   - Comfortable (3): Balanced SaaS default
+   - Spacious (4-5): Landing, marketing
+
+5. **Brand Personality**: Visual treatment?
+   - Minimal-utility: Vercel, Linear - maximum function
+   - Corporate-precision: Stripe - structured, trustworthy
+   - Editorial-bold: Notion - typography-driven
+   - Expressive-brand: Creative, bold
+   - Data-dense: Analytics, operational
+   - Conversational-warm: Community, messaging
+
+## Persona
+You are a Senior Design Architect with 10+ years of experience in UI/UX design systems. Your role is to translate user intent into precise, implementable design specifications.
+
+## Task
+Extract a compact, implementation-ready WebAppSpec from the user's UI prompt. Output ONLY valid JSON with zero markdown, comments, or explanation text.
+
+## Context & Variables
+- Input: User's natural language prompt describing desired UI
+- Platform context: "web" or "mobile" passed from request
+- Design context: Skill-informed design hints from designContext when available
+
+## Constraints & Limitations
+- Screen limits: Web (1-${GENERATED_SCREEN_LIMITS.web}), Mobile (1-${GENERATED_SCREEN_LIMITS.mobile})
+- Do NOT exceed screen caps - choose the most important screens for primary workflow
+- Screen names must be product-focused, not implementation notes
+- NEVER add overflow, appendix, or duplicate screens
+
+## Output Format (strict JSON)
+{
+  "screens": ["string"],
+  "navPattern": "top-nav" | "sidebar" | "hybrid" | "none",
+  "platform": "web" | "mobile",
+  "colorMode": "dark" | "light",
+  "primaryColor": "#hex",
+  "accentColor": "#hex",
+  "stylingLib": "tailwind",
+  "layoutDensity": "comfortable" | "compact",
+  "components": ["string"],
+  "visualPersonality": "corporate-precision" | "editorial-bold" | "minimal-utility" | "expressive-brand" | "data-dense" | "conversational-warm",
+  "dominantLayoutPattern": "full-page-sections" | "dashboard-grid" | "sidebar-content" | "centered-focused" | "split-screen" | "data-table-primary",
+  "typographyAuthority": "display-driven" | "body-balanced" | "data-first" | "label-dominant",
+  "spacingPhilosophy": "airy" | "balanced" | "dense",
+  "primaryInteraction": "read" | "navigate" | "input" | "browse" | "monitor",
+  "contentDensityScore": 1 | 2 | 3 | 4 | 5,
+  "keyEmotionalTone": "trustworthy" | "energetic" | "calm" | "authoritative" | "playful" | "urgent"
+}
+
+## Field Decision Guidelines
+- navPattern: sidebar (5+ destinations), top-nav (marketing), hybrid (complex), none (single-focus)
+- visualPersonality: controls craft level, NOT brand adjectives
+- contentDensityScore: 1=sparse, 3=SaaS normal, 5=dense operational
+
+## Safety & Bias Guidelines (ai-prompt-engineering-safety-review)
+- NO cultural bias: Support all geographies, avoid Western-centric assumptions
+- NO gender bias: Use gender-neutral language in generated content placeholders
+- NO socioeconomic bias: Design for accessibility across device tiers
+- NO ability bias: Ensure specs support accessibility-first design decisions
+
+## Validation Criteria (prompt-builder skill)
+- Output must be valid, parseable JSON
+- All required fields must be present
+- Enum fields must use exact allowed values
+- Color values must be valid hex format (#RGB or #RRGGBB)
 `.trim();
 
 export const STAGE2_SYSTEM = `
-You are a UI Layout Architect. Given a WebAppSpec with design DNA fields, output a layout blueprint for each screen.
-Output ONLY valid JSON array. No markdown. No explanation.
+# Stage 2: Component Layout Planning
 
-Each screen blueprint must specify layout architecture before listing components:
+## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
+- NO hardcoded colors - specify color behavior conceptually (primary, secondary, accent)
+- NO specific pixel values - use relative spacing concepts
+- Output MUST be valid JSON array with zero markdown
+- Mobile-first: prefer mobile-stack outerContainer, single-column primaryGrid
 
-[{
-  "screen": "string",
-  "canvasX": number,
-  "canvasY": number,
-  "components": ["string"],
+## PROMPT Framework
+- P — Platform: web (desktop-first) or mobile (touch-first)
+- R — Role & User: Component composition for target user goals
+- O — Output: Layout blueprint per screen, component placement
+- M — Mood & Style: Visual hierarchy treatment based on emotional tone
+- P — Patterns & Components: Component selection intelligence
+- T — Technical: Grid/flexbox layouts, responsive behavior
 
-  // Layout Architecture — the spatial skeleton Stage 3 must follow
-  "layoutArchitecture": {
-    "outerContainer": "full-bleed|max-w-7xl centered|split-[sidebar-w]px-content|hero-then-sections",
-    "primaryGrid": "12-col|8-col|auto-fit-[min]px|single-column|sidebar-[w]px+fluid",
-    "sectionBreaks": ["Hero/Above-fold", "Primary Content", "Secondary Content", "CTA/Footer"],
-    "fixedElements": ["top-nav 64px", "sidebar 256px"] | [],
-    "contentStartOffset": "80px|64px|0px"
-  },
+## Component Selection Intelligence (DECISION RULES)
+Choose the RIGHT pattern based on content type:
 
-  // Component Intent — tells Stage 3 WHY each component is chosen
-  "componentIntents": [
-    {
-      "component": "string",
-      "role": "primary-action|navigation|data-display|status-indicator|content-container|input|feedback",
-      "spatialWeight": "full-width|half-width|one-third|sidebar|overlay|inline",
-      "visualPriority": 1|2|3,
-      "interactionType": "clickable|readable|inputable|static"
-    }
-  ]
-}]
+### Data Display Patterns
+- **5+ comparable rows with metadata** → semantic TABLE with thead/tbody
+- **5+ visual cards (image, title, description, meta)** → GRID with cards
+- **5+ simple items (icon + text only)** → LIST with consistent row height
+- **3-4 items with detailed comparison** → asymmetric CARDS with visual weight variation
 
-Space screens 240px apart horizontally starting at x=60, y=80.
-For mobile: x gap 40px. For web dashboards with sidebar: account for 256px sidebar in layout architecture.
+### Navigation Patterns
+- **5+ destinations with icons** → SIDEBAR (w-64) or BOTTOM TAB BAR
+- **2-4 primary actions** → TOP NAV with action buttons
+- **Context-sensitive actions** → COMMAND PALETTE or floating action
+
+### Input Patterns
+- **5+ form fields** → two-column grid (lg:grid-cols-2), single below lg
+- **Single important action** → prominent CTA with ghost buttons
+- **Multi-step flow** → STEPPER with progress indicator
+
+### Overlay Patterns
+- **Quick focus** → MODAL (centered, max-w-lg)
+- **Side panel** → DRAWER (slides from right)
+- **Inline expand** → COLLAPSIBLE/ACCORDION
+- **Context menu** → DROPDOWN MENU
+
+### Whitespace Decisions
+- **Landing/Marketing** → More whitespace, breathe between sections
+- **Dashboard/Admin** → Dense but organized, minimize wasted space
+- **Settings/Forms** → Comfortable spacing, easy to scan
+- **Mobile** → Compact vertical rhythm, thumb-friendly
+
+## Persona
+You are a Senior UI Layout Architect with expertise in responsive design systems, CSS grid/flexbox layouts, and information architecture.
+
+## Task
+Convert a WebAppSpec into one layout blueprint per screen. Output ONLY a valid JSON array with zero markdown, comments, or explanation text.
+
+## Context & Variables
+- Input: WebAppSpec JSON from Stage 1
+- Platform context: web or mobile
+- Design context: visualPersonality, dominantLayoutPattern from spec
+
+## Constraints & Limitations
+- Do NOT output canvas positions (runtime layout computed by app)
+- fixedElements must always be an array (use [] when none)
+- Every component in componentIntents MUST appear in components array
+
+## Output Format (strict JSON array)
+[
+  {
+    "screen": "string",
+    "components": ["string"],
+    "layoutArchitecture": {
+      "outerContainer": "full-bleed" | "max-w-7xl centered" | "split-sidebar-content" | "hero-then-sections" | "mobile-stack",
+      "primaryGrid": "12-col" | "8-col" | "auto-fit-280px" | "single-column" | "sidebar-256px-fluid",
+      "sectionBreaks": ["Hero/Above-fold", "Primary Content", "Secondary Content", "CTA/Footer"],
+      "fixedElements": ["top-nav 64px", "sidebar 256px"],
+      "contentStartOffset": "80px" | "64px" | "0px"
+    },
+    "componentIntents": [
+      {
+        "component": "string",
+        "role": "primary-action" | "navigation" | "data-display" | "status-indicator" | "content-container" | "input" | "feedback",
+        "spatialWeight": "full-width" | "half-width" | "one-third" | "sidebar" | "overlay" | "inline",
+        "visualPriority": 1 | 2 | 3,
+        "interactionType": "clickable" | "readable" | "inputable" | "static"
+      }
+    ]
+  }
+]
+
+## Layout Pattern Guidelines
+- spatialWeight describes FOOTPRINT, not importance
+- sidebar apps: include "sidebar 256px" in fixedElements, use "sidebar-256px-fluid" primaryGrid
+- Ensure layoutArchitecture matches visualPersonality from spec
+- Maintain consistent spatial rhythm across all screens in generation
+
+## Safety & Bias Guidelines (ai-prompt-engineering-safety-review)
+- NO ability bias: Ensure layouts support keyboard navigation, screen readers
+- NO device bias: Design works across breakpoints, not just desktop
+- Consider content density in component placement
+
+## Validation Criteria (prompt-builder skill)
+- Output must be valid, parseable JSON array
+- Each array element must have screen, components, layoutArchitecture, componentIntents
+- All enum fields must use exact allowed values
+- componentIntents entries must reference components from the components array
 `.trim();
+
 const DESIGN_VOCABULARY_DIRECTIVE = `
-Design vocabulary you MUST apply (internalize these before writing a single line):
+<design_contract>
+1. Layout rhythm
+- Use the 8pt system through Tailwind spacing: gap-2, gap-3, gap-4, gap-6, gap-8, gap-12, gap-16, gap-20.
+- Avoid arbitrary spacing unless a single icon or media crop needs exact centering.
+- Give every screen one primary focal point inside the first 200px.
+- Use CSS Grid for complex layouts; NEVER use complex flexbox percentage math like w-[calc(33%-1rem)].
+- Asymmetric layouts MUST aggressively fall back to single-column on viewports < 768px.
 
-SPATIAL GRAMMAR (8pt grid — all spacing must be multiples of 4px via Tailwind):
-  Micro gaps: gap-1(4px) gap-2(8px)       → icon-label pairs, badge clusters
-  Element gaps: gap-3(12px) gap-4(16px)   → list items, form fields, inline groups
-  Component gaps: gap-6(24px) gap-8(32px) → card groups, section subdivisions  
-  Section gaps: gap-12(48px) gap-16(64px) → major content sections
-  Hero gaps: gap-20(80px) gap-24(96px)    → above/below fold transitions
-  NEVER use arbitrary values like gap-5, p-7, mt-11 unless for specific icon centering.
+2. Type system
+- Display: text-5xl lg:text-6xl font-black tracking-tight leading-[1.05], hero only.
+- H1: text-4xl font-bold tracking-tight leading-tight, page title only.
+- H2: text-2xl font-semibold tracking-tight, section title.
+- H3: text-lg font-semibold, card or group title.
+- Body: text-base leading-relaxed.
+- UI: text-sm font-medium.
+- Caption: text-xs font-medium tracking-wide uppercase.
+- Use at most three visible type levels inside a single section.
+- Use fluid typography with clamp() for headlines when appropriate: e.g., text-[clamp(2rem,5vw,4rem)].
+- Premium font pairings: use Geist, Satoshi, or Cabinet Grotesk for creative/editorial designs. Default to Inter for utilitarian UIs. NEVER use serif fonts for dashboards or software UIs.
 
-TYPE SCALE (apply exactly this hierarchy per screen, never invent your own):
-  Display: text-5xl lg:text-6xl font-black tracking-tight leading-[1.05]     → hero headlines only
-  H1: text-4xl font-bold tracking-tight leading-tight                         → page title
-  H2: text-2xl font-semibold tracking-tight                                   → section header
-  H3: text-lg font-semibold                                                    → card title, group header
-  Body: text-base font-normal leading-relaxed                                  → paragraph content
-  UI: text-sm font-medium                                                      → labels, nav items, buttons
-  Caption: text-xs font-medium tracking-wide uppercase                         → metadata, timestamps, tags
-  RULE: Maximum 3 type levels visible on any single screen section.
+3. Width & Container Standards (CRITICAL - affects all screens)
+- Web screens MUST use at least 90% of available viewport width on desktop
+- Root container: max-w-[1280px] centered or full-bleed for landing/dashboard screens
+- For content/utility screens, use max-w-[1024px] centered for readability
+- NEVER create narrow "card-only" layouts - use full available width
+- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on desktop web layouts
+- If the prompt specifies "dashboard", "admin", "landing" - use full viewport width
+- Forms and lists should use full width with proper max-width constraints
+- Mobile: full-width with 16px horizontal padding
 
-COLOR HIERARCHY (derive this system from the two provided hex values):
-  Given primaryColor and accentColor, always build:
-    surface:         bg-[colorMode == dark ? '#0f0f0f' : '#ffffff']
-    surface-elevated: bg-[colorMode == dark ? '#1a1a1a' : '#f8f8f8']  
-    surface-border:  opacity 10-15% of foreground
-    primary:         provided primaryColor → main CTAs, active states, links
-    primary-muted:   primaryColor at 15% opacity → hover backgrounds, selected rows
-    accent:          provided accentColor → success states, highlights, badges
-    text-primary:    full opacity foreground
-    text-secondary:  60% opacity foreground → descriptions, helper text
-    text-tertiary:   40% opacity foreground → timestamps, captions
-  CRITICAL: Use these semantically. Do not use primary on decorative elements. 
-  Do not use text-gray-500 everywhere — use the opacity system.
+4. Color system
+- Use the provided CSS variables semantically: surface, surface-elevated, border, primary, accent, text-primary, text-secondary, text-tertiary.
+- Never use one gray class for all secondary text.
+- Primary color is for the main CTA, active state, or primary data highlight only.
+- NO pure black (#000000). Use off-black, zinc-950, or charcoal.
+- NO neon/outer glows. Use inner borders or subtle tinted shadows instead.
+- Max 1 accent color. Saturation < 80%.
 
-COMPONENT SELECTION RULES (use these, not your defaults):
-  Data comparison (5+ items): <table> with proper thead/tbody, NOT cards
-  Data comparison (<5 items): comparison cards with clear value hierarchy
-  Form with 5+ fields: two-column layout at lg:, single column at mobile
-  Form with 1-4 fields: single column, generous padding
-  Navigation (5+ items): sidebar; Navigation (2-4 items): top tabs or segmented control
-  Alert/confirmation: inline contextual message, NOT a modal (reserve modals for complex forms)
-  Empty states: centered illustration text + primary CTA, never just text
-  Loading: skeleton shimmer that matches the layout shape, not spinners
+5. Premium surface treatments (Liquid Glass / Glassmorphism)
+- When glass surfaces are needed, add a 1px inner border (border-white/10) and subtle inner shadow (shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]) to simulate physical edge refraction.
+- Use backdrop-blur with ultra-thin semi-transparent borders for modern frosted-glass depth.
 
-LAYOUT COMPOSITION RULES:
-  Dashboard: fixed sidebar (w-64) + scrollable main + sticky top bar (h-16)
-  Landing: full-bleed sections with max-w-7xl content container, alternating bg
-  Settings/Form: max-w-3xl centered, section dividers, clear save/discard actions
-  Data table view: full-width table, filter bar above, pagination below
-  Detail view: 2/3 main content + 1/3 sidebar metadata
-  RULE: Every screen needs ONE primary focal point. Establish it in the first 200px.
+6. Component selection
+- For 5+ comparable rows, use a semantic table with thead and tbody.
+- For 5+ form fields, use two columns at lg: and one column below lg.
+- For 5+ navigation items, use sidebar navigation.
+- Empty states need a compact visual mark, specific copy, and one action.
+- Loading states must mirror the final layout shape.
+- Asymmetric grids over equal-width cards: use 2fr 1fr 1fr or zig-zag layouts instead of generic 3-equal-card rows.
 
-BREATHING ROOM RULES:
-  Card internal padding: p-6 minimum (p-4 only for compact/dense mode)
-  Section padding: py-12 lg:py-16 for web, py-8 for mobile
-  Between sibling cards: gap-4 minimum, gap-6 preferred
-  Empty space between major sections: min-h-[1px] bg-border divider OR mb-12 gap
+7. Responsive design
+- Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px).
+- Use responsive prefixes (sm:, md:, lg:, xl:) for grid columns, typography scaling, and spacing adjustments.
+- NEVER use h-screen for full-height Hero sections. Use min-h-[100dvh] to prevent layout jumping on mobile browsers.
+
+8. React and runtime constraints
+- Client-rendered React only. No Server Components, async components, use(), next/link, next/image, or router APIs.
+- No local imports and no UI component library imports.
+- Keep generated data inline in the component file.
+- No animations, transitions, keyframes, or motion libraries (Framer Motion, GSAP) in generated code.
+- Static interactive UI only: CSS :hover, :active, :focus states are required.
+</design_contract>
 `.trim();
 
 export const STAGE3_SYSTEM = `
-You are a world-class product designer who writes their own production-quality code.
-You design like the team at Linear, Vercel, or Stripe — opinionated, precise, intentional.
-You write code like a senior frontend engineer — semantic, accessible, zero unnecessary complexity.
+# Stage 3: Code Synthesis — Premium UI Generation
 
-Your output will be rendered directly in a browser. It must be visually excellent on first render.
-No placeholder UI. No "lorem ipsum" sections. No skeleton outlines pretending to be content.
-Every component you place has a reason. Every spacing decision follows the 8pt grid.
-Every color serves a semantic purpose. Every typographic choice reinforces hierarchy.
+## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
+CRITICAL: Never use hardcoded values. Use design tokens properly.
+- ABSOLUTELY NEVER: bg-blue-500, text-gray-500, #3b82f6, rgb(), px values
+- MUST USE:
+  - bg-[var(--surface)] for page background
+  - bg-[var(--surface-elevated)] for cards, panels, modals, secondary containers
+  - bg-[var(--primary)] text-white for PRIMARY BUTTONS (main CTAs)
+  - text-[var(--text-primary)] for headings and body text
+  - text-[var(--text-secondary)] for descriptions
+  - bg-[var(--accent)] for badges and highlights
+  - gap-2, gap-4, gap-6, gap-8 for spacing (8pt grid)
+- NO emojis as icons - use Lucide React only
+- Output MUST be TSX code with zero markdown
+- PRIMARY BUTTON MUST HAVE CONTRAST: text-white or text-black based on primaryColor brightness
+
+## STITCH-LEVEL QUALITY DIRECTIVES
+Generate designs that would look at home next to Linear, Stripe, Vercel, and Notion.
+- Every screen must feel intentional, not assembled from generic templates.
+- Prioritize visual hierarchy over decorative elements.
+- Use whitespace as a design tool, not an accident.
+- Every interactive element must have complete state cycles: default, hover, active, focus, disabled.
+
+## PREMIUM UI ANTI-SLOP RULES
+1. NO generic 3-equal-card feature rows. Use asymmetric grids (2fr 1fr 1fr), zig-zags, or horizontal scroll.
+2. NO pure black (#000000). Use off-black, zinc-950, or charcoal.
+3. NO "AI Purple/Blue" aesthetic. No purple button glows, no neon gradients.
+4. NO Inter font for premium/creative vibes. Use Geist, Satoshi, or Cabinet Grotesk when appropriate.
+5. NO generic names: "John Doe", "Acme Corp", "Jane Smith". Use realistic, contextual names.
+6. NO generic avatars: avoid standard SVG "egg" or Lucide user icons. Use styled initials or specific placeholders.
+7. NO fake numbers: avoid 99.99%, 50%, 1234567. Use organic data like 47.2%, +1 (312) 847-1928.
+8. NO startup slop names: "Nexus", "SmartFlow", "Elevate". Invent premium contextual brand names.
+9. NO filler words: "Seamless", "Unleash", "Next-Gen", "Revolutionary". Use concrete verbs.
+10. NO equal-weight KPI cards: vary sizes to create visual hierarchy.
+11. NO text-gray-500 for all secondary text. Use the token system (text-secondary, text-tertiary).
+12. NO emergency gradients unless explicitly requested. Keep surfaces flat.
+13. NO custom mouse cursors. They ruin performance and accessibility.
+14. NO broken Unsplash links. Use picsum.photos with seed or SVG UI Avatars.
+15. NO oversaturated accents. Desaturate to blend elegantly with neutrals.
+
+## RESPONSIVE DESIGN MANDATE
+- Use fluid typography with clamp() for headlines: e.g., className="text-[clamp(2rem,5vw,4rem)]"
+- Use responsive grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
+- Use responsive spacing: p-4 md:p-8 lg:p-12
+- NEVER trap content in narrow centered columns on desktop (min-w-full on containers).
+- Use min-h-[100dvh] instead of h-screen for hero sections.
+
+## ACCESSIBILITY-FIRST REQUIREMENTS
+- Semantic HTML: use nav, main, section, article, header, footer appropriately.
+- Proper heading hierarchy: h1 > h2 > h3, never skip levels.
+- Touch targets minimum 44x44px on mobile.
+- Every button, link, input MUST have focus states: focus:ring-2 focus:ring-[var(--primary)]
+- Color must never be the sole indicator: pair with icons or text.
+- Use aria-labels for icon-only buttons.
+- Keyboard-navigable elements only.
+
+## DESIGNER QUALITY CHECKLIST (Verify BEFORE output)
+Before generating TSX, verify these quality gates:
+
+1. **Visual Hierarchy** (PASS/FAIL):
+   - ONE primary focal point in first 200px?
+   - Clear FOCAL → SUPPORTING → SECONDARY levels?
+   - If NO: Adjust component sizing and positioning
+
+2. **Spacing Rhythm** (PASS/FAIL):
+   - 8pt grid (gap-2, gap-4, gap-6, gap-8, gap-12)?
+   - Every gap deliberate, not arbitrary p-4?
+   - If NO: Recheck spacing against 8pt system
+
+3. **Component Selection** (PASS/FAIL):
+   - Table for 5+ comparable data rows?
+   - Grid for visual cards?
+   - List for simple items?
+   - If NO: Choose correct pattern
+
+4. **Reference Anchoring** (PASS/FAIL):
+   - Would look at home next to Linear/Stripe/Vercel/Notion?
+   - Professional polish present?
+   - If NO: Add visual polish, refine layout
+
+5. **Anti-Patterns Avoided** (PASS/FAIL):
+   - NO equal-size KPI cards with identical weight
+   - NO generic 3-equal-column feature rows
+   - NO text-gray-500 for all secondary text
+   - NO every button as primary
+   - NO content trapped in narrow centered column
+   - NO pure black backgrounds
+   - NO generic placeholder content
+
+6. **Contrast & Visibility** (PASS/FAIL):
+   - PRIMARY BUTTON: text-white or text-black on bg-[var(--primary)]? If primaryColor is dark → text-white, if light → text-black
+   - BUTTON NOT INVISIBLE: Button background different from container background?
+   - All text readable: text-[var(--text-primary)] on bg-[var(--surface)] or text-[var(--surface)] NEVER
+   - If NO: Fix contrast immediately - this is the #1 usability issue
+
+7. **State Completeness** (PASS/FAIL):
+   - Every interactive element has default, hover, active, focus, disabled states?
+   - If NO: Add missing states
+
+8. **Responsive Integrity** (PASS/FAIL):
+   - Grid shifts at md: and lg: breakpoints?
+   - Typography scales fluidly or via responsive prefixes?
+   - If NO: Add responsive prefixes
+
+## Reference Anchors (Mental Models)
+When making layout/component decisions, reference these proven patterns:
+- **Linear-style**: Minimal chrome, keyboard-first, subtle borders, dark-first
+- **Stripe-style**: Dense data, clear hierarchy, action-focused, professional
+- **Vercel-style**: Maximum whitespace, typography-led, minimal components
+- **Notion-style**: Calm, typography hierarchy, content-first, soft colors
+
+## Persona
+You are a world-class Senior Product Designer and Frontend Architect with 15+ years of experience. Your code renders directly in Sandpack iframes and must look complete and polished on first render. You obsess over details: the exact shade of a border, the precise spacing between elements, the hierarchy of type weights. Your output is not just functional — it is beautiful.
+
+## Task
+Generate complete, production-quality React/TypeScript code for a single screen. Output TSX code ONLY with zero markdown, prose, or explanation text.
+
+## Context & Variables
+- Input: WebAppSpec, ComponentTreeNode[], userPrompt, optional DesignContext
+- Screen name: The specific screen being generated
+- Multi-screen context: All screens must share design tokens and visual language
+
+## Constraints & Limitations
+- Allowed imports: ${IMPORT_ALLOWLIST}. No other package imports.
+- NO local imports: no ./, ../, /, @/, @/components, next/image, next/link, react-router-dom, shadcn, radix, headlessui, framer-motion
+- NO React 19 patterns: no use(), async components, Server Components, server actions
+- NO runtime features: no timers, effects, network calls, CSS keyframes, mount animations
+- Static interactive UI only - appearance of interactivity without behavior
 
 ${DESIGN_VOCABULARY_DIRECTIVE}
 
-FONT LOADING: Always include this at the top of your component file (before imports) or inside a <style> tag injected via dangerouslySetInnerHTML on a root element:
-  Google Fonts: Inter (weights: 400,500,600,700,800) for UI text
-  Apply via: style={{ fontFamily: "'Inter', system-ui, sans-serif" }} on the outermost div
-  Never rely on system-ui alone.
+## Output Format (strict TSX)
+- First non-whitespace token: import, type, interface, const, function, class, or export
+- Component name: GeneratedScreen
+- Final line: export default GeneratedScreen;
+- Include realistic mock data (minimum 4 items per list/grid/table)
+- All data must be domain-specific and realistic (no "Lorem Ipsum", no "Acme Corp")
 
-OUTPUT RULES:
-- Standard React + TypeScript only. TSX source code ONLY.
-- First non-whitespace character must be a TypeScript token (import, type, interface, const, function, export).
-- You MAY import from: recharts, lucide-react, clsx — nothing else.
-- Use Tailwind CSS utility classes. CDN Tailwind is available.
-- Use explicit className values on EVERY layout, spacing, and typography element.
-- No React Native imports. No local file imports (./, ../, @/).
-- No UI library imports (no shadcn, no radix, no headlessui) — compose from HTML + Tailwind.
-- Generate static layout. No framer-motion, no CSS keyframes, no transition animations.
-- Component name: GeneratedScreen. Export: export default GeneratedScreen; at file end.
-- Include realistic mock data that makes the UI feel production-ready, not placeholder.
+## Safety & Bias Guidelines (ai-prompt-engineering-safety-review)
+- NO harmful content: Do not generate violent, hateful, or inappropriate UI
+- NO accessibility violations: Use semantic HTML, proper ARIA labels, keyboard-navigable elements
+- NO device exclusion: Ensure touch targets are minimum 44x44px for mobile
+- NO color-only indicators: Always pair color with icons or text
+- NO placeholder content: Use realistic, domain-specific data (not "Lorem Ipsum", "Acme Corp", "John Doe")
+- Content must be appropriate for all audiences
+
+## Security Guidelines (ai-prompt-engineering-safety-review)
+- NO external resource loading beyond approved CDN (Tailwind)
+- NO sensitive data exposure in mock data
+- NO hardcoded API keys or credentials
+- Use semantic, non-revealing placeholder data
+
+## Validation Criteria (prompt-builder skill)
+- Valid TSX/JSX syntax with all tags closed and braces balanced
+- Default export: export default GeneratedScreen;
+- Uses design tokens (var(--surface), var(--primary), etc.) instead of hardcoded colors
+- Minimum 4 mock data items per list/grid/table component
+- Responsive: works at specified viewport width (1024px-1280px for web)
 `.trim();
 
-// JSON Schema for WebAppSpec — forces model output into a stable architecture snapshot.
+
 export const WEB_APP_SPEC_SCHEMA = {
   type: "object",
   properties: {
-    screens: { type: "array", items: { type: "string" } },
+    screens: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 1,
+      maxItems: GENERATED_SCREEN_LIMITS.web,
+    },
     navPattern: {
       type: "string",
       enum: ["top-nav", "sidebar", "hybrid", "none"],
@@ -223,8 +568,45 @@ export const WEB_APP_SPEC_SCHEMA = {
     colorMode: { type: "string", enum: ["dark", "light"] },
     primaryColor: { type: "string" },
     accentColor: { type: "string" },
-    stylingLib: { type: "string", enum: ["css", "tailwind"] },
+    stylingLib: { type: "string", enum: ["tailwind"] },
     layoutDensity: { type: "string", enum: ["comfortable", "compact"] },
+    components: { type: "array", items: { type: "string" } },
+    visualPersonality: {
+      type: "string",
+      enum: [
+        "corporate-precision",
+        "editorial-bold",
+        "minimal-utility",
+        "expressive-brand",
+        "data-dense",
+        "conversational-warm",
+      ],
+    },
+    dominantLayoutPattern: {
+      type: "string",
+      enum: [
+        "full-page-sections",
+        "dashboard-grid",
+        "sidebar-content",
+        "centered-focused",
+        "split-screen",
+        "data-table-primary",
+      ],
+    },
+    typographyAuthority: {
+      type: "string",
+      enum: ["display-driven", "body-balanced", "data-first", "label-dominant"],
+    },
+    spacingPhilosophy: {
+      type: "string",
+      enum: ["airy", "balanced", "dense"],
+    },
+    primaryInteraction: {
+      type: "string",
+      enum: ["read", "navigate", "input", "browse", "monitor"],
+    },
+    contentDensityScore: { type: "number", minimum: 1, maximum: 5 },
+    keyEmotionalTone: { type: "string" },
   },
   required: [
     "screens",
@@ -233,21 +615,137 @@ export const WEB_APP_SPEC_SCHEMA = {
     "colorMode",
     "stylingLib",
     "layoutDensity",
+    "components",
   ],
 };
 
-// Backward-compatible export name while call sites migrate.
 export const MOBILE_SPEC_SCHEMA = WEB_APP_SPEC_SCHEMA;
 
+const SPATIAL_WEIGHT_CLASS_MAP: Record<string, string> = {
+  "full-width": "col-span-full w-full",
+  "half-width": "col-span-full lg:col-span-6",
+  "one-third": "col-span-full md:col-span-6 lg:col-span-4",
+  sidebar: "w-full lg:w-64 lg:shrink-0",
+  overlay: "fixed inset-4 z-40 max-w-lg ml-auto",
+  inline: "inline-flex items-center",
+};
+
+function buildNavDirective(navPattern: WebAppSpec["navPattern"]): string {
+  const directives: Record<WebAppSpec["navPattern"], string> = {
+    "top-nav":
+      "Use a top navigation header: h-16, full-width, brand at left, 2-4 nav items, primary action at right. Main content starts below it.",
+    sidebar:
+      "Use a persistent left sidebar: w-64 on desktop, navigation stacked vertically, main content in a fluid region to the right. On mobile, collapse to a top bar.",
+    hybrid:
+      "Use both a compact top bar and a left sidebar: top bar for global actions, sidebar for screen sections, main content offset by both.",
+    none: "Do not add persistent navigation. Focus the screen on the primary task and local actions only.",
+  };
+
+  return directives[navPattern];
+}
+
+function buildInteractionDirective(
+  interaction?: WebAppSpec["primaryInteraction"],
+): string {
+  const directives: Record<
+    NonNullable<WebAppSpec["primaryInteraction"]>,
+    string
+  > = {
+    read: "Optimize for scanning and reading: strong headings, readable line length, calm supporting actions.",
+    navigate:
+      "Optimize for wayfinding: clear active states, grouped destinations, and visible hierarchy between current and secondary routes.",
+    input:
+      "Optimize for form completion: labels above controls, grouped fields, validation hints, and visible save/discard actions.",
+    browse:
+      "Optimize for browsing: filters, cards or rows with comparable metadata, and obvious item affordances.",
+    monitor:
+      "Optimize for monitoring: dense but legible metrics, status color used sparingly, and recent activity near the top.",
+  };
+
+  return directives[interaction ?? "read"];
+}
+
+function buildSplitFlowDirective(spec: WebAppSpec, screen: string): string {
+  const match = screen.match(/^(.*)\s+-\s+(\d+)$/);
+  if (!match) return "";
+
+  const baseName = match[1].trim();
+  const currentIndex = Number(match[2]);
+  const siblings = spec.screens.filter((candidate) =>
+    candidate.startsWith(`${baseName} - `),
+  );
+
+  if (siblings.length < 2) return "";
+
+  return `
+SPLIT MOBILE FLOW CONTEXT:
+- This screen is step ${currentIndex} of ${siblings.length} in the "${baseName}" mobile flow.
+- The complete flow is: ${siblings.join(" -> ")}.
+- Render this as one connected product journey, not as a disconnected app concept.
+- Include subtle step context or persistent destination cues when useful, but do not duplicate the same hero on every step.
+`.trim();
+}
+
+export function buildGenerationDesignContract(
+  spec: WebAppSpec,
+  designContext?: DesignContext,
+): string {
+  if (spec.screens.length <= 1) return "";
+
+  const allScreens = spec.screens.join(", ");
+
+  return `
+WEBSITE DESIGN CONSISTENCY CONTRACT (CRITICAL):
+This generation contains ${spec.screens.length} screens: ${allScreens}.
+All screens in this generation MUST share consistent design language:
+
+SHARED DESIGN RULES:
+- CSS Design Tokens: Use var(--surface), var(--primary), var(--accent), var(--text-primary), var(--text-secondary) on ALL screens. NEVER introduce new colors.
+- Typography: Use identical font family ('Inter'), base size (16px), and heading hierarchy (H1/H2/H3 sizes) across all screens.
+- Color Palette: Use ONLY primaryColor (${spec.primaryColor}) and accentColor (${spec.accentColor}) from this spec. Do NOT add new colors.
+- Spacing: Follow 8pt system (gap-2/gap-4/gap-6/gap-8) consistently.
+- Navigation: Use ${spec.navPattern} pattern consistently across all screens with identical styling.
+- Layout Rhythm: Apply ${spec.dominantLayoutPattern || "standard grid"} pattern uniformly.
+
+SCREEN RELATIONSHIPS:
+- "${spec.screens[0]}" is the primary entry point
+- All screens must have visual continuity - headers/footers should align structurally
+- Do NOT repeat full hero sections on every page - use consistent sub-headers and section titles
+- Secondary screens should complement, not duplicate, the landing page design
+
+CONSISTENCY ENFORCEMENT:
+- Use identical card component styling across ALL screens
+- Buttons must have identical primary/secondary/ghost hierarchy across all screens
+- Same spacing between sections on all screens
+- No screen should look like it belongs to a different website
+${
+  designContext
+    ? `
+- Design system: ${designContext.style.name} style with ${designContext.palette.name} palette
+- All screens follow this unified design direction`
+    : ""
+}
+`.trim();
+}
+
+function buildDesignContextContract(designContext?: DesignContext): string {
+  if (!designContext) return "";
+
+  return `
+AUTHORITATIVE DESIGN CONTEXT:
+- Product type: ${designContext.productType}
+- Direction: ${designContext.direction}
+- Style: ${designContext.style.name} (${designContext.style.category})
+- Typography intent: ${designContext.style.typography}
+- Palette: ${designContext.palette.name}; psychology: ${designContext.palette.psychology}
+- Layout hint: ${designContext.layout.name}; ${designContext.layout.cssStructure}
+- UX priority: ${designContext.uxPriorities[0] || "Accessible contrast, clear hierarchy, and visible focus states."}
+- Bias corrections to obey: ${designContext.biasCorrections.slice(0, 8).join(" ")}
+`.trim();
+}
+
 export function buildScreenPrompt(
-  spec: WebAppSpec & {
-    visualPersonality?: string;
-    dominantLayoutPattern?: string;
-    typographyAuthority?: string;
-    spacingPhilosophy?: string;
-    keyEmotionalTone?: string;
-    contentDensityScore?: number;
-  },
+  spec: WebAppSpec,
   tree: ComponentTreeNode[],
   screen: string,
   userPrompt: string,
@@ -259,64 +757,265 @@ export function buildScreenPrompt(
         componentIntents?: unknown[];
       })
     | undefined;
-  const components = node?.components ?? [];
+  const components = node?.components ?? spec.components ?? [];
   const layoutArch = node?.layoutArchitecture;
   const componentIntents = node?.componentIntents ?? [];
 
-  const isDark = spec.colorMode === "dark";
+  const isDark = spec.colorMode === "dark"; // Default to light surface colors if colorMode is not specified
   const isMobile = spec.platform === "mobile";
 
-  // Derive semantic token system from the two provided colors
   const tokenSystem = `
-DESIGN TOKENS FOR THIS SCREEN (inject as CSS vars or direct Tailwind, use semantically):
-  --surface:          ${isDark ? "#0f0f0f" : "#ffffff"}
-  --surface-elevated: ${isDark ? "#1a1a1a" : "#f5f5f5"}  
-  --surface-overlay:  ${isDark ? "#242424" : "#eeeeee"}
-  --border:           ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}
-  --border-focus:     ${spec.primaryColor}40
-  --text-primary:     ${isDark ? "#f0f0f0" : "#0a0a0a"}
-  --text-secondary:   ${isDark ? "rgba(240,240,240,0.60)" : "rgba(10,10,10,0.60)"}
-  --text-tertiary:    ${isDark ? "rgba(240,240,240,0.38)" : "rgba(10,10,10,0.38)"}
-  --primary:          ${spec.primaryColor}
-  --primary-muted:    ${spec.primaryColor}22
-  --accent:           ${spec.accentColor}
-  --accent-muted:     ${spec.accentColor}22
+DESIGN TOKENS (STRICTLY ENFORCED):
+Define these as inline CSS variables on the root element and use them semantically.
 
-Apply as: bg-[var(--surface)], text-[var(--text-secondary)], border-[var(--border)], etc.
-OR use equivalent Tailwind: bg-neutral-950, text-neutral-400, border-white/10 (for dark).
+## 1. COLOR TOKENS WITH USAGE RULES:
+
+### Background Colors:
+- --surface: ${isDark ? "#0f0f0f" : "#fbfbfa"} → Page background, main containers
+- --surface-elevated: ${isDark ? "#1a1a1a" : "#f4f4f2"} → Cards, panels, modals, secondary containers
+- --surface-overlay: ${isDark ? "#242424" : "#ececea"} → Dropdowns, popovers, overlays
+- --border: ${isDark ? "rgba(255,255,255,0.10)" : "rgba(15,15,15,0.10)"} → All borders
+
+### Text Colors:
+- --text-primary: ${isDark ? "#f2f2ef" : "#10100e"} → Headings, body text, button labels (REQUIRED)
+- --text-secondary: ${isDark ? "rgba(242,242,239,0.66)" : "rgba(16,16,14,0.66)"} → Descriptions, captions, labels
+- --text-tertiary: ${isDark ? "rgba(242,242,239,0.42)" : "rgba(16,16,14,0.42)"} → Placeholders, disabled text
+
+### PRIMARY & ACCENT (MUST USE FOR INTERACTIVE ELEMENTS):
+- --primary: ${spec.primaryColor} → PRIMARY buttons, links, active states, focus rings, icons
+- --primary-muted: ${spec.primaryColor}22 → Hover states, selected backgrounds
+- --accent: ${spec.accentColor} → Badges, notifications, highlights, secondary CTAs, success states
+- --accent-muted: ${spec.accentColor}22 → Accent backgrounds, subtle highlights
+
+### Semantic Colors:
+- --success: ${spec.accentColor} → Success messages, positive states
+- --warning: ${spec.primaryColor}CC → Warning states
+- --error: #ef4444 → Error states, destructive actions
+
+## 2. COLOR USAGE EXAMPLES (COPY THESE PATTERNS):
+
+### PRIMARY BUTTON (MUST USE - THIS IS YOUR MAIN CTA):
+\`\`\`tsx
+<button className="bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 active:scale-[0.98] focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]">
+  Primary Action
+</button>
+\`\`\`
+
+### SECONDARY BUTTON:
+\`\`\`tsx
+<button className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--surface-overlay)] active:scale-[0.98]">
+  Secondary Action
+</button>
+\`\`\`
+
+### GHOST/LINK BUTTON:
+\`\`\`tsx
+<button className="text-[var(--primary)] hover:underline focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2">
+  Tertiary Action
+</button>
+\`\`\`
+
+### CARD/CONTAINER:
+\`\`\`tsx
+<div className="bg-[var(--surface-elevated)] border border-[var(--border)] rounded-lg shadow-sm hover:shadow-md">
+  Content
+</div>
+\`\`\`
+
+### LINK:
+\`\`\`tsx
+<a className="text-[var(--primary)] hover:opacity-80 focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2">
+  Link Text
+</a>
+\`\`\`
+
+### BADGE/ACCENT:
+\`\`\`tsx
+<span className="bg-[var(--accent)] text-white px-2 py-1 rounded-full text-xs font-medium">
+  Badge
+</span>
+\`\`\`
+
+## 3. CONTRAST RULES (CRITICAL - NEVER VIOLATE):
+- Primary button text MUST be opposite of primary color: if primary is dark → text-white, if primary is light → text-black
+- NEVER use: bg-[var(--primary)] text-[var(--primary)] - THIS IS INVISIBLE!
+- NEVER use: bg-[var(--surface)] text-[var(--surface)] - INVISIBLE!
+- All interactive elements MUST have focus states: ring-2 ring-[var(--primary)]
+- Text on surface-elevated MUST use text-primary or text-secondary, NEVER surface
+
+## 4. SPACING SYSTEM (8pt grid):
+- Component-level: gap-2 (8px), gap-3 (12px), gap-4 (16px)
+- Section-level: gap-6 (24px), gap-8 (32px), gap-12 (48px)
+- Page-level: gap-16 (64px), gap-20 (80px), gap-24 (96px)
+- NEVER use arbitrary p-5, p-7, m-3, m-5
+
+## 5. BORDER-RADIUS SCALE:
+- Small (buttons, inputs): rounded-md (8px)
+- Medium (cards, modals): rounded-lg (12px)
+- Large (hero sections): rounded-xl (16px)
+- Full (avatars, pills): rounded-full
+
+## 6. ELEVATION/SHADOW TOKENS:
+- Subtle (cards): shadow-sm
+- Medium (dropdowns): shadow-md
+- Elevated (modals): shadow-lg
+- Overlaid (drawers): shadow-xl
+- Inner highlight (glass edges): shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]
+
+## 7. GLASSMORPHISM / LIQUID GLASS TOKENS:
+- Glass surface: bg-white/5 backdrop-blur-md border border-white/10
+- Glass elevated: bg-white/10 backdrop-blur-lg border border-white/15 shadow-lg
+- Glass dark: bg-black/20 backdrop-blur-md border border-white/5
+- Always combine glass with a 1px inner border for physical edge refraction.
+
+## 8. TYPOGRAPHY SCALE:
+- Display: text-5xl lg:text-6xl font-black tracking-tight leading-[1.05], hero only.
+- H1: text-4xl font-bold tracking-tight leading-tight, page title only.
+- H2: text-2xl font-semibold tracking-tight, section title.
+- H3: text-lg font-semibold, card or group title.
+- Body: text-base leading-relaxed.
+- UI: text-sm font-medium.
+- Caption: text-xs font-medium tracking-wide uppercase.
+- MAX THREE visible type levels per section.
+- Fluid headlines: use text-[clamp(2rem,5vw,4rem)] for responsive scaling.
+- Premium vibe: use font-family "Geist" or "Satoshi" for creative/editorial designs. Default "Inter" for utilitarian UIs. NEVER use serif on dashboards.
+
+## 9. ANIMATION TOKENS (CSS transitions only):
+- Hover transitions: transition-all duration-200 ease-out
+- Active press: active:scale-[0.98]
+- Focus rings: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2
+- Hover lift: hover:-translate-y-[1px]
+- NEVER use CSS keyframes, @keyframes, or animation libraries in generated code.
+
+## 10. RESPONSIVE TOKENS:
+- Mobile-first: base styles apply to all, then add md: lg: prefixes.
+- Grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4
+- Typography scaling: text-3xl md:text-4xl lg:text-5xl
+- Spacing scaling: p-4 md:p-8 lg:p-12
+- Container: max-w-full md:max-w-[1024px] lg:max-w-[1280px] mx-auto
+
+## 11. WIDTH STANDARDS:
+- Landing/Dashboard: max-w-[1280px] centered, use full viewport
+- Content/Utility: max-w-[1024px] centered
+- Forms: max-w-[640px] centered
+- NEVER trap content in narrow centered column on desktop
+
+## KEY TAKEAWAY:
+- Use bg-[var(--surface)] for page backgrounds
+- Use bg-[var(--surface-elevated)] for cards, buttons, inputs
+- Use bg-[var(--primary)] for PRIMARY buttons and links (with white/black text for contrast)
+- Use bg-[var(--accent)] for badges, highlights
+- Use glassmorphism sparingly for premium overlays and floating elements
+- ALWAYS ensure contrast between background and text
+- ALWAYS add complete hover/active/focus/disabled states to interactive elements
+`.trim();
+
+  const componentStates = `
+## COMPONENT STATES (REQUIRED FOR ALL INTERACTIVE ELEMENTS)
+
+### All Interactive Elements MUST Have:
+1. **Default state**: Base appearance using tokens
+2. **Hover state**: Slightly lighter/darker, cursor pointer
+3. **Active state**: Scale down slightly (scale-[0.98]) or darker
+4. **Focus state**: ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--surface)]
+5. **Disabled state**: opacity-50 cursor-not-allowed
+
+### Button States:
+- Default: bg-[var(--primary)] text-white (for primary) OR bg-[var(--surface-elevated)] text-[var(--text-primary)] (for secondary)
+- Hover: hover:bg-[var(--primary)]/90 OR hover:bg-[var(--surface-overlay)]
+- Active: active:scale-[0.98] active:opacity-90
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]
+- Disabled: disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none
+
+### Link States:
+- Default: text-[var(--primary)] underline-offset-2
+- Hover: hover:opacity-80 OR hover:underline
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2
+- Never leave links without hover states
+
+### Card/Container States:
+- Default: bg-[var(--surface-elevated)] border border-[var(--border)] rounded-lg
+- Hover: hover:shadow-md OR hover:border-[var(--primary)]/50
+- Focus: focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:ring-offset-2
+
+### Input States:
+- Default: bg-[var(--surface)] border border-[var(--border)] rounded-md px-3 py-2
+- Focus: focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
+- Error: border-[var(--error)] focus:ring-[var(--error)]
+- Disabled: bg-[var(--surface)] opacity-50
+`.trim();
+
+  const designDecisionRules = `
+## DESIGN DECISION RULES (FOLLOW THIS DECISION TREE)
+
+### 1. BUTTON HIERARCHY DECISION:
+**Is this the MAIN action on the screen?**
+- YES (primary CTA like "Sign Up", "Buy Now", "Submit"): 
+  → Use: className="bg-[var(--primary)] text-white"
+- Is it a secondary action (Cancel, Back, Skip)?
+  → Use: className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)]"
+- Is it a tertiary/link action?
+  → Use: className="text-[var(--primary)] hover:underline"
+
+### 2. BACKGROUND DECISION:
+**Is this clickable/interactive?**
+- YES (button, link, card with action):
+  → Use: bg-[var(--surface-elevated)] or bg-[var(--primary)] for primary
+- NO (static content, info display):
+  → Use: bg-[var(--surface)]
+
+### 3. TEXT COLOR DECISION:
+**What level of importance?**
+- Heading / Primary content: text-[var(--text-primary)] (REQUIRED)
+- Description / Label: text-[var(--text-secondary)]
+- Placeholder / Disabled: text-[var(--text-tertiary)]
+- NEVER use text-[var(--surface)] or text-[var(--primary)] for content text
+
+### 4. CONTRAST CHECK:
+- Primary button: text MUST be white or black (opposite of primaryColor)
+- If primaryColor is dark (#000 to #666): text-white
+- If primaryColor is light (#999 to #fff): text-black
+- TEST: If you can't read the text on the background without strain, it's WRONG
+
+### 5. FOCUS STATE MANDATORY:
+- Every button, link, input MUST have focus:ring
+- This is accessibility requirement: focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2
+
+### 6. WHEN TO USE PRIMARY vs ACCENT:
+- PRIMARY: Main CTAs, links, active navigation, primary content
+- ACCENT: Badges, notifications, success indicators, secondary highlights
+- NEVER use primary for everything - reserve it for most important elements
 `.trim();
 
   const layoutDirective = layoutArch
     ? `
-MANDATORY LAYOUT ARCHITECTURE (do not deviate from this skeleton):
-  Outer container: ${layoutArch.outerContainer}
-  Primary grid: ${layoutArch.primaryGrid}
-  Section structure: ${(layoutArch.sectionBreaks as string[])?.join(" → ")}
-  Fixed UI elements: ${(layoutArch.fixedElements as string[])?.join(", ") || "none"}
-  Content start offset: ${layoutArch.contentStartOffset}
+MANDATORY LAYOUT ARCHITECTURE:
+- Outer container: ${layoutArch.outerContainer}
+- Primary grid: ${layoutArch.primaryGrid}
+- Section structure: ${((layoutArch.sectionBreaks as string[]) ?? []).join(" -> ") || "screen-specific sections"}
+- Fixed UI elements: ${((layoutArch.fixedElements as string[]) ?? []).join(", ") || "none"}
+- Content start offset: ${layoutArch.contentStartOffset ?? "0px"}
 `
     : "";
 
   const designBrief = `
-DESIGN BRIEF FOR: "${screen}"
-  Visual personality: ${spec.visualPersonality || "minimal-utility"}
-  Emotional tone: ${spec.keyEmotionalTone || "trustworthy"}  
-  Layout pattern: ${spec.dominantLayoutPattern || "dashboard-grid"}
-  Typography authority: ${spec.typographyAuthority || "body-balanced"}
-  Spacing philosophy: ${spec.spacingPhilosophy || "balanced"} (${spec.contentDensityScore || 3}/5 density)
-  Platform: ${isMobile ? "Mobile — 390px viewport, touch-first, thumb-zone CTAs" : "Web — desktop-first, 1280px+ viewport"}
-  Color mode: ${isDark ? "Dark — use depth layers, not pure black" : "Light — clean whites, precise shadows"}
-
-Reference benchmarks to match quality level:
-${spec.dominantLayoutPattern === "dashboard-grid" ? "  → Linear dashboard: tight grid, no wasted space, every metric has context\n  → Vercel project view: status + recency at a glance, clean data hierarchy" : ""}
-${spec.dominantLayoutPattern === "full-page-sections" ? "  → Stripe homepage: each section has one job, generous whitespace, precise type\n  → Linear's marketing: bold headlines, subtle grids, confident empty space" : ""}
-${spec.dominantLayoutPattern === "data-table-primary" ? "  → Notion database: column density without feeling cramped, row hover states\n  → Stripe dashboard: financial data that reads clearly at a glance" : ""}
+DESIGN BRIEF:
+- Screen: ${screen}
+- Visual personality: ${spec.visualPersonality || "minimal-utility"}
+- Emotional tone: ${spec.keyEmotionalTone || "trustworthy"}
+- Layout pattern: ${spec.dominantLayoutPattern || "dashboard-grid"}
+- Typography authority: ${spec.typographyAuthority || "body-balanced"}
+- Spacing philosophy: ${spec.spacingPhilosophy || "balanced"}
+- Density: ${spec.contentDensityScore || 3}/5
+- Platform: ${isMobile ? "mobile, 390px viewport, touch-first" : "web, desktop-first, 1280px and wider"}
+- Navigation directive: ${buildNavDirective(spec.navPattern)}
+- Interaction directive: ${buildInteractionDirective(spec.primaryInteraction)}
 `.trim();
 
   const componentPlan =
     componentIntents.length > 0
       ? `
-COMPONENT PLACEMENT PLAN (follow this intent exactly):
+COMPONENT PLACEMENT PLAN:
 ${(
   componentIntents as Array<{
     component: string;
@@ -326,59 +1025,90 @@ ${(
     interactionType: string;
   }>
 )
-  .map(
-    (intent) =>
-      `  ${intent.visualPriority}. ${intent.component} → role: ${intent.role}, weight: ${intent.spatialWeight}, interaction: ${intent.interactionType}`,
-  )
+  .map((intent) => {
+    const classes =
+      SPATIAL_WEIGHT_CLASS_MAP[intent.spatialWeight] ?? "col-span-full";
+    return `- Priority ${intent.visualPriority}: ${intent.component}; role=${intent.role}; spatialWeight=${intent.spatialWeight}; classes=${classes}; interaction=${intent.interactionType}`;
+  })
   .join("\n")}
 `
-      : `Components to include: ${components.map((c) => `${c}`).join(", ")}`;
+      : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
   const antiPatterns = `
-ANTI-PATTERNS — if you find yourself writing any of these, stop and redesign:
-  ✗ Three equal-sized KPI cards with identical visual weight  → vary size, add trend context
-  ✗ Full-width gray dividers between every section            → use spacing + typography contrast instead
-  ✗ "Lorem ipsum" or obviously fake data                     → use domain-realistic mock data
-  ✗ text-gray-500 for all secondary text                    → use the token system above
-  ✗ Every button primary style                               → use hierarchy: primary, secondary, ghost
-  ✗ p-4 on every element                                     → follow the spatial grammar rules
-  ✗ Single column form at desktop width                      → two columns at lg: for 5+ fields
-  ✗ Centered narrow content column on dashboard screens      → dashboards need full-width composition
+ANTI-PATTERNS TO AVOID:
+- Equal-size KPI cards with identical visual weight. Vary emphasis and add trend context.
+- Generic three-card feature rows. Use asymmetric rhythm or a table/list when the content is comparable.
+- text-gray-500 for all secondary text. Use the token system.
+- Every button styled as primary. Use primary, secondary, and ghost hierarchy.
+- p-4 on every element. Follow the spacing contract.
+- Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
+- Dashboard content trapped in a narrow centered column. Use the available width.
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
 `.trim();
 
-  const designContextBlock = designContext
-    ? `
-SKILL-DERIVED CONTEXT:
-  Style: ${designContext.style.name} | Typography: ${designContext.style.typography}
-  Palette: ${designContext.palette.name} | Psychology: ${designContext.palette.psychology}
-  Layout: ${designContext.layout.name} — ${designContext.layout.cssStructure}
-  Top UX constraint: ${designContext.uxPriorities[0] || "Accessible contrast ratios and visible focus states"}
-`
-    : "";
+  const generationContract = buildGenerationDesignContract(spec, designContext);
 
   return `
-Generate a complete, production-quality React component for screen: "${screen}"
+Generate a complete, production-quality React component for screen: "${screen}".
 
-USER INTENT: ${userPrompt}
+USER INTENT:
+${userPrompt}
 
 ${designBrief}
 
+${buildSplitFlowDirective(spec, screen)}
+
+${generationContract}
+
+${buildDesignContextContract(designContext)}
+
 ${tokenSystem}
+
+${componentStates}
+
+${designDecisionRules}
 
 ${layoutDirective}
 
 ${componentPlan}
 
-${designContextBlock}
-
 ${antiPatterns}
 
 SYNTAX REQUIREMENTS:
-  - Component name: GeneratedScreen
-  - Include Inter font: add style={{ fontFamily: "'Inter', system-ui, sans-serif" }} to root element
-  - Include realistic mock data (minimum 4-6 data points for any list/table)
-  - Close all JSX tags, balance all brackets and delimiters
-  - Final line: export default GeneratedScreen;
-  - Output code ONLY — no explanation text before or after
+- Component name: GeneratedScreen.
+- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
+- Include realistic mock data with at least 4 items for every list, grid, chart, or table.
+- Close all JSX tags and balance all braces.
+- Final line: export default GeneratedScreen;
+- Output code only.
+`.trim();
+}
+
+export function buildCritiquePrompt(
+  screen: string,
+  generatedCode: string,
+  spec: WebAppSpec,
+  userPrompt: string,
+): string {
+  return `
+${STAGE4_CRITIQUE_SYSTEM}
+
+## Screen Context
+- Screen name: ${screen}
+- User intent: ${userPrompt}
+- Visual personality: ${spec.visualPersonality || "minimal-utility"}
+- Emotional tone: ${spec.keyEmotionalTone || "trustworthy"}
+- Layout pattern: ${spec.dominantLayoutPattern || "dashboard-grid"}
+
+## Generated Code to Review
+\`\`\`tsx
+${generatedCode}
+\`\`\`
+
+## Your Task
+1. Read the generated code carefully
+2. Evaluate against each criteria (1-10)
+3. Provide specific, actionable feedback if issues found
+4. Output ONLY valid JSON with zero markdown
 `.trim();
 }

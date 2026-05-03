@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   ChevronLeft,
   Download,
+  FileImage,
   Menu,
   MessageCirclePlus,
   Pencil,
@@ -24,6 +25,7 @@ type ProjectActionId =
   | "all-projects"
   | "share"
   | "download"
+  | "export-png"
   | "edit"
   | "delete"
   | "feedback";
@@ -34,6 +36,7 @@ const projectActions: Array<{ id: ProjectActionId; label: string; icon: any }> =
     { id: "all-projects", label: "Go to all projects", icon: ChevronLeft },
     { id: "share", label: "Share", icon: Share2 },
     { id: "download", label: "Download project", icon: Download },
+    // { id: "export-png", label: "Export as PNG", icon: FileImage },
     { id: "edit", label: "Edit", icon: Pencil },
     { id: "delete", label: "Delete project", icon: Trash2 },
     { id: "feedback", label: "Send feedback", icon: MessageCirclePlus },
@@ -47,13 +50,20 @@ const projectActions: Array<{ id: ProjectActionId; label: string; icon: any }> =
 
 interface ProjectMenuPanelProps {
   title: string;
+  platform: "web" | "mobile";
   handleMenuClick: (action: ProjectActionId) => void;
 }
 
 export default function ProjectMenuPanel({
   title,
+  platform,
   handleMenuClick,
 }: ProjectMenuPanelProps) {
+  const visibleActions =
+    platform === "web"
+      ? projectActions
+      : projectActions.filter((a) => a.id !== "download");
+
   return (
     <div className="dark absolute inset-5 z-50 w-fit h-fit">
       <div className="flex items-center gap-3">
@@ -74,7 +84,7 @@ export default function ProjectMenuPanel({
             sideOffset={12}
             className="w-70 rounded-none border-white/10 bg-[#181818] p-2 text-white shadow-[0_24px_80px_rgba(0,0,0,0.65)] z-50"
           >
-            {projectActions.map((item) => {
+            {visibleActions.map((item) => {
               const Icon = item.icon;
 
               return (

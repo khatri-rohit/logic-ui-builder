@@ -66,7 +66,59 @@ const FALLBACK_UX_PRIORITIES = [
   "Use one primary CTA per screen with clear semantic hierarchy.",
 ];
 
+const BIAS_CORRECTIONS = [
+  "CRITICAL: NO HARDCODED COLORS - Use design tokens only. Use var(--primary) and var(--accent) for interactive elements - they are your brand colors from the spec.",
+  "CRITICAL: MUST USE PRIMARY/ACCENT - Primary buttons and links MUST use bg-[var(--primary)] with white/black text. Accent badges use bg-[var(--accent)]. Don't make everything neutral.",
+  "CRITICAL: NO ARBITRARY SPACING - Use 8pt grid only (gap-2, gap-4, gap-6, gap-8). Never use p-5, p-7, m-3, m-5.",
+  "NO EMOJIS: Replace symbols with high-quality icons (Radix, Phosphor, Lucide) or clean SVG primitives.",
+  "NO AI PURPLE: Avoid the generic 'AI Purple/Blue' aesthetic. Use the SPECIFIED primaryColor and accentColor from the spec - they define your brand identity.",
+  "NO SYSTEM DEFAULT: Use the runtime font contract consistently; avoid browser-default serif fallbacks.",
+  "NO GENERIC NAMES: Avoid 'John Doe' or 'Acme Corp'. Use realistic, contextual brand and user names.",
+  "NO 3-COLUMN CARDS: Avoid the generic 3-equal-card feature row. Use asymmetric grids or zig-zags.",
+  "NO PURE BLACK: Never use #000000. Use Off-Black, Zinc-950, or Charcoal.",
+  "NO EQUAL-WEIGHT KPI CARDS: Vary KPI card sizes to create visual hierarchy. Don't make all cards the same size.",
+  "NO NARROW CENTERED COLUMNS: On desktop, use full viewport width. Never trap content in a narrow centered container.",
+  "NO TEXT-GRAY-500: Use text-[var(--text-secondary)] or text-[var(--text-tertiary)] for secondary text.",
+  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested. Keep surfaces flat.",
+  "NO GENERIC EMPTY STATES: Empty states need specific copy, a compact visual element, and one clear action.",
+  "CONTRAST MANDATORY: All buttons must have visible contrast - primary buttons use white/black text on primary background. If primary color is dark, use white text.",
+];
+
 const SHORT_DESIGN_TOKENS = new Set(["ui", "ux", "ai", "3d", "ar", "vr"]);
+const STOPWORDS = new Set([
+  "app",
+  "apps",
+  "web",
+  "site",
+  "page",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "into",
+  "make",
+  "build",
+  "create",
+  "need",
+  "want",
+  "user",
+  "users",
+]);
+
+function normalizeDesignText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\be[\s-]?commerce\b/g, "ecommerce")
+    .replace(/\bsaas\b/g, "software service")
+    .replace(/\bfin[\s-]?tech\b/g, "fintech finance")
+    .replace(/\bhealth[\s-]?care\b/g, "healthcare")
+    .replace(/\breal[\s-]?time\b/g, "realtime live")
+    .replace(/\bdata[\s-]?heavy\b/g, "data dense")
+    .replace(/[^a-z0-9\s]/g, " ");
+}
 
 function parseCsv(content: string): CsvRow[] {
   const lines = content
@@ -126,22 +178,39 @@ function parseCsvLine(line: string): string[] {
 }
 
 function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+  return normalizeDesignText(text)
     .split(/\s+/)
-    .filter((token) => token.length > 2 || SHORT_DESIGN_TOKENS.has(token));
+    .filter((token) => {
+      if (!token) return false;
+      if (STOPWORDS.has(token)) return false;
+      return token.length > 2 || SHORT_DESIGN_TOKENS.has(token);
+    });
 }
 
 function computeScore(inputTokens: string[], haystack: string): number {
-  const normalized = haystack.toLowerCase();
+  const normalized = normalizeDesignText(haystack);
+  const haystackTokens = new Set(tokenize(haystack));
   let score = 0;
 
   for (const token of inputTokens) {
-    if (normalized.includes(token)) score += 1;
+    if (haystackTokens.has(token)) {
+      score += 2;
+    } else if (token.length >= 5 && normalized.includes(token)) {
+      score += 1;
+    }
   }
 
   return score;
+}
+
+function computeWeightedScore(
+  inputTokens: string[],
+  fields: Array<{ text: string; weight: number }>,
+): number {
+  return fields.reduce(
+    (total, field) => total + computeScore(inputTokens, field.text) * field.weight,
+    0,
+  );
 }
 
 function pickBest<T>(items: T[], scoreFn: (item: T) => number, fallback: T): T {
@@ -172,6 +241,36 @@ function inferProductType(prompt: string): string {
   if (/(admin|settings|management|panel)/.test(normalized)) return "admin";
 
   return "web-app";
+}
+
+function inferDesignDials(prompt: string): {
+  variance: number;
+  motion: number;
+  density: number;
+} {
+  const normalized = prompt.toLowerCase();
+  let variance = 8;
+  let motion = 6;
+  let density = 4;
+
+  if (/(minimal|clean|simple|airy|whitespace)/.test(normalized)) {
+    density = 2;
+    variance = 3;
+  }
+  if (/(complex|dense|packed|cockpit|data-heavy)/.test(normalized)) {
+    density = 9;
+  }
+  if (/(chaotic|artsy|experimental|asymmetric|bold)/.test(normalized)) {
+    variance = 10;
+  }
+  if (/(static|still|no animation)/.test(normalized)) {
+    motion = 1;
+  }
+  if (/(cinematic|dynamic|fluid|interactive|magic)/.test(normalized)) {
+    motion = 9;
+  }
+
+  return { variance, motion, density };
 }
 
 async function loadSkillsIndex(): Promise<SkillsIndex> {
@@ -331,8 +430,11 @@ export function toDesignContextText(context: DesignContext): string {
     `- Layout structure hint: ${context.layout.cssStructure}`,
     `- Layout treatment: ${context.layout.visualTreatment}`,
     `- Typography scale: ${context.typography.contentType} (primary ${context.typography.primarySize}, secondary ${context.typography.secondarySize}, accent ${context.typography.accentSize}, line-height ${context.typography.lineHeight})`,
+    `- Design Dials: Variance ${context.designDials.variance}, Motion ${context.designDials.motion}, Density ${context.designDials.density}`,
     "- UX priorities:",
     ...context.uxPriorities.map((priority) => `  - ${priority}`),
+    "- Bias Corrections (Strictly Enforced):",
+    ...context.biasCorrections.map((correction) => `  - ${correction}`),
   ].join("\n");
 }
 
@@ -343,60 +445,52 @@ export async function buildDesignContext(input: {
   const index = await loadSkillsIndex();
   const inputTokens = tokenize(input.prompt);
   const productType = inferProductType(input.prompt);
+  const designDials = inferDesignDials(input.prompt);
 
   const style = pickBest(
     index.styles,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.category,
-          candidate.keywords,
-          candidate.bestFor,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.keywords, weight: 4 },
+        { text: candidate.bestFor, weight: 3 },
+        { text: candidate.category, weight: 2 },
+        { text: candidate.name, weight: 1 },
+        { text: productType, weight: 2 },
+      ]),
     FALLBACK_STYLE,
   );
 
   const palette = pickBest(
     index.palettes,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.psychology,
-          candidate.primaryHex,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.psychology, weight: 4 },
+        { text: productType, weight: 3 },
+        { text: candidate.name, weight: 1 },
+      ]),
     FALLBACK_PALETTE,
   );
 
   const layout = pickBest(
     index.layouts,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [
-          candidate.name,
-          candidate.useCase,
-          candidate.cssStructure,
-          productType,
-        ].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.useCase, weight: 4 },
+        { text: candidate.cssStructure, weight: 3 },
+        { text: productType, weight: 2 },
+        { text: candidate.name, weight: 1 },
+      ]),
     FALLBACK_LAYOUT,
   );
 
   const typography = pickBest(
     index.typography,
     (candidate) =>
-      computeScore(
-        inputTokens,
-        [candidate.contentType, layout.name, productType].join(" "),
-      ),
+      computeWeightedScore(inputTokens, [
+        { text: candidate.contentType, weight: 4 },
+        { text: layout.name, weight: 2 },
+        { text: productType, weight: 2 },
+      ]),
     FALLBACK_TYPOGRAPHY,
   );
 
@@ -413,5 +507,7 @@ export async function buildDesignContext(input: {
     layout,
     typography,
     uxPriorities: index.uxPriorities.slice(0, 5),
+    biasCorrections: BIAS_CORRECTIONS,
+    designDials,
   };
 }

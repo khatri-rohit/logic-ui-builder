@@ -153,17 +153,6 @@ export async function acceptInvitation(token: string, acceptingUserId: string) {
     throw new OrgError("INVITE_EXPIRED", "This invitation has expired.", 410);
   }
 
-  // const hasSeats = await hasAvailableSeat(
-  //   invitation.organisationId,
-  //   invitation.organisation.maxSeats,
-  // );
-  // if (!hasSeats)
-  //   throw new OrgError(
-  //     "SEAT_LIMIT_REACHED",
-  //     "This organisation has no available seats.",
-  //     402,
-  //   );
-
   // Check accepting user's email matches invite email (or allow any logged-in user — design choice)
   // We enforce email match to prevent invite hijacking
   const acceptingUser = await prisma.user.findUnique({
@@ -178,56 +167,64 @@ export async function acceptInvitation(token: string, acceptingUserId: string) {
     );
   }
 
-  return prisma.$transaction(async (tx) => {
-    const activeCount = await tx.orgMembership.count({
-      where: { organisationId: invitation.organisationId, status: "ACTIVE" },
-    });
-    // Allow re-activation of an existing membership without consuming a new seat.
-    const existing = await tx.orgMembership.findUnique({
-      where: {
-        organisationId_userId: {
+  return prisma.$transaction(
+    async (tx) => {
+      // Acquire a row-level lock on the organisation to serialise seat checks
+      await tx.$executeRaw`
+    SELECT id FROM "Organisation"
+    WHERE id = ${invitation.organisationId}
+    FOR UPDATE
+  `;
+
+      const activeCount = await tx.orgMembership.count({
+        where: { organisationId: invitation.organisationId, status: "ACTIVE" },
+      });
+
+      const existing = await tx.orgMembership.findUnique({
+        where: {
+          organisationId_userId: {
+            organisationId: invitation.organisationId,
+            userId: acceptingUserId,
+          },
+        },
+        select: { status: true },
+      });
+
+      const consumesSeat = !existing || existing.status !== "ACTIVE";
+      if (consumesSeat && activeCount >= invitation.organisation.maxSeats) {
+        throw new OrgError(
+          "SEAT_LIMIT_REACHED",
+          "This organisation has no available seats.",
+          402,
+        );
+      }
+
+      await tx.orgInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "ACCEPTED", acceptedAt: new Date() },
+      });
+
+      return tx.orgMembership.upsert({
+        where: {
+          organisationId_userId: {
+            organisationId: invitation.organisationId,
+            userId: acceptingUserId,
+          },
+        },
+        create: {
           organisationId: invitation.organisationId,
           userId: acceptingUserId,
+          role: invitation.role,
+          status: "ACTIVE",
+          invitedBy: invitation.invitedBy,
         },
-      },
-      select: { status: true },
-    });
-    const consumesSeat = !existing || existing.status !== "ACTIVE";
-    if (consumesSeat && activeCount >= invitation.organisation.maxSeats) {
-      throw new OrgError(
-        "SEAT_LIMIT_REACHED",
-        "This organisation has no available seats.",
-        402,
-      );
-    }
-
-    await tx.orgInvitation.update({
-      where: { id: invitation.id },
-      data: { status: "ACCEPTED", acceptedAt: new Date() },
-    });
-
-    const membership = await tx.orgMembership.upsert({
-      where: {
-        organisationId_userId: {
-          organisationId: invitation.organisationId,
-          userId: acceptingUserId,
-        },
-      },
-      create: {
-        organisationId: invitation.organisationId,
-        userId: acceptingUserId,
-        role: invitation.role,
-        status: "ACTIVE",
-        invitedBy: invitation.invitedBy,
-      },
-      update: {
-        role: invitation.role,
-        status: "ACTIVE",
-      },
-    });
-
-    return membership;
-  });
+        update: { role: invitation.role, status: "ACTIVE" },
+      });
+    },
+    {
+      isolationLevel: "Serializable",
+    },
+  );
 }
 
 export async function revokeInvitation(

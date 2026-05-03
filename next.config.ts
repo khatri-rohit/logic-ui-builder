@@ -22,9 +22,10 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  compiler: {
-    removeConsole: true,
-  },
+  // compiler: {
+  //   removeConsole: true,
+  // },
+  reactCompiler: true,
 };
 
 export default nextConfig;

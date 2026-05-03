@@ -100,6 +100,7 @@ export function useSpeechRecognition(
   >(null);
   const finalTranscriptRef = useRef("");
   const stoppedByUserRef = useRef(false);
+  const shouldListenRef = useRef(false);
 
   const [isSupported] = useState(() =>
     Boolean(getSpeechRecognitionConstructor()),
@@ -119,12 +120,13 @@ export function useSpeechRecognition(
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.lang = lang;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       stoppedByUserRef.current = false;
+      shouldListenRef.current = true;
       setIsListening(true);
       setError(null);
       finalTranscriptRef.current = "";
@@ -162,16 +164,42 @@ export function useSpeechRecognition(
 
     recognition.onerror = (event) => {
       setError(getErrorMessage(event.error));
-      setIsListening(false);
       setInterimTranscript("");
+      if (
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed" ||
+        event.error === "audio-capture"
+      ) {
+        shouldListenRef.current = false;
+        setIsListening(false);
+      }
     };
 
     recognition.onend = () => {
-      setIsListening(false);
       setInterimTranscript("");
 
       const completedTranscript = finalTranscriptRef.current.trim();
-      if (!stoppedByUserRef.current && completedTranscript) {
+      if (stoppedByUserRef.current) {
+        shouldListenRef.current = false;
+        setIsListening(false);
+        if (completedTranscript) {
+          transcriptReadyCallbackRef.current?.(completedTranscript);
+        }
+        return;
+      }
+
+      if (shouldListenRef.current) {
+        try {
+          recognition.start();
+          setIsListening(true);
+          return;
+        } catch {
+          shouldListenRef.current = false;
+        }
+      }
+
+      setIsListening(false);
+      if (completedTranscript) {
         transcriptReadyCallbackRef.current?.(completedTranscript);
       }
     };
@@ -190,6 +218,9 @@ export function useSpeechRecognition(
     try {
       setError(null);
       finalTranscriptRef.current = "";
+      setTranscript("");
+      setInterimTranscript("");
+      shouldListenRef.current = true;
       recognitionRef.current.start();
     } catch {
       setError("Unable to start speech recognition.");
@@ -202,6 +233,7 @@ export function useSpeechRecognition(
     }
 
     stoppedByUserRef.current = true;
+    shouldListenRef.current = false;
     recognitionRef.current.stop();
   }, [isListening]);
 

@@ -93,7 +93,7 @@ CLERK_JWT_KEY=
 This project is configured for Prisma ORM v7 with Supabase Postgres and separates runtime database access from Prisma CLI migrations.
 
 - Runtime Prisma Client uses `DATABASE_URL` (pooled connection).
-- Prisma CLI and migrations use `NEXT_PUBLIC_DIRECT_URL` (direct connection) via `prisma.config.ts`.
+- Prisma CLI and migrations use `PRISMA_DIRECT_URL` (direct connection) via `prisma.config.ts`.
 
 ### Environment Variables
 
@@ -104,11 +104,11 @@ Copy `.env.example` values into your local `.env` and replace `[YOUR-PASSWORD]`:
 DATABASE_URL="postgresql://postgres.grlntfzdslmklimerevx:[YOUR-PASSWORD]@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
 
 # Prisma CLI and migrations (direct connection, preferred)
-NEXT_PUBLIC_DIRECT_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+PRISMA_DIRECT_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
 ```
 
 If direct host access is not available (for example on IPv4-only environments),
-you can use the Supabase session pooler on port `5432` as a fallback `NEXT_PUBLIC_DIRECT_URL`.
+you can use the Supabase session pooler on port `5432` as a fallback `PRISMA_DIRECT_URL`.
 
 ### Supabase Storage S3 (Project Thumbnails)
 

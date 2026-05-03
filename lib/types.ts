@@ -45,6 +45,12 @@ export interface DesignContext {
   layout: LayoutHint;
   typography: TypographyHint;
   uxPriorities: string[];
+  biasCorrections: string[];
+  designDials: {
+    variance: number;
+    motion: number;
+    density: number;
+  };
 }
 
 export interface WebAppSpec {
@@ -87,8 +93,8 @@ export interface WebAppSpec {
 export interface ComponentTreeNode {
   screen: string;
   components: string[];
-  canvasX: number;
-  canvasY: number;
+  canvasX?: number;
+  canvasY?: number;
 
   // Stage 2 layout architecture — consumed by buildScreenPrompt
   layoutArchitecture?: {

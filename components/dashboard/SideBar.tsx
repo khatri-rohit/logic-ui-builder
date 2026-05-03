@@ -71,7 +71,15 @@ const SideBar = ({
           },
         };
 
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: projects = [], isLoading, isFetching } = useProjectsQuery();
+  const showProjectSkeletons = isLoading || (isFetching && projects.length === 0);
+
+  const handleFocusPrompt = () => {
+    setIsMobileMenuOpen(false);
+    window.setTimeout(() => {
+      document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+    }, 0);
+  };
 
   const filteredNavItems = useMemo(() => {
     if (projects.length === 0) {
@@ -229,45 +237,47 @@ const SideBar = ({
           </div>
 
           <div className="mt-8 flex flex-1 flex-col gap-4 px-4 w-full max-w-72">
-            {filteredNavItems.map((project, index) => (
-              <motion.button
-                key={project.id}
-                type="button"
-                className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-                {...fadeLeft(0.12 + index * 0.04)}
-                onMouseEnter={() => router.prefetch(`/projects/${project.id}`)}
-                onClick={() => handleOpenProject(project.id)}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
-                    <Image
-                      src={project.thumbnailUrl || "/thumbnail.jpg"}
-                      alt={project.title}
-                      width={64}
-                      height={64}
-                      className="h-full w-full object-cover"
-                    />
+            {showProjectSkeletons ? (
+              <ProjectListSkeleton />
+            ) : (
+              filteredNavItems.map((project, index) => (
+                <motion.button
+                  key={project.id}
+                  type="button"
+                  className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+                  {...fadeLeft(0.12 + index * 0.04)}
+                  onMouseEnter={() =>
+                    router.prefetch(`/projects/${project.id}`)
+                  }
+                  onClick={() => handleOpenProject(project.id)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
+                      <Image
+                        src={project.thumbnailUrl || "/thumbnail.jpg"}
+                        alt={project.title}
+                        width={64}
+                        height={64}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col justify-center">
+                      <span className="truncate text-xs font-semibold">
+                        {project.title}
+                      </span>
+                      <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
+                        {project.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-col justify-center">
-                    <span className="truncate text-xs font-semibold">
-                      {project.title}
-                    </span>
-                    <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
-                      {project.description}
-                    </p>
-                  </div>
-                </div>
-              </motion.button>
-            ))}
-            {filteredNavItems.length === 0 && (
-              <div
-                className={cn(
-                  "text-[11px] text-muted-foreground px-3 leading-4 text-pretty",
-                  mono.className,
-                )}
-              >
-                No projects found for the selected timeframe.
-              </div>
+                </motion.button>
+              ))
+            )}
+            {!showProjectSkeletons && filteredNavItems.length === 0 && (
+              <SidebarEmptyState
+                hasProjects={projects.length > 0}
+                onGenerate={handleFocusPrompt}
+              />
             )}
           </div>
 
@@ -363,47 +373,47 @@ const SideBar = ({
               </nav>
 
               <div className="border-t border-border px-3 py-4 min-w-full">
-                {filteredNavItems.map((project, index) => (
-                  <motion.button
-                    key={project.id}
-                    type="button"
-                    className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-1 hover:mb-3 transition-all duration-300 cursor-pointer"
-                    {...fadeLeft(0.12 + index * 0.04)}
-                    onMouseEnter={() =>
-                      router.prefetch(`/projects/${project.id}`)
-                    }
-                    onClick={() => handleOpenProject(project.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
-                        <Image
-                          src={project.thumbnailUrl || "/thumbnail.jpg"}
-                          alt={project.title}
-                          width={56}
-                          height={56}
-                          className="h-full w-full object-cover"
-                        />
+                {showProjectSkeletons ? (
+                  <ProjectListSkeleton />
+                ) : (
+                  filteredNavItems.map((project, index) => (
+                    <motion.button
+                      key={project.id}
+                      type="button"
+                      className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-1 hover:mb-3 transition-all duration-300 cursor-pointer"
+                      {...fadeLeft(0.12 + index * 0.04)}
+                      onMouseEnter={() =>
+                        router.prefetch(`/projects/${project.id}`)
+                      }
+                      onClick={() => handleOpenProject(project.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
+                          <Image
+                            src={project.thumbnailUrl || "/thumbnail.jpg"}
+                            alt={project.title}
+                            width={56}
+                            height={56}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col justify-center">
+                          <span className="truncate text-xs font-semibold">
+                            {project.title}
+                          </span>
+                          <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
+                            {project.description}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex min-w-0 flex-1 flex-col justify-center">
-                        <span className="truncate text-xs font-semibold">
-                          {project.title}
-                        </span>
-                        <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
-                          {project.description}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.button>
-                ))}
-                {filteredNavItems.length === 0 && (
-                  <div
-                    className={cn(
-                      "px-1 text-[11px] leading-4 text-muted-foreground",
-                      mono.className,
-                    )}
-                  >
-                    No projects found for the selected timeframe.
-                  </div>
+                    </motion.button>
+                  ))
+                )}
+                {!showProjectSkeletons && filteredNavItems.length === 0 && (
+                  <SidebarEmptyState
+                    hasProjects={projects.length > 0}
+                    onGenerate={handleFocusPrompt}
+                  />
                 )}
               </div>
             </motion.aside>
@@ -413,5 +423,56 @@ const SideBar = ({
     </>
   );
 };
+
+function ProjectListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          className="flex items-start gap-3 rounded-lg border border-border bg-card/30 p-2"
+        >
+          <div className="size-10 shrink-0 animate-pulse rounded-md bg-muted" />
+          <div className="min-w-0 flex-1 space-y-2 py-1">
+            <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="h-2.5 w-full animate-pulse rounded bg-muted/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SidebarEmptyState({
+  hasProjects,
+  onGenerate,
+}: {
+  hasProjects: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-card/30 p-4 text-sm">
+      <p className="text-xs font-semibold text-foreground">
+        {hasProjects ? "No projects here" : "No projects yet"}
+      </p>
+      <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+        {hasProjects
+          ? "Try a wider timeframe to find older work."
+          : "Generate your first UI from the prompt box."}
+      </p>
+      {!hasProjects && (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="mt-3 w-full"
+          onClick={onGenerate}
+        >
+          Generate your first UI
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export default SideBar;

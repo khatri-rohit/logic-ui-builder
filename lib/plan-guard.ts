@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { AppAuthContext } from "@/lib/get-auth";
-import { getPlanConfig, isModelAllowed } from "@/lib/plans";
-import { getOrCreateUsagePeriod, UsageContext } from "@/lib/usage";
 import {
-  createOrganisation,
-  hasAvailableSeat,
-  ORG_MAX_SEATS_PRO,
-} from "@/lib/org";
+  getOrCreateUsagePeriod,
+  reserveProjectSlot,
+  reserveGenerationSlot,
+  UsageContext,
+} from "@/lib/usage";
+import { hasAvailableSeat } from "@/lib/org";
 import prisma from "./prisma";
 
 export type PlanGuardResult =
@@ -36,7 +36,6 @@ function quotaExceededResponse(
 
 export async function guardGenerationRequest(
   authContext: AppAuthContext,
-  requestedModel: string | undefined,
 ): Promise<PlanGuardResult> {
   const usage = await getOrCreateUsagePeriod(
     authContext.appUserId,
@@ -56,36 +55,18 @@ export async function guardGenerationRequest(
     };
   }
 
-  if (usage.generationsRemaining === 0) {
+  const slotReserved = await reserveGenerationSlot(
+    usage.usagePeriodId,
+    usage.generationLimit,
+  );
+
+  if (!slotReserved) {
     return {
       allowed: false,
       response: quotaExceededResponse(
         usage.generationsUsed,
         usage.generationLimit,
         authContext.effectivePlanId,
-      ),
-    };
-  }
-
-  if (
-    requestedModel &&
-    !isModelAllowed(authContext.effectivePlanId, requestedModel)
-  ) {
-    return {
-      allowed: false,
-      response: NextResponse.json(
-        {
-          error: true,
-          code: "MODEL_NOT_ALLOWED",
-          message: `Model "${requestedModel}" is not available on the ${authContext.effectivePlanId} plan.`,
-          data: {
-            planId: authContext.effectivePlanId,
-            allowedModels: getPlanConfig(authContext.effectivePlanId)
-              .allowedModels,
-            upgradeUrl: "/billing/upgrade",
-          },
-        },
-        { status: 403 },
       ),
     };
   }
@@ -110,7 +91,12 @@ export async function guardProjectCreation(
     };
   }
 
-  if (usage.projectsRemaining === 0) {
+  const slotReserved = await reserveProjectSlot(
+    usage.usagePeriodId,
+    usage.projectLimit,
+  );
+
+  if (!slotReserved) {
     return {
       allowed: false,
       response: NextResponse.json(
@@ -173,14 +159,14 @@ export async function guardFrameRegeneration(
 
 /**
  * Guard for POST /api/org — can this user create an organisation?
- * Requires PRO personal plan (not just effective plan).
+ * Requires PRO effective plan (personal or inherited from org).
  * An org member who inherits PRO cannot create a second org — only their own PRO subscription qualifies.
  */
 export async function guardOrgCreation(
   authContext: AppAuthContext,
 ): Promise<PlanGuardResult> {
-  // Must have PERSONAL PRO, not just org-inherited PRO
-  if (authContext.planId !== "PRO") {
+  // Must have PRO effective plan (personal or inherited from org)
+  if (authContext.effectivePlanId !== "PRO") {
     return {
       allowed: false,
       response: NextResponse.json(

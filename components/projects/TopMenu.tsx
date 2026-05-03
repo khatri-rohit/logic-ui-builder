@@ -36,7 +36,7 @@ const projectActions: Array<{ id: ProjectActionId; label: string; icon: any }> =
     { id: "all-projects", label: "Go to all projects", icon: ChevronLeft },
     { id: "share", label: "Share", icon: Share2 },
     { id: "download", label: "Download project", icon: Download },
-    { id: "export-png", label: "Export as PNG", icon: FileImage },
+    // { id: "export-png", label: "Export as PNG", icon: FileImage },
     { id: "edit", label: "Edit", icon: Pencil },
     { id: "delete", label: "Delete project", icon: Trash2 },
     { id: "feedback", label: "Send feedback", icon: MessageCirclePlus },

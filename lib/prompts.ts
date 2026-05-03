@@ -345,10 +345,11 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Premium font pairings: use Geist, Satoshi, or Cabinet Grotesk for creative/editorial designs. Default to Inter for utilitarian UIs. NEVER use serif fonts for dashboards or software UIs.
 
 3. Width & Container Standards (CRITICAL - affects all screens)
-- Web screens MUST use at least 90% of available viewport width
+- Web screens MUST use at least 90% of available viewport width on desktop
 - Root container: max-w-[1280px] centered or full-bleed for landing/dashboard screens
 - For content/utility screens, use max-w-[1024px] centered for readability
 - NEVER create narrow "card-only" layouts - use full available width
+- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on desktop web layouts
 - If the prompt specifies "dashboard", "admin", "landing" - use full viewport width
 - Forms and lists should use full width with proper max-width constraints
 - Mobile: full-width with 16px horizontal padding
@@ -1042,6 +1043,7 @@ ANTI-PATTERNS TO AVOID:
 - p-4 on every element. Follow the spacing contract.
 - Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
 - Dashboard content trapped in a narrow centered column. Use the available width.
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
 `.trim();
 
   const generationContract = buildGenerationDesignContract(spec, designContext);

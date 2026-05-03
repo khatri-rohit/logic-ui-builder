@@ -106,6 +106,7 @@ const PLATFORM_RULES: Record<GenerationPlatform, string[]> = {
     "Target desktop web layout with natural full-page vertical flow.",
     "Allow content sections to stack with realistic page height.",
     "Use full viewport width on desktop (90%+), not narrow centered columns",
+    "NEVER use max-w-sm, max-w-md, w-96, w-80 on web — those are mobile-only widths",
   ],
 };
 

@@ -255,7 +255,6 @@ const Dashboard = () => {
             appearance={clerkUserButtonAppearance}
             userProfileProps={{ appearance: clerkUserProfileAppearance }}
           >
-            <UserButton.Action label="manageAccount" />
             <UserButton.MenuItems>
               <UserButton.Action
                 label="Manage Subscription"

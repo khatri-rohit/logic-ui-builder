@@ -43,17 +43,7 @@ const frameRouteParamsSchema = z.object({
 
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
-const frameRegenerateBodySchema = frameRegenerateRequestBodySchema.superRefine(
-  (value, ctx) => {
-    if (value.model && !STAGE3_MODELS.includes(value.model)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["model"],
-        message: "Unsupported model selection",
-      });
-    }
-  },
-);
+const frameRegenerateBodySchema = frameRegenerateRequestBodySchema;
 
 function toApiPlatform(platform: PrismaGenerationPlatform): GenerationPlatform {
   return platform === "MOBILE" ? "mobile" : "web";
@@ -178,13 +168,13 @@ export async function POST(
     }
 
     try {
-      const burstLimiter = getGenerationBurstLimit(authContext.planId);
+      const burstLimiter = getGenerationBurstLimit(authContext.effectivePlanId);
       const { success, limit, remaining, reset } = await burstLimiter.limit(
         authContext.appUserId,
       );
       logger.info("Burst rate limit check for generation request", {
         userId: authContext.appUserId,
-        planId: authContext.planId,
+        planId: authContext.effectivePlanId,
         success,
         limit,
         remaining,

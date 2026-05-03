@@ -64,17 +64,7 @@ const STAGE3_MODELS = [
 
 const CRITIQUE_MODELS = ["gemma4:31b", "qwen3-coder-next:cloud"];
 
-const generationBodySchema = generationRequestBodySchema.superRefine(
-  (value, ctx) => {
-    if (value.model && !STAGE3_MODELS.includes(value.model)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["model"],
-        message: "Unsupported model selection",
-      });
-    }
-  },
-);
+const generationBodySchema = generationRequestBodySchema;
 
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
@@ -335,13 +325,13 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const burstLimiter = getGenerationBurstLimit(authContext.planId);
+      const burstLimiter = getGenerationBurstLimit(authContext.effectivePlanId);
       const { success, limit, remaining, reset } = await burstLimiter.limit(
         authContext.appUserId,
       );
       logger.info("Burst rate limit check for generation request", {
         userId: authContext.appUserId,
-        planId: authContext.planId,
+        planId: authContext.effectivePlanId,
         success,
         limit,
         remaining,
@@ -360,7 +350,7 @@ export async function POST(req: NextRequest) {
       }
     } catch (rateLimitError) {
       logger.error(
-        `getGenerationBurstLimit(${authContext.planId}).limit failed for authContext.appUserId=${authContext.appUserId}`,
+        `getGenerationBurstLimit(${authContext.effectivePlanId}).limit failed for authContext.appUserId=${authContext.appUserId}`,
         rateLimitError,
       );
 
@@ -462,10 +452,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const guardResult = await guardGenerationRequest(
-      authContext,
-      preferredModel ?? undefined,
-    );
+    const guardResult = await guardGenerationRequest(authContext);
     if (!guardResult.allowed) return guardResult.response;
     const { usage } = guardResult;
     logger.info("Plan guard passed for generation request", { usage });

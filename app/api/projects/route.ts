@@ -164,9 +164,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    logger.error("Error creating project from prompt:", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error("Error creating project from prompt:", { error });
 
     return NextResponse.json(
       {

@@ -45,23 +45,24 @@ import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 export const runtime = "nodejs";
 
 const STAGE1_MODELS = [
-  "deepseek-v3.2:cloud",
-  //  "gpt-oss:120b",
+  "qwen3-coder-next:cloud",
+  "mistral-large-3:675b-cloud",
   "gemma4:31b",
 ];
 const STAGE2_MODELS = [
-  "deepseek-v3.2:cloud",
-  // "gpt-oss:120b",
-  "deepseek-v3.1:671b",
-  // "qwen3.5",
+  "qwen3-coder-next:cloud",
+  "mistral-large-3:675b-cloud",
+  "glm-5:cloud",
 ];
 const STAGE3_MODELS = [
   "gemma4:31b",
-  "deepseek-v3.1:671b",
-  "qwen3.5",
-  "gpt-oss:120b",
-  "deepseek-v3.2:cloud",
+  "qwen3-coder:480b-cloud",
+  "mistral-large-3:675b-cloud",
+  "kimi-k2.6:cloud",
+  "gpt-oss:120b-cloud",
 ];
+
+const CRITIQUE_MODELS = ["gemma4:31b", "qwen3-coder-next:cloud"];
 
 const generationBodySchema = generationRequestBodySchema.superRefine(
   (value, ctx) => {
@@ -710,7 +711,7 @@ export async function POST(req: NextRequest) {
                 `Frame regeneration Stage 3 '${sourceFrame.screenName}' via model: ${candidateModel}`,
               );
               const { usage: stage3Usage, textStream } = streamText({
-                model: ollama("minimax-m2.5:cloud"),
+                model: ollama(candidateModel),
                 system: STAGE3_SYSTEM,
                 prompt: buildScreenPrompt(
                   spec,
@@ -954,7 +955,7 @@ export async function POST(req: NextRequest) {
                   `Stage 3 screen '${screen}' iteration ${iteration} via model: ${candidateModel}`,
                 );
                 const { usage: stage3Usage, textStream } = streamText({
-                  model: ollama("minimax-m2.5:cloud"),
+                  model: ollama(candidateModel),
                   system: STAGE3_SYSTEM,
                   prompt: buildScreenPrompt(
                     spec,
@@ -1038,6 +1039,14 @@ export async function POST(req: NextRequest) {
           };
         };
 
+        const critiqueResults: Array<{
+          screen: string;
+          quality: string;
+          score: number;
+          issues: string[];
+          fixes: string[];
+        }> = [];
+
         for (const [index, screen] of spec.screens.entries()) {
           await write({ type: "screen_start", screen });
 
@@ -1048,7 +1057,7 @@ export async function POST(req: NextRequest) {
           const dimensions = screensWithDims[index] ?? { w: 1200, h: 800 };
           const frameId = crypto.randomUUID();
 
-          const result = await generateScreenWithRetry(
+          let finalResult = await generateScreenWithRetry(
             screen,
             position,
             dimensions,
@@ -1056,7 +1065,77 @@ export async function POST(req: NextRequest) {
             stage3Prompt,
           );
 
-          if (!result.success) {
+          // Inline design quality critique BEFORE persisting
+          if (finalResult.success && finalResult.code) {
+            const qualityCheck = performDesignQualityCheck(
+              finalResult.code,
+              spec,
+            );
+
+            if (!qualityCheck.passed) {
+              logger.warn(
+                `Screen "${screen}" design quality issues:`,
+                qualityCheck.issues,
+              );
+              await write({
+                type: "quality_warning",
+                screen,
+                issues: qualityCheck.issues,
+                score: qualityCheck.score,
+              });
+
+              // Run LLM critique if quality score is borderline (5-9)
+              if (qualityCheck.score >= 5 && qualityCheck.score < 10) {
+                const llmCritique = await runLLMCritique(
+                  finalResult.code,
+                  screen,
+                  spec,
+                  prompt,
+                );
+                critiqueResults.push({
+                  screen,
+                  quality: llmCritique.quality,
+                  score: llmCritique.score,
+                  issues: llmCritique.issues,
+                  fixes: llmCritique.fixes,
+                });
+
+                if (
+                  llmCritique.quality === "needs_revision" &&
+                  llmCritique.fixes?.length > 0
+                ) {
+                  await write({
+                    type: "critique_feedback",
+                    screen,
+                    issues: llmCritique.issues,
+                    fixes: llmCritique.fixes,
+                  });
+
+                  // Retry generation with critique fixes injected
+                  const fixedPrompt = `${stage3Prompt}\n\n## CRITIQUE FIXES (MANDATORY):\n${llmCritique.fixes.join("\n")}\n\nAddress ALL fixes above while preserving the existing design direction.`;
+                  await write({
+                    type: "screen_reset",
+                    screen,
+                    reason: `critique-fixes:${llmCritique.score}`,
+                  });
+
+                  const retryResult = await generateScreenWithRetry(
+                    screen,
+                    position,
+                    dimensions,
+                    frameId,
+                    fixedPrompt,
+                  );
+
+                  if (retryResult.success) {
+                    finalResult = retryResult;
+                  }
+                }
+              }
+            }
+          }
+
+          if (!finalResult.success) {
             persistedScreens.push({
               id: frameId,
               state: "error",
@@ -1065,9 +1144,9 @@ export async function POST(req: NextRequest) {
               w: dimensions.w,
               h: dimensions.h,
               screenName: screen,
-              content: result.code,
+              content: finalResult.code,
               editedContent: null,
-              error: result.error,
+              error: finalResult.error,
             });
             await write({ type: "screen_done", screen });
             continue;
@@ -1081,68 +1160,12 @@ export async function POST(req: NextRequest) {
             w: dimensions.w,
             h: dimensions.h,
             screenName: screen,
-            content: result.code,
+            content: finalResult.code,
             editedContent: null,
             error: null,
           });
 
           await write({ type: "screen_done", screen });
-        }
-
-        const critiqueResults: Array<{
-          screen: string;
-          quality: string;
-          score: number;
-          issues: string[];
-        }> = [];
-
-        for (const [index, screen] of spec.screens.entries()) {
-          const screenData = persistedScreens[index];
-          if (screenData && screenData.content) {
-            const qualityCheck = performDesignQualityCheck(
-              screenData.content,
-              spec,
-            );
-            if (!qualityCheck.passed) {
-              logger.warn(
-                `Screen "${screen}" design quality issues:`,
-                qualityCheck.issues,
-              );
-              await write({
-                type: "quality_warning",
-                screen,
-                issues: qualityCheck.issues,
-                score: qualityCheck.score,
-              });
-
-              if (qualityCheck.score >= 7) {
-                const llmCritique = await runLLMCritique(
-                  screenData.content,
-                  screen,
-                  spec,
-                  prompt,
-                );
-                critiqueResults.push({
-                  screen,
-                  quality: llmCritique.quality,
-                  score: llmCritique.score,
-                  issues: llmCritique.issues,
-                });
-
-                if (
-                  llmCritique.quality === "needs_revision" &&
-                  llmCritique.fixes?.length > 0
-                ) {
-                  await write({
-                    type: "critique_feedback",
-                    screen,
-                    issues: llmCritique.issues,
-                    fixes: llmCritique.fixes,
-                  });
-                }
-              }
-            }
-          }
         }
 
         if (generationId) {
@@ -1252,7 +1275,7 @@ const runLLMCritique = async (
 
   try {
     const { text: critiqueResult } = await generateText({
-      model: ollama("minimax-m2.5:cloud"),
+      model: ollama(CRITIQUE_MODELS[0]),
       system: STAGE4_CRITIQUE_SYSTEM,
       prompt: critiquePrompt,
       temperature: 0.1,
@@ -1291,40 +1314,111 @@ const runLLMCritique = async (
 const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
   const syntaxValidation = validateGeneratedTSX(code);
   const issues: string[] = [];
+  let score = 10;
 
   if (!syntaxValidation.valid) {
     issues.push(...syntaxValidation.issues);
+    score -= syntaxValidation.issues.length * 2;
   }
 
   const hasHardcodedColors =
-    /bg-blue-\d+|bg-red-\d+|bg-green-\d+|bg-yellow-\d+/.test(code);
+    /bg-blue-\d+|bg-red-\d+|bg-green-\d+|bg-yellow-\d+|bg-purple-\d+|bg-indigo-\d+/.test(
+      code,
+    );
   if (hasHardcodedColors) {
     issues.push("Design quality: Uses hardcoded Tailwind color classes");
+    score -= 1;
   }
 
-  const hasArbitrarySpacing =
-    /\bp-\d\b|\bm-\d\b/.test(code) && !/\bgap-\d\b/.test(code);
+  const hasPureBlack = /#000000|\bblack\b/.test(code);
+  if (hasPureBlack) {
+    issues.push(
+      "Design quality: Uses pure black (#000000) — use off-black instead",
+    );
+    score -= 1;
+  }
+
+  const hasArbitrarySpacing = /\bp-[5679]\b|\bm-[5679]\b/.test(code);
   if (hasArbitrarySpacing) {
     issues.push(
       "Design quality: Uses arbitrary pixel spacing instead of 8pt grid",
     );
+    score -= 1;
   }
 
-  const hasEqualCards = code.match(/col-span-\d+.*col-span-\d+/g);
-  if (hasEqualCards && hasEqualCards.length > 2) {
-    issues.push("Design quality: Equal-width cards may lack visual hierarchy");
+  const hasEqualCards =
+    (code.match(/grid-cols-3/g) || []).length > 0 &&
+    (code.match(/col-span-\d+/g) || []).length >= 3;
+  if (hasEqualCards) {
+    issues.push(
+      "Design quality: Generic 3-equal-column layout detected — use asymmetric grids",
+    );
+    score -= 1;
   }
 
-  const usesFullWidth = /max-w-\[1280px\]|max-w-\[1024px\]/.test(code);
+  const hasResponsiveBreakpoints = /md:|lg:|xl:/.test(code);
+  if (!hasResponsiveBreakpoints && spec.platform === "web") {
+    issues.push(
+      "Design quality: Missing responsive breakpoints (md:, lg:, xl:)",
+    );
+    score -= 1;
+  }
+
+  const hasButtonHierarchy =
+    /bg-\[var\(--primary\)\].*text-white/.test(code) &&
+    /bg-\[var\(--surface-elevated\)\].*border/.test(code);
+  if (!hasButtonHierarchy && code.includes("button")) {
+    issues.push(
+      "Design quality: Missing button hierarchy (primary + secondary styles)",
+    );
+    score -= 1;
+  }
+
+  const hasFocusStates = /focus:ring-/.test(code);
+  if (!hasFocusStates) {
+    issues.push("Design quality: Missing focus states on interactive elements");
+    score -= 1;
+  }
+
+  const hasSemanticHTML = /<(nav|main|section|article|header|footer)\b/.test(
+    code,
+  );
+  if (!hasSemanticHTML) {
+    issues.push("Design quality: Missing semantic HTML elements");
+    score -= 1;
+  }
+
+  const hasGenericNames = /John Doe|Jane Smith|Acme Corp|Lorem Ipsum/.test(
+    code,
+  );
+  if (hasGenericNames) {
+    issues.push("Design quality: Uses generic placeholder names/content");
+    score -= 1;
+  }
+
+  const usesFullWidth = /max-w-\[1280px\]|max-w-\[1024px\]|max-w-7xl/.test(
+    code,
+  );
   if (!usesFullWidth && spec.dominantLayoutPattern === "dashboard-grid") {
     issues.push(
       "Design quality: Dashboard may benefit from full viewport width",
     );
+    score -= 1;
+  }
+
+  const hasFillerWords = /Elevate|Seamless|Unleash|Next-Gen|Revolutionary/.test(
+    code,
+  );
+  if (hasFillerWords) {
+    issues.push(
+      "Design quality: Uses AI filler words (Elevate, Seamless, Unleash)",
+    );
+    score -= 1;
   }
 
   return {
     passed: issues.length === 0,
     issues,
-    score: Math.max(0, 10 - issues.length),
+    score: Math.max(0, score),
   };
 };

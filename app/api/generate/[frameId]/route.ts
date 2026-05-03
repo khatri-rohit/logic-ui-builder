@@ -30,11 +30,11 @@ import { parseGenerationScreens } from "@/lib/utils";
 export const runtime = "nodejs";
 
 const STAGE3_MODELS = [
-  "gemma4:31b",
-  "deepseek-v3.1:671b",
-  "qwen3.5",
-  "gpt-oss:120b",
-  "deepseek-v3.2:cloud",
+  "gemma3:27b-cloud",
+  "qwen3-coder:480b-cloud",
+  "mistral-large-3:675b-cloud",
+  "kimi-k2.6:cloud",
+  "gpt-oss:120b-cloud",
 ];
 
 const frameRouteParamsSchema = z.object({

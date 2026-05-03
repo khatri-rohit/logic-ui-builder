@@ -29,7 +29,6 @@ import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
 } from "@/providers/project-studio-provider";
-import { useUserActivityStore } from "@/providers/zustand-provider";
 import { Check, Code2, Monitor, Smartphone, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProjectStudioRuntimeState } from "@/stores/project-studio";
@@ -301,10 +300,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const { mutateAsync: updateProjectMetadata, isPending: isSavingMetadata } =
     useProjectMetadataUpdateMutation();
 
-  // const model = useUserActivityStore((state) => state.model);
-  // const setModel = useUserActivityStore((state) => state.setModel);
-  const spec = useUserActivityStore((state) => state.spec);
-  const setSpec = useUserActivityStore((state) => state.setSpec);
+  const platform = project?.platform ?? "web";
 
   const projectStudioStoreApi = useProjectStudioStoreApi();
 
@@ -1418,7 +1414,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           projectId: project.id,
           // model,
           prompt: generationPrompt,
-          platform: spec ?? "web",
+          platform,
           ...(isFrameRegeneration && {
             generationId: generationId ?? "",
             frameId:
@@ -2746,6 +2742,7 @@ npm run dev
 
       <ProjectMenuPanel
         title={project.title || "Untitled Project"}
+        platform={platform}
         handleMenuClick={handleMenuClick}
       />
 
@@ -2859,58 +2856,19 @@ npm run dev
       <div className="pointer-events-none absolute inset-0 z-50">
         <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-md border border-input bg-card/90 p-2.5 shadow-2xl shadow-black/30 backdrop-blur-[1px]">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div
-              className="flex items-center gap-1 border border-input bg-muted p-1"
-              role="group"
-              aria-label="Platform selection"
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground",
+                mono.className,
+              )}
             >
-              <Button
-                type="button"
-                size="xs"
-                variant={spec === "web" ? "secondary" : "ghost"}
-                onClick={() => setSpec("web")}
-                className={cn(
-                  "h-7 px-2",
-                  spec === "mobile" && "text-muted-foreground",
-                )}
-                aria-pressed={spec === "web"}
-                aria-label="Generate for web platform (desktop)"
-              >
-                <Monitor
-                  data-icon="inline-start"
-                  className="size-4"
-                  aria-hidden="true"
-                />
-                <span
-                  className={cn(
-                    "text-[10px] uppercase tracking-[0.18em]",
-                    mono.className,
-                  )}
-                >
-                  Web
-                </span>
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant={spec === "mobile" ? "secondary" : "ghost"}
-                onClick={() => setSpec("mobile")}
-                className={cn(
-                  "h-7 px-2",
-                  spec === "web" && "text-muted-foreground",
-                )}
-              >
-                <Smartphone data-icon="inline-start" className="size-4" />
-                <span
-                  className={cn(
-                    "text-[10px] uppercase tracking-[0.18em]",
-                    mono.className,
-                  )}
-                >
-                  Mobile
-                </span>
-              </Button>
-            </div>
+              {platform === "web" ? (
+                <Monitor className="size-3.5" />
+              ) : (
+                <Smartphone className="size-3.5" />
+              )}
+              {platform}
+            </span>
             <div className="flex items-center gap-3">
               {activeFrameId && (
                 <span

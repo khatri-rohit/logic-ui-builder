@@ -17,13 +17,14 @@ import { CanvasFrameSnapshot, CanvasSnapshotV1 } from "@/lib/canvas-state";
 
 type CreateProjectInput = {
   prompt: string;
+  platform: "web" | "mobile";
 };
 
 type CreateProjectResult = {
   projectId: string;
   title: string;
   description: string | null;
-  spec: "web" | "mobile";
+  platform: "web" | "mobile";
   model: string;
   updatedAt: string;
 };
@@ -40,7 +41,7 @@ async function listProjects() {
   });
 }
 
-async function createProject({ prompt }: CreateProjectInput) {
+async function createProject({ prompt, platform }: CreateProjectInput) {
   const normalizedPrompt = prompt.trim();
 
   if (!normalizedPrompt) {
@@ -52,7 +53,7 @@ async function createProject({ prompt }: CreateProjectInput) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: normalizedPrompt }),
+    body: JSON.stringify({ prompt: normalizedPrompt, platform }),
     next: { tags: ["list"] },
   });
 }
@@ -150,6 +151,7 @@ function mergePatchedProjectDetail(
       description: patchResult.project.description,
       initialPrompt: patchResult.project.initialPrompt,
       status: patchResult.project.status,
+      platform: patchResult.project.platform,
       canvasState: patchResult.project.canvasState,
       generations,
       frames: flattenGenerationFrames(generations),
@@ -179,6 +181,7 @@ function mergePatchedProjectDetail(
     description: patchResult.project.description,
     initialPrompt: patchResult.project.initialPrompt,
     status: patchResult.project.status,
+    platform: patchResult.project.platform,
     canvasState: patchResult.project.canvasState,
     generations,
     frames: flattenGenerationFrames(generations),

@@ -13,6 +13,7 @@ export interface ApiResponse<T> {
 }
 
 export type ProjectStatus = "PENDING" | "GENERATING" | "ACTIVE" | "ARCHIVED";
+export type ProjectPlatform = "web" | "mobile";
 
 export type GenerationStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -41,6 +42,7 @@ export type ProjectDetail = {
   description: string | null;
   initialPrompt: string;
   status: ProjectStatus;
+  platform: ProjectPlatform;
   canvasState: CanvasStateMetadataV1 | null;
   frames: CanvasFrameSnapshot[];
   generations: ProjectGeneration[];
@@ -53,6 +55,7 @@ export type ProjectPatchResult = {
     description: string | null;
     initialPrompt: string;
     status: ProjectStatus;
+    platform: ProjectPlatform;
     canvasState: CanvasStateMetadataV1 | null;
   };
   generation: ProjectGeneration | null;
@@ -64,5 +67,6 @@ export type ProjectSummary = {
   description: string | null;
   thumbnailUrl: string | null;
   status: ProjectStatus;
+  platform: ProjectPlatform;
   updatedAt: string;
 };

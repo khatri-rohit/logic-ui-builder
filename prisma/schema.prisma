@@ -80,6 +80,7 @@ model Project {
     description   String?
     initialPrompt String
     status        ProjectStatus @default(PENDING)
+    platform      GenerationPlatform @default(WEB)
     canvasState   Json?
     thumbnailUrl  String?
     createdAt     DateTime      @default(now())

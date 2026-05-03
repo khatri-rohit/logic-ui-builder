@@ -222,7 +222,14 @@ export async function GET(
 
     const project = await prisma.project.findUnique({
       where: { id, userId: authContext.appUserId },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        initialPrompt: true,
+        status: true,
+        platform: true,
+        canvasState: true,
         generations: {
           orderBy: { createdAt: "asc" },
           select: generationSelect,
@@ -252,6 +259,8 @@ export async function GET(
       description: project.description ?? null,
       status: project.status as ProjectStatus,
       initialPrompt: project.initialPrompt,
+      platform:
+        project.platform === PrismaGenerationPlatform.MOBILE ? "mobile" : "web",
       canvasState: normalizedCanvasState,
       frames: toFramesFromGenerations(generations),
       generations,
@@ -491,6 +500,7 @@ export async function PATCH(
             description: true,
             initialPrompt: true,
             status: true,
+            platform: true,
             canvasState: true,
           },
         });
@@ -509,6 +519,10 @@ export async function PATCH(
         description: updatedProject.description ?? null,
         initialPrompt: updatedProject.initialPrompt,
         status: updatedProject.status as ProjectStatus,
+        platform:
+          updatedProject.platform === PrismaGenerationPlatform.MOBILE
+            ? "mobile"
+            : "web",
         canvasState: normalizeCanvasMetadata(updatedProject.canvasState),
       },
       generation: updatedGeneration

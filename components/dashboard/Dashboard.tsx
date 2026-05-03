@@ -155,6 +155,7 @@ const Dashboard = () => {
     try {
       const createdProject = await createProject({
         prompt: normalizedPrompt,
+        platform: spec,
       });
 
       if (!createdProject.projectId) {

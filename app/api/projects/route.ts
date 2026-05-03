@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@upstash/qstash";
 import { revalidateTag } from "next/cache";
 
+import {
+  GenerationPlatform as PrismaGenerationPlatform,
+} from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { projectWriteRatelimit } from "@/lib/ratelimit";
@@ -105,7 +108,7 @@ export async function POST(req: NextRequest) {
     const guardResult = await guardProjectCreation(authContext);
     if (!guardResult.allowed) return guardResult.response;
 
-    const { prompt } = parsedBody.data;
+    const { prompt, platform } = parsedBody.data;
 
     const newProject = await prisma.project.create({
       data: {
@@ -114,6 +117,9 @@ export async function POST(req: NextRequest) {
         description: "",
         initialPrompt: prompt,
         status: "PENDING",
+        platform: platform
+          ? (platform.toUpperCase() as PrismaGenerationPlatform)
+          : PrismaGenerationPlatform.WEB,
       },
     });
 
@@ -147,6 +153,10 @@ export async function POST(req: NextRequest) {
         error: false,
         data: {
           projectId: newProject.id,
+          platform:
+            newProject.platform === PrismaGenerationPlatform.MOBILE
+              ? "mobile"
+              : "web",
         },
         message: "New project created successfully.",
       },

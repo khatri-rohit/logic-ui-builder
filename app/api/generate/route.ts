@@ -410,6 +410,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         status: true,
+        platform: true,
       },
     });
 
@@ -521,7 +522,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const requestedPlatform = normalizePlatform(body.platform);
+    const requestedPlatform =
+      isFrameRegeneration && sourceGeneration
+        ? toApiPlatform(sourceGeneration.platform)
+        : toApiPlatform(project.platform);
     const prompt = body.prompt.trim();
 
     let designContext: Awaited<ReturnType<typeof buildDesignContext>>;

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const projects = await prisma.project.findMany({
+    const rawProjects = await prisma.project.findMany({
       where: {
         userId: authContext.appUserId,
       },
@@ -32,12 +32,18 @@ export async function GET(req: NextRequest) {
         description: true,
         thumbnailUrl: true,
         status: true,
+        platform: true,
         updatedAt: true,
       },
       orderBy: {
         createdAt: "desc",
       },
     });
+
+    const projects = rawProjects.map((p) => ({
+      ...p,
+      platform: p.platform === "MOBILE" ? "mobile" : "web",
+    }));
 
     return NextResponse.json(
       {

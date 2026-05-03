@@ -301,7 +301,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const { mutateAsync: updateProjectMetadata, isPending: isSavingMetadata } =
     useProjectMetadataUpdateMutation();
 
-  const model = useUserActivityStore((state) => state.model);
+  // const model = useUserActivityStore((state) => state.model);
   // const setModel = useUserActivityStore((state) => state.setModel);
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
@@ -1413,7 +1413,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         },
         body: JSON.stringify({
           projectId: project.id,
-          model,
+          // model,
           prompt: generationPrompt,
           platform: spec ?? "web",
           ...(isFrameRegeneration && {
@@ -2168,7 +2168,7 @@ npm run dev
           body: JSON.stringify({
             projectId: project.id,
             generationId: sourceFrame.generationId,
-            model,
+            // model,
             ...(hasPromptOverride ? { prompt: promptOverride } : {}),
           }),
         });
@@ -2356,7 +2356,7 @@ npm run dev
     [
       applyFrames,
       isGenerating,
-      model,
+      // model,
       project,
       prompt,
       scheduleSnapshotPersist,

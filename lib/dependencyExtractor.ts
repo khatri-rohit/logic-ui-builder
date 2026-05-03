@@ -1,5 +1,3 @@
-// lib/dependencyExtractor.ts
-
 const KNOWN_VERSIONS: Record<string, string> = {
   react: "19.2.4",
   "react-dom": "19.2.4",
@@ -12,12 +10,18 @@ const KNOWN_VERSIONS: Record<string, string> = {
   lodash: "^4.17.21",
 };
 
+const CACHE = new Map<string, ExtractedDeps>();
+const MAX_CACHE_SIZE = 200;
+
 export interface ExtractedDeps {
   dependencies: Record<string, string>;
   unknownPackages: string[];
 }
 
 export function extractDependencies(code: string): ExtractedDeps {
+  const cached = CACHE.get(code);
+  if (cached) return cached;
+
   const dependencies: Record<string, string> = {
     react: "19.2.4",
     "react-dom": "19.2.4",
@@ -57,10 +61,21 @@ export function extractDependencies(code: string): ExtractedDeps {
   }
 
   if (unknownPackages.length > 0) {
-    console.info("[deps] Unsupported generated packages skipped:", unknownPackages);
+    console.info(
+      "[deps] Unsupported generated packages skipped:",
+      unknownPackages,
+    );
   }
 
-  return { dependencies, unknownPackages };
+  const result: ExtractedDeps = { dependencies, unknownPackages };
+
+  if (CACHE.size >= MAX_CACHE_SIZE) {
+    const firstKey = CACHE.keys().next().value;
+    if (firstKey) CACHE.delete(firstKey);
+  }
+  CACHE.set(code, result);
+
+  return result;
 }
 
 function isBuiltin(name: string): boolean {

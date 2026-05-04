@@ -19,7 +19,12 @@ import {
 import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { Button } from "@/components/ui/button";
-import ProjectMenuPanel from "@/components/projects/TopMenu";
+import { StudioShell } from "@/components/canvas/StudioShell";
+import { StudioToolbar } from "@/components/canvas/StudioToolbar";
+import { StudioHeader } from "@/components/projects/StudioHeader";
+import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
+import { StudioStatusBar } from "@/components/projects/StudioStatusBar";
+import type { ThemeMode } from "@/components/projects/StudioHeader";
 import {
   useProjectCanvasStateUpdateMutation,
   useProjectDeleteMutation,
@@ -32,7 +37,7 @@ import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
 } from "@/providers/project-studio-provider";
-import { Check, Code2, Monitor, Smartphone, Sparkles, X } from "lucide-react";
+import { Check, Code2, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProjectStudioRuntimeState } from "@/stores/project-studio";
 
@@ -2694,11 +2699,10 @@ npm run dev
       ];
 
   return (
-    <div
+    <StudioShell
       className={cn(
         isDark && "dark",
-        "relative h-screen w-full overflow-hidden bg-background text-foreground",
-        "selection:bg-primary selection:text-primary-foreground",
+        "relative h-screen w-full overflow-hidden",
         ...themeVariables,
       )}
     >
@@ -2712,43 +2716,43 @@ npm run dev
               onFrameExit={exitFrame}
               onTransformChange={handleTransformChange}
             >
-            {/* <SandpackProvider> */}
-            {frameList.map((frame) => (
-              <CanvasFrame
-                {...frame}
-                key={frame.id}
-                scale={canvasTransform.k}
-                isActive={activeFrameId === frame.id}
-                isSelected={selectedFrameId === frame.id}
-                onSelect={(id) => {
-                  setSelectedFrameId(id);
-                  selectedFrameIdRef.current = id;
-                  const frame = framesRef.current.get(id);
-                  if (frame) {
-                    setStudioSelectedGenerationId(frame.generationId);
-                  }
-                  // onCapture();
-                }}
-                onActivate={(id) => {
-                  setSelectedFrameId(id);
-                  enterFrame(id);
-                  selectedFrameIdRef.current = id;
-                  activeFrameIdRef.current = id;
-                  const frame = framesRef.current.get(id);
-                  if (frame) {
-                    setStudioSelectedGenerationId(frame.generationId);
-                  }
-                  scheduleSnapshotPersist();
-                }}
-                onMove={handleMoveFrame}
-                onResize={handleResizeFrame}
-                handleFrame={handleFrame}
-                handleDelete={handleDelete}
-                handleEditCode={handleOpenCodeEditor}
-              />
-            ))}
-            {/* </SandpackProvider> */}
-          </InfiniteCanvas>
+              {/* <SandpackProvider> */}
+              {frameList.map((frame) => (
+                <CanvasFrame
+                  {...frame}
+                  key={frame.id}
+                  scale={canvasTransform.k}
+                  isActive={activeFrameId === frame.id}
+                  isSelected={selectedFrameId === frame.id}
+                  onSelect={(id) => {
+                    setSelectedFrameId(id);
+                    selectedFrameIdRef.current = id;
+                    const frame = framesRef.current.get(id);
+                    if (frame) {
+                      setStudioSelectedGenerationId(frame.generationId);
+                    }
+                    // onCapture();
+                  }}
+                  onActivate={(id) => {
+                    setSelectedFrameId(id);
+                    enterFrame(id);
+                    selectedFrameIdRef.current = id;
+                    activeFrameIdRef.current = id;
+                    const frame = framesRef.current.get(id);
+                    if (frame) {
+                      setStudioSelectedGenerationId(frame.generationId);
+                    }
+                    scheduleSnapshotPersist();
+                  }}
+                  onMove={handleMoveFrame}
+                  onResize={handleResizeFrame}
+                  handleFrame={handleFrame}
+                  handleDelete={handleDelete}
+                  handleEditCode={handleOpenCodeEditor}
+                />
+              ))}
+              {/* </SandpackProvider> */}
+            </InfiniteCanvas>
           </StudioThemeProvider>
         </CanvasErrorBoundary>
 
@@ -2790,12 +2794,28 @@ npm run dev
         )}
       </div>
 
-      <ProjectMenuPanel
+      <StudioHeader
         title={project.title || "Untitled Project"}
         platform={platform}
-        handleMenuClick={handleMenuClick}
         themeMode={themeMode}
         onThemeChange={handleThemeChange}
+        onAction={handleMenuClick}
+        // setMenuOpen={setMenuOpen}
+        // setThemeOpen={setThemeOpen}
+        // menuOpen={menuOpen}
+        // themeOpen={themeOpen}
+        // menuRef={menuRef}
+      />
+
+      <StudioStatusBar
+        platform={platform}
+        isGenerating={isGenerating}
+        activeStreamingScreen={activeStreamingScreen}
+        canvasSaveMessage={canvasSaveMessage}
+        activeFrameId={activeFrameId}
+        activeFrameName={
+          studio?.frames.find((f) => f.id === activeFrameId)?.screenName || null
+        }
       />
 
       <FeedbackForm
@@ -2904,202 +2924,35 @@ npm run dev
         </DrawerContent>
       </Drawer>
 
-      {/* Prompt Bar for generations */}
-      <div className="pointer-events-none absolute inset-0 z-50">
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 rounded-md border border-input bg-card/90 p-2.5 shadow-2xl shadow-black/30 backdrop-blur-[1px]">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground",
-                mono.className,
-              )}
-            >
-              {platform === "web" ? (
-                <Monitor className="size-3.5" />
-              ) : (
-                <Smartphone className="size-3.5" />
-              )}
-              {platform}
-            </span>
-            <div className="flex items-center gap-3">
-              {activeFrameId && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-xl border border-border px-2 py-1 text-[10px] text-primary-foreground bg-primary",
-                    mono.className,
-                  )}
-                >
-                  Selected Frame:{" "}
-                  {studio?.frames.find((f) => f.id === activeFrameId)
-                    ?.screenName || "Unnamed"}
-                </span>
-              )}
-              {isGenerating && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-md border border-border bg-muted px-2 py-1 text-[10px] text-muted-foreground",
-                    mono.className,
-                  )}
-                >
-                  <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-                  {activeStreamingScreen
-                    ? `Generating: ${activeStreamingScreen}`
-                    : "Preparing generation..."}
-                </span>
-              )}
-              {canvasSaveMessage && (
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200",
-                    mono.className,
-                  )}
-                >
-                  {canvasSaveMessage}
-                </span>
-              )}
-              {/* <span
-className={cn(
-                    "text-[10px] uppercase tracking-[0.16em] text-muted-foreground",
-                    mono.className,
-                  )}
-                >
-                  Use Enter to generate and Shift+Enter for a new line
-                </span> */}
-            </div>
-            {/* Screen reader hint for prompt input */}
-            <span id="prompt-hint" className="sr-only">
-              Type a description of the UI you want to create. Press Enter to
-              generate or Escape to clear.
-            </span>
-          </div>
-
-          {(generationErrorMessage || generationRecoveryPrompt) && (
-            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs text-destructive">
-              <span className="line-clamp-2">
-                {generationErrorMessage ||
-                  "Generation was interrupted before it finished."}
-              </span>
-              {generationRecoveryPrompt && (
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="secondary"
-                  onClick={() => {
-                    setPrompt(generationRecoveryPrompt);
-                    setGenerationRecoveryPrompt(null);
-                    setGenerationErrorMessage(null);
-                    window.setTimeout(() => void handleGenerate(), 0);
-                  }}
-                  disabled={isGenerating}
-                >
-                  Resume generation
-                </Button>
-              )}
-            </div>
-          )}
-
-          <div className="flex items-end gap-2">
-            {/* <SelectModel list={models} setModel={setModel} model={model} /> */}
-
-            <textarea
-              ref={commandInputRef}
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  if (canGenerate) {
-                    void handleGenerate();
-                  }
-                }
-                if (event.key === "Escape") {
-                  setPrompt("");
-                  setSelectedFrameId(null);
-                }
-              }}
-              placeholder={
-                activeFrameId
-                  ? "Enter a prompt to regenerate the selected frame, or leave blank to reuse the original prompt."
-                  : "Enter a prompt to generate a new layout, or leave blank to reuse the original prompt."
-              }
-              className={cn(
-                "scrolling flex-1 resize-none rounded-md border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none transition",
-                "placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30",
-                isGenerating && "cursor-not-allowed opacity-80",
-                mono.className,
-              )}
-              aria-label="UI generation prompt input"
-              aria-describedby="prompt-hint"
-              aria-disabled={isGenerating}
-              disabled={isGenerating}
-            />
-
-            {activeFrameId ? (
-              <div className="relative inline-flex">
-                <Button
-                  onClick={() => handleGenerate()}
-                  className="h-11 rounded-md px-4"
-                  aria-label={
-                    isGenerating
-                      ? "Generating UI, please wait"
-                      : generationMode === "regenerate"
-                        ? "Regenerate selected frame"
-                        : "Generate new UI layout"
-                  }
-                  disabled={isGenerating}
-                >
-                  <Sparkles
-                    className={`size-4 ${isGenerating ? "animate-spin" : ""}`}
-                    aria-hidden="true"
-                  />
-                  {isGenerating
-                    ? "Generating..."
-                    : generationMode === "regenerate"
-                      ? "Regenerate"
-                      : "Generate"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="absolute -right-8 h-11 rounded-l-none border-l-0 px-2"
-                  onClick={() =>
-                    setGenerationMode((prev) =>
-                      prev === "generate" ? "regenerate" : "generate",
-                    )
-                  }
-                  disabled={isGenerating}
-                  aria-label={
-                    generationMode === "generate"
-                      ? "Switch to regenerate mode"
-                      : "Switch to generate mode"
-                  }
-                  title={
-                    generationMode === "generate"
-                      ? "Generate new layout"
-                      : "Regenerate existing frame"
-                  }
-                >
-                  <span className="text-[10px] font-medium">
-                    {generationMode === "generate" ? "G" : "R"}
-                  </span>
-                </Button>
-              </div>
-            ) : (
-              <Button
-                onClick={() => handleGenerate()}
-                className="h-11 rounded-md px-4"
-              >
-                <Sparkles
-                  className={`size-4 ${isGenerating ? "animate-spin" : ""}`}
-                />
-                {isGenerating ? "Generating..." : "Generate"}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+      <StudioPromptBar
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onGenerate={() => void handleGenerate()}
+        isGenerating={isGenerating}
+        canGenerate={canGenerate}
+        activeFrameId={activeFrameId}
+        generationMode={generationMode}
+        onToggleGenerationMode={() =>
+          setGenerationMode((prev) =>
+            prev === "generate" ? "regenerate" : "generate",
+          )
+        }
+        generationErrorMessage={generationErrorMessage}
+        generationRecoveryPrompt={generationRecoveryPrompt}
+        onResumeGeneration={() => {
+          setPrompt(generationRecoveryPrompt ?? "");
+          setGenerationRecoveryPrompt(null);
+          setGenerationErrorMessage(null);
+          window.setTimeout(() => void handleGenerate(), 0);
+        }}
+        commandInputRef={commandInputRef}
+        monoClassName={mono.className}
+        onEscape={() => {
+          setPrompt("");
+          setSelectedFrameId(null);
+        }}
+      />
+    </StudioShell>
   );
 };
 

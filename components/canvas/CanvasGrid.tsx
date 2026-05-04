@@ -4,8 +4,8 @@ interface CanvasGridProps {
   transform: Transform;
 }
 
-const BASE_SPACING = 36;
-const MIN_SPACING = 10;
+const BASE_SPACING = 40;
+const MIN_SPACING = 12;
 
 export function CanvasGrid({ transform }: CanvasGridProps) {
   const spacing = Math.max(MIN_SPACING, BASE_SPACING * transform.k);

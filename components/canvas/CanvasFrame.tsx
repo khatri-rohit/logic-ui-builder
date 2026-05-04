@@ -371,14 +371,15 @@ export const CanvasFrame = memo(function CanvasFrame({
           </div>
 
           <div
-            className="absolute inset-0 overflow-hidden rounded-lg bg-white shadow-2xl"
+            className="absolute inset-0 overflow-hidden rounded-xl bg-white shadow-2xl"
             style={{
               boxShadow: isActive
-                ? "0 0 0 2px rgb(59 130 246), var(--frame-shadow)"
+                ? "0 0 0 2px var(--studio-accent), 0 24px 64px rgba(0,0,0,0.35)"
                 : isSelected
-                  ? "var(--frame-border-selected), var(--frame-shadow)"
-                  : "var(--frame-border-default), var(--frame-shadow)",
-              transition: "box-shadow 0.15s ease",
+                  ? "0 0 0 1.5px var(--studio-accent-glow), 0 16px 48px rgba(0,0,0,0.30)"
+                  : "0 4px 24px rgba(0,0,0,0.20)",
+              transition: "box-shadow 0.2s ease, transform 0.2s ease",
+              transform: isSelected ? "scale(1.005)" : "scale(1)",
             }}
           >
             {platform === "web" && <BrowserChrome screenName={screenName} />}
@@ -428,10 +429,10 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--frame-error-bg)"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--studio-surface)]"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground/5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--studio-error)]/10">
                   <svg
                     width="20"
                     height="20"
@@ -441,7 +442,7 @@ export const CanvasFrame = memo(function CanvasFrame({
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="text-foreground/40"
+                    className="text-[var(--studio-error)]"
                   >
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="8" x2="12" y2="12" />
@@ -449,12 +450,11 @@ export const CanvasFrame = memo(function CanvasFrame({
                   </svg>
                 </div>
                 <div className="max-w-[86%] px-4 text-center">
-                  <span className="font-mono text-[11px] text-foreground/60">
-                    This frame didn&apos;t compile
+                  <span className="font-mono text-[11px] text-[var(--studio-text-secondary)]">
+                    This screen didn&apos;t compile
                   </span>
-                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-foreground/35">
-                    Right-click this frame and select &quot;Regenerate&quot; to
-                    try again.
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-[var(--studio-text-muted)]">
+                    Right-click and select &quot;Regenerate&quot; to try again.
                   </p>
                 </div>
               </div>
@@ -535,16 +535,23 @@ export const CanvasFrame = memo(function CanvasFrame({
 
 function SkeletonView() {
   return (
-    <div className="w-3/4 space-y-3">
+    <div className="relative w-3/4 overflow-hidden space-y-3">
       {[80, 60, 90, 50, 70].map((width, index) => (
         <div
           key={index}
-          className="h-3 rounded bg-foreground/8"
+          className="h-3 rounded-md bg-foreground/[0.06]"
           style={{
             width: `${width}%`,
-            animation: `pulse 1.5s ease-in-out ${index * 100}ms infinite`,
           }}
-        />
+        >
+          <div
+            className="h-full w-full animate-shimmer rounded-md"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)",
+            }}
+          />
+        </div>
       ))}
     </div>
   );
@@ -552,19 +559,19 @@ function SkeletonView() {
 
 function StreamingView() {
   return (
-    <div className="flex flex-col items-center gap-3 animate-pulse">
-      <div className="flex gap-1">
+    <div className="flex flex-col items-center gap-3">
+      <div className="flex items-center gap-1.5">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
-            className="h-1.5 w-1.5 rounded-full bg-blue-500"
+            className="size-2 rounded-full bg-[var(--studio-accent)]"
             style={{
-              animation: `bounce 1s ease-in-out ${index * 120}ms infinite`,
+              animation: `streaming-dot 1s ease-in-out ${index * 120}ms infinite`,
             }}
           />
         ))}
       </div>
-      <span className="font-mono text-[10px] text-foreground/40">
+      <span className="font-mono text-[10px] text-[var(--studio-text-muted)]">
         Generating...
       </span>
     </div>

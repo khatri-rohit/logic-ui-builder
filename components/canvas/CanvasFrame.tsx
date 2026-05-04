@@ -48,6 +48,7 @@ interface CanvasFrameProps extends CanvasFrameData {
   scale: number;
   isActive: boolean;
   isSelected: boolean;
+  readOnly?: boolean;
   onSelect: (id: string) => void;
   onActivate: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
@@ -75,6 +76,7 @@ export const CanvasFrame = memo(function CanvasFrame({
   isActive,
   isSelected,
   scale,
+  readOnly = false,
   onSelect,
   onActivate,
   onMove,
@@ -204,7 +206,7 @@ export const CanvasFrame = memo(function CanvasFrame({
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (isActive || event.button !== 0) return;
+      if (readOnly || isActive || event.button !== 0) return;
       if (isSpacePressedRef.current) return;
 
       event.preventDefault();
@@ -226,12 +228,12 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, id, isActive, onSelect, stopInteraction, x, y],
+    [handleWindowPointerMove, id, isActive, onSelect, readOnly, stopInteraction, x, y],
   );
 
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (isActive || event.button !== 0) return;
+      if (readOnly || isActive || event.button !== 0) return;
       if (isSpacePressedRef.current) return;
 
       event.preventDefault();
@@ -252,7 +254,7 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, h, id, isActive, onSelect, stopInteraction, w],
+    [handleWindowPointerMove, h, id, isActive, onSelect, readOnly, stopInteraction, w],
   );
 
   useEffect(() => {
@@ -491,7 +493,7 @@ export const CanvasFrame = memo(function CanvasFrame({
               }}
             />
 
-            {!isActive && (
+            {!isActive && !readOnly && (
               <button
                 type="button"
                 aria-label="Resize frame"
@@ -512,7 +514,7 @@ export const CanvasFrame = memo(function CanvasFrame({
         </div>
       </ContextMenuTrigger>
       {/* Context menu content can be added here */}
-      {!(state === "skeleton" || state === "streaming") && (
+      {!(state === "skeleton" || state === "streaming") && !readOnly && (
         <ContextMenuContent
           onEscapeKeyDown={(event) => event.stopPropagation()}
         >

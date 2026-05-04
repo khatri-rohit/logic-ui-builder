@@ -44,6 +44,8 @@ export type ProjectDetail = {
   status: ProjectStatus;
   platform: ProjectPlatform;
   canvasState: CanvasStateMetadataV1 | null;
+  isPublic: boolean;
+  shareToken: string | null;
   frames: CanvasFrameSnapshot[];
   generations: ProjectGeneration[];
 };
@@ -57,6 +59,8 @@ export type ProjectPatchResult = {
     status: ProjectStatus;
     platform: ProjectPlatform;
     canvasState: CanvasStateMetadataV1 | null;
+    isPublic: boolean;
+    shareToken: string | null;
   };
   generation: ProjectGeneration | null;
 };

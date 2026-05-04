@@ -30,6 +30,7 @@ import {
   useProjectDeleteMutation,
   useProjectMetadataUpdateMutation,
   useProjectQuery,
+  useProjectShareToggleMutation,
   useProjectStatusUpdateMutation,
   useProjectThumbnailUpdateMutation,
 } from "@/lib/projects/queries";
@@ -37,7 +38,7 @@ import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
 } from "@/providers/project-studio-provider";
-import { Check, Code2, Sparkles, X } from "lucide-react";
+import { Check, Code2, Copy, Link, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProjectStudioRuntimeState } from "@/stores/project-studio";
 
@@ -72,6 +73,7 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 const mono = JetBrains_Mono({
@@ -410,6 +412,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [metadataTitle, setMetadataTitle] = useState("");
   const [metadataDescription, setMetadataDescription] = useState("");
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUrlCopied, setShareUrlCopied] = useState(false);
+  const { mutate: toggleProjectShare, isPending: isTogglingShare } =
+    useProjectShareToggleMutation();
   const [codeEditorOpen, setCodeEditorOpen] = useState(false);
   const [codeEditorValue, setCodeEditorValue] = useState("");
   const [generationRecoveryPrompt, setGenerationRecoveryPrompt] = useState<
@@ -1672,21 +1678,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     [scheduleSnapshotPersist],
   );
 
-  const handleShareProject = useCallback(async () => {
-    const shareUrl = `${window.location.origin}/projects/${projectId}`;
-
-    try {
-      await copyTextToClipboard(shareUrl);
-      toast.success("Link copied to clipboard", {
-        description:
-          "This project is private. Anyone opening the link must have access to this account until public sharing is supported.",
-      });
-    } catch (error) {
-      logger.error("Failed to copy project link", error);
-      toast.error("Could not copy the project link.");
-    }
-  }, [projectId]);
-
   const handleDownloadProject = useCallback(async () => {
     const doneFrames = [...framesRef.current.values()].filter(
       (frame) =>
@@ -2017,7 +2008,7 @@ npm run dev
         router.push("/");
         break;
       case "share":
-        void handleShareProject();
+        setShareDialogOpen(true);
         break;
       case "download":
         void handleDownloadProject();
@@ -2822,6 +2813,93 @@ npm run dev
         open={openFeedbackForm}
         onOpenChange={setOpenFeedbackForm}
       />
+
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent className="border-border bg-card text-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link className="size-4" />
+              Share project
+            </DialogTitle>
+            <DialogDescription>
+              Anyone with the link can view this project in read-only mode.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-5 py-2">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="public-share" className="text-sm font-medium">
+                  Public sharing
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {project?.isPublic
+                    ? "Anyone with the link can view this project"
+                    : "Only you can view this project"}
+                </p>
+              </div>
+              <Switch
+                id="public-share"
+                checked={project?.isPublic ?? false}
+                disabled={isTogglingShare}
+                onCheckedChange={() => {
+                  if (!project) return;
+                  toggleProjectShare(
+                    { id: project.id },
+                    {
+                      onSuccess: (data) => {
+                        toast.success(
+                          data.isPublic
+                            ? "Public sharing enabled"
+                            : "Public sharing disabled",
+                        );
+                      },
+                      onError: () => {
+                        toast.error("Failed to toggle public sharing");
+                      },
+                    },
+                  );
+                }}
+              />
+            </div>
+
+            {project?.isPublic && project.shareToken && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Public link
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${project.shareToken}`}
+                    className="bg-muted/50 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      const url = `${window.location.origin}/share/${project.shareToken}`;
+                      try {
+                        await copyTextToClipboard(url);
+                        setShareUrlCopied(true);
+                        setTimeout(() => setShareUrlCopied(false), 2000);
+                      } catch {
+                        toast.error("Could not copy link");
+                      }
+                    }}
+                  >
+                    {shareUrlCopied ? (
+                      <Check className="size-4" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={metadataDialogOpen} onOpenChange={setMetadataDialogOpen}>
         <DialogContent className="border-border bg-card text-foreground">

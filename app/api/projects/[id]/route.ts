@@ -230,6 +230,8 @@ export async function GET(
         status: true,
         platform: true,
         canvasState: true,
+        isPublic: true,
+        shareToken: true,
         generations: {
           orderBy: { createdAt: "asc" },
           select: generationSelect,
@@ -262,6 +264,8 @@ export async function GET(
       platform:
         project.platform === PrismaGenerationPlatform.MOBILE ? "mobile" : "web",
       canvasState: normalizedCanvasState,
+      isPublic: project.isPublic,
+      shareToken: project.shareToken ?? null,
       frames: toFramesFromGenerations(generations),
       generations,
     };
@@ -502,6 +506,8 @@ export async function PATCH(
             status: true,
             platform: true,
             canvasState: true,
+            isPublic: true,
+            shareToken: true,
           },
         });
 
@@ -524,6 +530,8 @@ export async function PATCH(
             ? "mobile"
             : "web",
         canvasState: normalizeCanvasMetadata(updatedProject.canvasState),
+        isPublic: updatedProject.isPublic,
+        shareToken: updatedProject.shareToken ?? null,
       },
       generation: updatedGeneration
         ? toProjectGeneration(updatedGeneration)

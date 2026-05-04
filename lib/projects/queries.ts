@@ -153,6 +153,8 @@ function mergePatchedProjectDetail(
       status: patchResult.project.status,
       platform: patchResult.project.platform,
       canvasState: patchResult.project.canvasState,
+      isPublic: patchResult.project.isPublic,
+      shareToken: patchResult.project.shareToken,
       generations,
       frames: flattenGenerationFrames(generations),
     };
@@ -183,6 +185,8 @@ function mergePatchedProjectDetail(
     status: patchResult.project.status,
     platform: patchResult.project.platform,
     canvasState: patchResult.project.canvasState,
+    isPublic: patchResult.project.isPublic,
+    shareToken: patchResult.project.shareToken,
     generations,
     frames: flattenGenerationFrames(generations),
   };
@@ -451,4 +455,52 @@ export function useDeleteGenerationScreenMutation() {
       );
     },
   });
+}
+
+// -- Toggle project public sharing
+export async function toggleProjectShare(id: string) {
+  return requestApi<{ isPublic: boolean; shareToken: string | null }>(
+    `/api/projects/${id}/share`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function useProjectShareToggleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => toggleProjectShare(id),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
+        prev
+          ? {
+              ...prev,
+              isPublic: data.isPublic,
+              shareToken: data.shareToken,
+            }
+          : prev,
+      );
+    },
+  });
+}
+
+// -- Fetch publicly shared project (no auth required)
+export async function getSharedProject(token: string): Promise<ProjectDetail> {
+  return requestApi<ProjectDetail>(`/api/share/${token}`);
+}
+
+export function sharedProjectQueryOptions(token: string) {
+  return queryOptions({
+    queryKey: ["shared-projects", token] as const,
+    queryFn: () => getSharedProject(token),
+    enabled: !!token,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  });
+}
+
+export function useSharedProjectQuery(token: string) {
+  return useQuery(sharedProjectQueryOptions(token));
 }

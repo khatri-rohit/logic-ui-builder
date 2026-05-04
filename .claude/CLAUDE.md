@@ -44,6 +44,7 @@ Key pipeline files:
 - **Frames**: Phone-framed artboards (`components/canvas/CanvasFrame.tsx`) are draggable, resizable, and selectable.
 - **Live Compilation**: CodeSandbox Sandpack Client renders generated TSX directly in the browser.
 - **State**: Canvas state is managed via a Zustand store (`stores/project-studio.ts`). Server state (projects, generations) uses TanStack Query.
+- **Theme-Aware Components**: `CanvasFrame` sub-components (e.g. `MobileStatusBar`) consume `useStudioTheme()` from `@/components/canvas/StudioThemeContext`. Any new canvas UI needing theme-aware colors should use semantic tokens / CSS variables rather than hardcoded values.
 
 ### Auth & Organizations
 - **Auth**: Clerk with fully custom UI flows in `components/auth/`.
@@ -72,6 +73,11 @@ Key pipeline files:
 - **Design Tokens**: Enforced in generated code via expanded token system in `lib/prompts.ts` (spacing, radius, shadows, semantic colors). ESLint plugin `eslint/design-tokens-plugin.js` bans hardcoded Tailwind colors and arbitrary spacing.
 - **Icons**: Lucide React only (`lucide-react`). Emojis are banned in generated UI.
 
+### Studio Theme System
+- `StudioThemeProvider` wraps the canvas in `ProjectStudioClient.tsx`, providing `mode` (`light` | `dark` | `system`) and `isDark`.
+- Canvas-specific CSS variables (e.g. `--canvas-background`, `--frame-shadow`, `--status-bar-bg`) are defined as Tailwind arbitrary properties on the wrapper and consumed via `var(--*)` in canvas components.
+- **Do NOT** hardcode `text-white`, `bg-black`, `border-white/10`, etc. in canvas UI. Use semantic tokens: `text-foreground`, `bg-background`, `border-border`, `bg-card`, `bg-muted`, `bg-accent`, `text-muted-foreground`.
+
 ## Important Conventions
 
 ### Skill-First Workflow (Mandatory)
@@ -87,6 +93,7 @@ This repository uses a skill-first execution model defined in `.github/copilot-i
 - **React Compiler**: Enabled in `next.config.ts`.
 - **Sandpack Templates**: `lib/sandpackTemplate.ts` defines the runtime environment for generated code.
 - **Canvas Persistence**: Auto-saved to canvas state and project `canvasState` JSON.
+- **Hydration-Safe Browser API Detection**: Never call browser-only APIs (e.g. `window.speechRecognition`, `navigator.*`) inside a `useState` initializer or during render in Next.js. Initialize to `false`, then detect inside `useEffect` and call `setState`.
 
 ### Anti-Patterns to Avoid
 - Do NOT modify `lib/prompts.ts` without reading the full file to understand stage interactions.
@@ -114,6 +121,7 @@ This repository uses a skill-first execution model defined in `.github/copilot-i
 | `stores/` | Zustand stores (canvas state, user activity) |
 | `providers/` | React context providers (Clerk, TanStack Query, themes) |
 | `.github/skills/` | Workspace skills for skill-first workflow |
+| `.github/skills/searching-sourcegraph/` | Sourcegraph code search skill (local copy; plugin has errors) |
 | `.agents/skills/` | Additional agent skills |
 | `agent.md` | Comprehensive design generation audit and upgrade plan |
 | `AGENTS.md` | Project knowledge base and code map |

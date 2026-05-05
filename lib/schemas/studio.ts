@@ -243,7 +243,8 @@ export const projectPatchBodySchema = z
       value.title !== undefined ||
       value.description !== undefined ||
       value.status !== undefined ||
-      value.canvasState !== undefined,
+      value.canvasState !== undefined ||
+      value.generationId !== undefined,
     {
       message: "At least one project field must be provided",
       path: ["status"],

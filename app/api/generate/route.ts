@@ -449,11 +449,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const guardResult = await guardGenerationRequest(authContext);
-    if (!guardResult.allowed) return guardResult.response;
-    const { usage } = guardResult;
-    logger.info("Plan guard passed for generation request", { usage });
-
     const isFrameRegeneration = !!body.frameId && !!body.generationId;
     const targetFrameId = isFrameRegeneration
       ? (body.targetFrameId ?? body.frameId)
@@ -521,6 +516,11 @@ export async function POST(req: NextRequest) {
         screenName: sourceFrame.screenName,
       });
     }
+
+    const guardResult = await guardGenerationRequest(authContext);
+    if (!guardResult.allowed) return guardResult.response;
+    const { usage } = guardResult;
+    logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
       isFrameRegeneration && sourceGeneration

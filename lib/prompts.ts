@@ -14,6 +14,13 @@ export function truncatePrompt(prompt: string): string {
   return prompt.slice(0, MAX_PROMPT_LENGTH - summary.length) + summary;
 }
 
+export function normalizeHexColor(hex: string): string {
+  if (hex.startsWith("#") && hex.length === 4) {
+    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+  }
+  return hex;
+}
+
 export interface ValidationResult {
   valid: boolean;
   issues: string[];
@@ -28,8 +35,10 @@ export function validateGeneratedTSX(code: string): ValidationResult {
     issues.push("Unbalanced braces");
   }
 
-  const openTags = (code.match(/<[A-Z][a-zA-Z]*[^/>]*>/g) || []).length;
-  const closeTags = (code.match(/<\/[A-Z][a-zA-Z]*>/g) || []).length;
+  const openTags = (code.match(/<[A-Z][a-zA-Z]*[^/>]*>/g) || []).length +
+    (code.match(/<[a-z][a-z0-9-]*\b[^/>]*?(?<!\/)>/g) || []).length;
+  const closeTags = (code.match(/<\/[A-Z][a-zA-Z]*>/g) || []).length +
+    (code.match(/<\/[a-z][a-z0-9-]*>/g) || []).length;
   if (openTags !== closeTags) {
     issues.push("Unclosed JSX tags");
   }
@@ -110,7 +119,7 @@ export const STAGE1_SYSTEM = `
 # Stage 1: Design Specification Extraction
 
 ## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
-- NO hardcoded hex colors - use semantic color requests only
+- NO hardcoded hex colors in generated UI code - for spec fields (primaryColor, accentColor), output valid hex (#RGB or #RRGGBB)
 - NO arbitrary pixel values - specify spacing as relative concepts (compact, comfortable, airy)
 - NO specific font choices - let system use Inter
 - Output MUST be valid JSON with zero markdown
@@ -214,7 +223,7 @@ Extract a compact, implementation-ready WebAppSpec from the user's UI prompt. Ou
 - Output must be valid, parseable JSON
 - All required fields must be present
 - Enum fields must use exact allowed values
-- Color values must be valid hex format (#RGB or #RRGGBB)
+- Color values must be valid hex format (#RGB or #RRGGBB) for primaryColor and accentColor fields only
 `.trim();
 
 export const STAGE2_SYSTEM = `
@@ -619,7 +628,18 @@ export const WEB_APP_SPEC_SCHEMA = {
   ],
 };
 
-export const MOBILE_SPEC_SCHEMA = WEB_APP_SPEC_SCHEMA;
+export const MOBILE_SPEC_SCHEMA = {
+  ...WEB_APP_SPEC_SCHEMA,
+  properties: {
+    ...WEB_APP_SPEC_SCHEMA.properties,
+    screens: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 1,
+      maxItems: GENERATED_SCREEN_LIMITS.mobile,
+    },
+  },
+};
 
 const SPATIAL_WEIGHT_CLASS_MAP: Record<string, string> = {
   "full-width": "col-span-full w-full",
@@ -783,13 +803,13 @@ Define these as inline CSS variables on the root element and use them semantical
 
 ### PRIMARY & ACCENT (MUST USE FOR INTERACTIVE ELEMENTS):
 - --primary: ${spec.primaryColor} → PRIMARY buttons, links, active states, focus rings, icons
-- --primary-muted: ${spec.primaryColor}22 → Hover states, selected backgrounds
+- --primary-muted: ${normalizeHexColor(spec.primaryColor)}22 → Hover states, selected backgrounds
 - --accent: ${spec.accentColor} → Badges, notifications, highlights, secondary CTAs, success states
-- --accent-muted: ${spec.accentColor}22 → Accent backgrounds, subtle highlights
+- --accent-muted: ${normalizeHexColor(spec.accentColor)}22 → Accent backgrounds, subtle highlights
 
 ### Semantic Colors:
 - --success: ${spec.accentColor} → Success messages, positive states
-- --warning: ${spec.primaryColor}CC → Warning states
+- --warning: ${normalizeHexColor(spec.primaryColor)}CC → Warning states
 - --error: #ef4444 → Error states, destructive actions
 
 ## 2. COLOR USAGE EXAMPLES (COPY THESE PATTERNS):

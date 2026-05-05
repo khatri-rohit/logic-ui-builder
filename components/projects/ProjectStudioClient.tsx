@@ -2475,11 +2475,32 @@ npm run dev
         event.preventDefault();
         void handleGenerate();
       }
+
+      // Ctrl/Cmd + Z to undo
+      if (
+        event.key === "z" &&
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        canUndo
+      ) {
+        event.preventDefault();
+        undo();
+      }
+
+      // Ctrl/Cmd + Shift + Z (or Ctrl/Cmd + Y) to redo
+      if (
+        ((event.key === "z" && event.shiftKey) || event.key === "y") &&
+        (event.ctrlKey || event.metaKey) &&
+        canRedo
+      ) {
+        event.preventDefault();
+        redo();
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate]);
+  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo]);
 
   useEffect(() => {
     if (!generationRecoveryPrompt) return;

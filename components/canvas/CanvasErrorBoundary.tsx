@@ -34,7 +34,7 @@ export class CanvasErrorBoundary extends Component<Props, State> {
     }
     
     toast.error("Something went wrong with the canvas", {
-      description: error.message,
+      description: "Please try again or refresh the page.",
       duration: 5000,
     });
   }
@@ -57,7 +57,7 @@ export class CanvasErrorBoundary extends Component<Props, State> {
           <div className="max-w-md">
             <h3 className="text-lg font-semibold">Canvas Error</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              {this.state.error?.message || "An unexpected error occurred. Please try refreshing the canvas."}
+              {"An unexpected error occurred. Please try refreshing the canvas."}
             </p>
           </div>
           <div className="flex gap-2">

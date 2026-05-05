@@ -44,8 +44,9 @@ export function getRegenerationClonePosition(
   existingFrames: ExistingFrameBounds[],
   sourceFrame: ExistingFrameBounds,
 ): { x: number; y: number } {
+  const ROW_EPSILON = 1;
   const sameRowFrames = existingFrames.filter(
-    (frame) => frame.y === sourceFrame.y,
+    (frame) => Math.abs(frame.y - sourceFrame.y) <= ROW_EPSILON,
   );
 
   const rowRightEdge = Math.max(

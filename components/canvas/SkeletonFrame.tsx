@@ -33,7 +33,10 @@ export function SkeletonFrame({
   const isMobile = platform === "mobile";
 
   const headerHeight = isMobile ? MOBILE_STATUS_BAR_HEIGHT : WEB_HEADER_HEIGHT;
-  const contentHeight = h - headerHeight - (isMobile ? MOBILE_HOME_INDICATOR_HEIGHT : 0);
+  const contentHeight = Math.max(
+    0,
+    h - headerHeight - (isMobile ? MOBILE_HOME_INDICATOR_HEIGHT : 0),
+  );
 
   return (
     <div

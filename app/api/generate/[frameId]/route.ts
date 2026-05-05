@@ -405,7 +405,7 @@ export async function POST(
     });
 
     const designContext = await buildDesignContext({
-      prompt: sourceGeneration.prompt,
+      prompt: promptOverride ?? sourceGeneration.prompt,
       platform: sourcePlatform,
     });
     const sourceModel = STAGE3_MODELS.includes(sourceGeneration.model)

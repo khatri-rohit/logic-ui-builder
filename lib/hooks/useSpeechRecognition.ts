@@ -110,6 +110,7 @@ export function useSpeechRecognition(
 
   useEffect(() => {
     const SpeechRecognition = getSpeechRecognitionConstructor();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsSupported(Boolean(SpeechRecognition));
 
     if (!SpeechRecognition) {

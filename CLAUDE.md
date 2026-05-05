@@ -20,6 +20,8 @@ AI-powered UI design tool with an infinite canvas. Users describe UIs in natural
 | `npm run prisma:studio`      | Open Prisma Studio GUI                                                               |
 | `npx shadcn`                 | Add shadcn/ui components (do NOT use `npx shadcn@latest`)                            |
 
+**Prisma migrations in non-interactive environments:** `npx prisma migrate dev` is interactive and will fail. Instead, create the migration directory manually under `prisma/migrations/YYYYMMDDHHiiss_migration_name/`, write `migration.sql`, then run `npx prisma migrate deploy`. After that, run `npx prisma generate` to update the client.
+
 The dev server runs at `http://localhost:3000`.
 
 ## High-Level Architecture
@@ -105,6 +107,7 @@ This repository uses a skill-first execution model defined in `.github/copilot-i
 - **React Compiler**: Enabled in `next.config.ts`.
 - **Sandpack Templates**: `lib/sandpackTemplate.ts` defines the runtime environment for generated code.
 - **Canvas Persistence**: Auto-saved to canvas state and project `canvasState` JSON.
+- **Read-Only Canvas**: Pass `readOnly` to `CanvasFrame` to disable drag, resize, and context menu editing. Used for public share views (`/share/[token]`).
 - **Hydration-Safe Browser API Detection**: Never call browser-only APIs (e.g. `window.speechRecognition`, `navigator.*`) inside a `useState` initializer or during render in Next.js. Initialize to `false`, then detect inside `useEffect` and call `setState`.
 
 ### Anti-Patterns to Avoid
@@ -113,6 +116,10 @@ This repository uses a skill-first execution model defined in `.github/copilot-i
 - Do NOT use `npx shadcn@latest` — use the local CLI: `npx shadcn`.
 - Do NOT use hardcoded Tailwind color utilities (`bg-blue-500`, `text-gray-500`) or arbitrary pixel values in generated code.
 - AVOID raw CSS in favor of Tailwind tokens.
+
+### Build Verification
+
+- Run `npx tsc --noEmit` to check types, then `npm run build` to verify the full production build before committing.
 
 ## Directory Map
 

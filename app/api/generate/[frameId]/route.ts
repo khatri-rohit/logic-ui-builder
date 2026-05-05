@@ -1,8 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  GenerationPlatform as PrismaGenerationPlatform,
-  Prisma,
-} from "@/app/generated/prisma/client";
+import { Prisma } from "@/app/generated/prisma/client";
 import { streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -22,10 +19,17 @@ import {
 } from "@/lib/schemas/studio";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { guardFrameRegeneration } from "@/lib/plan-guard";
-import { incrementFrameRegenUsage } from "@/lib/usage";
+import { incrementFrameRegenUsage, releaseFrameRegenUsage } from "@/lib/usage";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import { buildFrameRegeneratePrompt } from "@/lib/promptEnhancer";
 import { parseGenerationScreens } from "@/lib/utils";
+import {
+  toApiPlatform,
+  toPrismaPlatform,
+  buildModelPriority,
+  reserveGenerationWithIdempotency,
+  createModelAbortSignal,
+} from "@/lib/generation";
 
 export const runtime = "nodejs";
 
@@ -44,34 +48,6 @@ const frameRouteParamsSchema = z.object({
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
 const frameRegenerateBodySchema = frameRegenerateRequestBodySchema;
-
-function toApiPlatform(platform: PrismaGenerationPlatform): GenerationPlatform {
-  return platform === "MOBILE" ? "mobile" : "web";
-}
-
-function toPrismaPlatform(
-  platform: GenerationPlatform,
-): PrismaGenerationPlatform {
-  return platform === "mobile" ? "MOBILE" : "WEB";
-}
-
-function buildModelPriority(
-  preferredModel: string | null,
-  defaults: readonly string[],
-) {
-  if (!preferredModel) {
-    return [...defaults];
-  }
-
-  if (defaults.includes(preferredModel)) {
-    return [
-      preferredModel,
-      ...defaults.filter((model) => model !== preferredModel),
-    ];
-  }
-
-  return [preferredModel, ...defaults];
-}
 
 function coerceSpec(
   rawSpec: Prisma.JsonValue,
@@ -241,6 +217,9 @@ export async function POST(
     const promptOverride = body.prompt?.trim();
     const hasPromptOverride = Boolean(promptOverride);
 
+    const abortController = new AbortController();
+    req.signal.addEventListener("abort", () => abortController.abort());
+
     const project = await prisma.project.findUnique({
       where: {
         id: body.projectId,
@@ -328,32 +307,6 @@ export async function POST(
       ? `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`
       : null;
 
-    if (idempotencyKey) {
-      const duplicateGeneration = await prisma.generation.findUnique({
-        where: { idempotencyKey },
-        select: {
-          id: true,
-          projectId: true,
-          status: true,
-        },
-      });
-
-      if (duplicateGeneration) {
-        return NextResponse.json(
-          {
-            error: true,
-            code: "DUPLICATE_GENERATION_REQUEST",
-            message: "Duplicate generation request rejected by idempotency key",
-            data: {
-              generationId: duplicateGeneration.id,
-              status: duplicateGeneration.status,
-            },
-          },
-          { status: 409 },
-        );
-      }
-    }
-
     const sourcePlatform = toApiPlatform(sourceGeneration.platform);
     const spec = coerceSpec(
       sourceGeneration.spec,
@@ -418,6 +371,51 @@ export async function POST(
     );
     const persistenceModel = body.model ?? sourceGeneration.model;
 
+    let generationId = sourceGeneration.id;
+    let createdPromptGeneration = false;
+
+    if (hasPromptOverride) {
+      const idempotencyResult = await prisma.$transaction(async (tx) => {
+        const result = await reserveGenerationWithIdempotency(tx, {
+          projectId: project.id,
+          prompt: regeneratePrompt,
+          model: persistenceModel,
+          platform: toPrismaPlatform(sourcePlatform),
+          spec: spec as any,
+          idempotencyKey,
+        });
+
+        if (result.isNew) {
+          await tx.project.update({
+            where: { id: project.id },
+            data: { status: "GENERATING" },
+          });
+        }
+
+        return result;
+      });
+
+      if (!idempotencyResult.isNew) {
+        await releaseFrameRegenUsage(guardResult.usage.usagePeriodId);
+        return NextResponse.json(
+          {
+            error: true,
+            code: "DUPLICATE_GENERATION_REQUEST",
+            message:
+              "Duplicate generation request rejected by idempotency key",
+            data: {
+              generationId: idempotencyResult.generationId,
+              status: idempotencyResult.status,
+            },
+          },
+          { status: 409 },
+        );
+      }
+
+      generationId = idempotencyResult.generationId;
+      createdPromptGeneration = true;
+    }
+
     const ollama = initializeOllama();
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
@@ -426,30 +424,9 @@ export async function POST(
       writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
 
     (async () => {
-      let generationId = sourceGeneration.id;
-      let createdPromptGeneration = false;
       let generatedCode = "";
 
       try {
-        if (hasPromptOverride) {
-          const createdGeneration = await prisma.generation.create({
-            data: {
-              projectId: project.id,
-              prompt: regeneratePrompt,
-              model: persistenceModel,
-              platform: toPrismaPlatform(sourcePlatform),
-              spec: spec as any,
-              status: "RUNNING",
-              idempotencyKey,
-            },
-            select: {
-              id: true,
-            },
-          });
-
-          generationId = createdGeneration.id;
-          createdPromptGeneration = true;
-        }
 
         await write({ type: "generation_id", generationId });
         await write({
@@ -483,6 +460,7 @@ export async function POST(
               `Frame regenerate '${sourceFrame.screenName}' via model: ${candidateModel}`,
             );
 
+            const modelSignal = createModelAbortSignal(abortController);
             const result = streamText({
               model: ollama(candidateModel),
               system: STAGE3_SYSTEM,
@@ -494,9 +472,11 @@ export async function POST(
                 designContext,
               ),
               temperature: 0.2,
+              abortSignal: modelSignal,
             });
 
             for await (const token of result.textStream) {
+              if (abortController.signal.aborted) break;
               generatedCode += token;
               await write({
                 type: "code_chunk",
@@ -577,7 +557,15 @@ export async function POST(
         });
         await write({ type: "done" });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const isAbort =
+          abortController.signal.aborted ||
+          (error as Error)?.name === "AbortError" ||
+          (error as Error)?.message === "Aborted by client disconnect";
+        const message = isAbort
+          ? "Aborted by client disconnect"
+          : error instanceof Error
+            ? error.message
+            : String(error);
 
         if (createdPromptGeneration) {
           const failedFrame: PersistedGenerationScreen = {
@@ -600,10 +588,19 @@ export async function POST(
               errorMessage: message,
               errorMeta: {
                 source: "api/generate/[frameId]",
-                stage: "stage3",
+                stage: isAbort ? "abort" : "stage3",
               } as unknown as Prisma.InputJsonValue,
             },
           });
+        }
+
+        await prisma.project.update({
+          where: { id: project.id },
+          data: { status: "ACTIVE" },
+        });
+
+        if (!isAbort) {
+          await releaseFrameRegenUsage(guardResult.usage.usagePeriodId);
         }
 
         await write({ type: "error", message });

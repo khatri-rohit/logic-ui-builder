@@ -196,6 +196,26 @@ export async function incrementGenerationUsage(
   `;
 }
 
+export async function releaseGenerationSlot(
+  usagePeriodId: string,
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "generationsUsed" = GREATEST("generationsUsed" - 1, 0), "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+  `;
+}
+
+export async function releaseFrameRegenUsage(
+  usagePeriodId: string,
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "framesRegenUsed" = GREATEST("framesRegenUsed" - 1, 0), "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+  `;
+}
+
 export async function incrementFrameRegenUsage(
   usagePeriodId: string,
 ): Promise<void> {

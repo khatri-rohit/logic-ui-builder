@@ -39,6 +39,14 @@ import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 import { guardGenerationRequest } from "@/lib/plan-guard";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import {
+  toApiPlatform,
+  toPrismaPlatform,
+  buildModelPriority,
+  reserveGenerationWithIdempotency,
+  createModelAbortSignal,
+} from "@/lib/generation";
+import { releaseGenerationSlot } from "@/lib/usage";
 
 export const runtime = "nodejs";
 
@@ -68,15 +76,6 @@ function normalizePlatform(value: unknown): GenerationPlatform {
   return value === "mobile" ? "mobile" : "web";
 }
 
-function toPrismaPlatform(
-  platform: GenerationPlatform,
-): PrismaGenerationPlatform {
-  return platform === "mobile" ? "MOBILE" : "WEB";
-}
-
-function toApiPlatform(platform: PrismaGenerationPlatform): GenerationPlatform {
-  return platform === "MOBILE" ? "mobile" : "web";
-}
 
 const MOBILE_COMPLEXITY_KEYWORDS = [
   "landing",
@@ -250,36 +249,20 @@ function parseJsonStrict<T>(raw: string): T {
   throw new Error("No valid JSON object found in model output");
 }
 
-function buildModelPriority(
-  preferredModel: string | null,
-  defaults: readonly string[],
-) {
-  if (!preferredModel) {
-    return [...defaults];
-  }
-
-  if (defaults.includes(preferredModel)) {
-    return [
-      preferredModel,
-      ...defaults.filter((model) => model !== preferredModel),
-    ];
-  }
-
-  return [preferredModel, ...defaults];
-}
-
 async function generateTextWithFallback({
   stage,
   models,
   ollama,
   system,
   prompt,
+  abortSignal,
 }: {
   stage: string;
   models: string[];
   ollama: ReturnType<typeof initializeOllama>;
   system: string;
   prompt: string;
+  abortSignal?: AbortSignal;
 }) {
   let lastError: unknown = null;
 
@@ -290,6 +273,7 @@ async function generateTextWithFallback({
         model: ollama(model),
         system,
         prompt,
+        abortSignal,
       });
     } catch (error) {
       lastError = error;
@@ -425,30 +409,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const duplicateGeneration = await prisma.generation.findUnique({
-      where: { idempotencyKey },
-      select: {
-        id: true,
-        projectId: true,
-        status: true,
-      },
-    });
-
-    if (duplicateGeneration) {
-      return NextResponse.json(
-        {
-          error: true,
-          code: "DUPLICATE_GENERATION_REQUEST",
-          message: "Duplicate generation request rejected by idempotency key",
-          data: {
-            generationId: duplicateGeneration.id,
-            status: duplicateGeneration.status,
-          },
-        },
-        { status: 409 },
-      );
-    }
-
     const isFrameRegeneration = !!body.frameId && !!body.generationId;
     const targetFrameId = isFrameRegeneration
       ? (body.targetFrameId ?? body.frameId)
@@ -569,6 +529,65 @@ export async function POST(req: NextRequest) {
       STAGE3_MODELS,
     );
 
+    const requestedModelForPersistence =
+      isFrameRegeneration && sourceGeneration
+        ? preferredModel ?? sourceGeneration.model
+        : preferredModel ?? stage3ModelPriority[0];
+
+    let generationId: string | null = null;
+
+    // Atomic idempotent generation reservation
+    const idempotencyResult = await prisma.$transaction(async (tx) => {
+      const result = await reserveGenerationWithIdempotency(tx, {
+        projectId: project.id,
+        prompt:
+          isFrameRegeneration && sourceGeneration
+            ? prompt || sourceGeneration.prompt
+            : prompt,
+        model: requestedModelForPersistence,
+        platform:
+          isFrameRegeneration && sourceGeneration
+            ? sourceGeneration.platform
+            : toPrismaPlatform(requestedPlatform),
+        spec:
+          isFrameRegeneration && sourceGeneration
+            ? (sourceGeneration.spec as Prisma.InputJsonValue)
+            : ({} as Prisma.InputJsonValue),
+        tree:
+          isFrameRegeneration && sourceGeneration
+            ? (sourceGeneration.tree as Prisma.InputJsonValue | undefined)
+            : undefined,
+        idempotencyKey,
+      });
+
+      if (result.isNew) {
+        await tx.project.update({
+          where: { id: project.id },
+          data: { status: "GENERATING" },
+        });
+      }
+
+      return result;
+    });
+
+    if (!idempotencyResult.isNew) {
+      await releaseGenerationSlot(usage.usagePeriodId);
+      return NextResponse.json(
+        {
+          error: true,
+          code: "DUPLICATE_GENERATION_REQUEST",
+          message: "Duplicate generation request rejected by idempotency key",
+          data: {
+            generationId: idempotencyResult.generationId,
+            status: idempotencyResult.status,
+          },
+        },
+        { status: 409 },
+      );
+    }
+
+    generationId = idempotencyResult.generationId;
+
     const ollama = initializeOllama();
 
     const { readable, writable } = new TransformStream();
@@ -579,42 +598,11 @@ export async function POST(req: NextRequest) {
       writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
 
     (async () => {
-      let generationId: string | null = null;
       const persistedScreens: PersistedGenerationScreen[] = [];
 
       try {
         // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
         if (isFrameRegeneration && sourceGeneration && sourceFrame) {
-          const requestedModelForPersistence =
-            preferredModel ?? sourceGeneration.model;
-
-          const createdGeneration = await prisma.$transaction(async (tx) => {
-            const generation = await tx.generation.create({
-              data: {
-                projectId: project.id,
-                prompt: prompt || sourceGeneration.prompt,
-                model: requestedModelForPersistence,
-                platform: sourceGeneration.platform,
-                spec: sourceGeneration.spec as any,
-                tree: sourceGeneration.tree as
-                  | Prisma.InputJsonValue
-                  | undefined,
-                status: "RUNNING",
-                idempotencyKey,
-              },
-              select: { id: true },
-            });
-
-            await tx.project.update({
-              where: { id: project.id },
-              data: { status: "GENERATING" },
-            });
-
-            return generation;
-          });
-
-          generationId = createdGeneration.id;
-
           logger.info("Frame regeneration: skipping Stage 1 & 2", {
             generationId,
             frameId: body.frameId,
@@ -697,6 +685,7 @@ export async function POST(req: NextRequest) {
               logger.info(
                 `Frame regeneration Stage 3 '${sourceFrame.screenName}' via model: ${candidateModel}`,
               );
+              const modelSignal = createModelAbortSignal(abortController);
               const { usage: stage3Usage, textStream } = streamText({
                 model: ollama(candidateModel),
                 system: STAGE3_SYSTEM,
@@ -708,7 +697,7 @@ export async function POST(req: NextRequest) {
                   designContext,
                 ),
                 temperature: 0.2,
-                abortSignal: abortController.signal,
+                abortSignal: modelSignal,
               });
 
               for await (const token of textStream) {
@@ -735,7 +724,7 @@ export async function POST(req: NextRequest) {
                 logger.info(
                   "Frame regeneration aborted due to client disconnect",
                 );
-                return;
+                throw new Error("Aborted by client disconnect");
               }
             }
           }
@@ -830,6 +819,7 @@ export async function POST(req: NextRequest) {
             ollama,
             system: STAGE1_SYSTEM,
             prompt: `User prompt: ${prompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
+            abortSignal: abortController.signal,
           });
 
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
@@ -838,35 +828,10 @@ export async function POST(req: NextRequest) {
           prompt,
         );
         logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
-        const requestedModelForPersistence =
-          preferredModel ?? stage3ModelPriority[0];
 
-        const createdGeneration = await prisma.$transaction(async (tx) => {
-          const generation = await tx.generation.create({
-            data: {
-              projectId: project.id,
-              prompt,
-              model: requestedModelForPersistence,
-              platform: toPrismaPlatform(requestedPlatform),
-              spec: spec as any,
-              status: "RUNNING",
-              idempotencyKey,
-            },
-            select: { id: true },
-          });
-
-          await tx.project.update({
-            where: { id: project.id },
-            data: { status: "GENERATING" },
-          });
-
-          return generation;
-        });
-
-        generationId = createdGeneration.id;
-
-        logger.info("Generation usage slot reserved", {
-          usagePeriodId: usage.usagePeriodId,
+        await prisma.generation.update({
+          where: { id: generationId },
+          data: { spec: spec as any },
         });
 
         await write({ type: "generation_id", generationId });
@@ -881,6 +846,7 @@ export async function POST(req: NextRequest) {
             ollama,
             system: STAGE2_SYSTEM,
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
+            abortSignal: abortController.signal,
           });
         const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         await write({ type: "tree", tree });
@@ -959,6 +925,7 @@ export async function POST(req: NextRequest) {
                 logger.info(
                   `Stage 3 screen '${screen}' iteration ${iteration} via model: ${candidateModel}`,
                 );
+                const modelSignal = createModelAbortSignal(abortController);
                 const { usage: stage3Usage, textStream } = streamText({
                   model: ollama(candidateModel),
                   system: STAGE3_SYSTEM,
@@ -970,7 +937,7 @@ export async function POST(req: NextRequest) {
                     designContext,
                   ),
                   temperature: 0.2,
-                  abortSignal: abortController.signal,
+                  abortSignal: modelSignal,
                 });
 
                 for await (const token of textStream) {
@@ -992,12 +959,7 @@ export async function POST(req: NextRequest) {
                 );
                 if ((err as Error)?.name === "AbortError") {
                   logger.info("Generation aborted due to client disconnect");
-                  return {
-                    success: false,
-                    code: "",
-                    error: "Aborted",
-                    iterations,
-                  };
+                  throw new Error("Aborted by client disconnect");
                 }
               }
             }
@@ -1143,7 +1105,15 @@ export async function POST(req: NextRequest) {
         });
         await write({ type: "done" });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const isAbort =
+          abortController.signal.aborted ||
+          (err as Error)?.name === "AbortError" ||
+          (err as Error)?.message === "Aborted by client disconnect";
+        const message = isAbort
+          ? "Aborted by client disconnect"
+          : err instanceof Error
+            ? err.message
+            : String(err);
 
         if (generationId) {
           await prisma.$transaction([
@@ -1156,7 +1126,7 @@ export async function POST(req: NextRequest) {
                 errorMessage: message,
                 errorMeta: {
                   source: "api/generate",
-                  stage: "stream",
+                  stage: isAbort ? "abort" : "stream",
                 } as unknown as Prisma.InputJsonValue,
               },
             }),
@@ -1165,6 +1135,10 @@ export async function POST(req: NextRequest) {
               data: { status: "ACTIVE" },
             }),
           ]);
+        }
+
+        if (!isAbort && usage) {
+          await releaseGenerationSlot(usage.usagePeriodId);
         }
 
         await write({ type: "error", message });

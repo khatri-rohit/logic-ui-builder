@@ -133,6 +133,58 @@ export async function getOrCreateUsagePeriod(
   };
 }
 
+/**
+ * Atomically reserve one generation slot.
+ * Returns true if the slot was reserved, false if the quota is exhausted.
+ * Uses a CHECK-AND-INCREMENT in a single SQL statement to eliminate TOCTOU.
+ */
+export async function reserveGenerationSlot(
+  usagePeriodId: string,
+  generationLimit: number,
+): Promise<boolean> {
+  if (generationLimit === -1) {
+    // Unlimited plan — increment unconditionally
+    await prisma.$executeRaw`
+      UPDATE "UsagePeriod"
+      SET "generationsUsed" = "generationsUsed" + 1, "updatedAt" = NOW()
+      WHERE "id" = ${usagePeriodId}
+    `;
+    return true;
+  }
+
+  const result = await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "generationsUsed" = "generationsUsed" + 1, "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+      AND "generationsUsed" < ${generationLimit}
+  `;
+  // $executeRaw returns the number of affected rows
+  return (result as number) === 1;
+}
+
+export async function reserveProjectSlot(
+  usagePeriodId: string,
+  projectLimit: number,
+): Promise<boolean> {
+  if (projectLimit === -1) {
+    await prisma.$executeRaw`
+      UPDATE "UsagePeriod"
+      SET "projectsCreated" = "projectsCreated" + 1, "updatedAt" = NOW()
+      WHERE "id" = ${usagePeriodId}
+    `;
+    return true;
+  }
+
+  const result = await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "projectsCreated" = "projectsCreated" + 1, "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+      AND "projectsCreated" < ${projectLimit}
+  `;
+
+  return (result as number) === 1;
+}
+
 /** Atomic increment — avoids race conditions on concurrent requests */
 export async function incrementGenerationUsage(
   usagePeriodId: string,
@@ -140,6 +192,26 @@ export async function incrementGenerationUsage(
   await prisma.$executeRaw`
     UPDATE "UsagePeriod"
     SET "generationsUsed" = "generationsUsed" + 1, "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+  `;
+}
+
+export async function releaseGenerationSlot(
+  usagePeriodId: string,
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "generationsUsed" = GREATEST("generationsUsed" - 1, 0), "updatedAt" = NOW()
+    WHERE "id" = ${usagePeriodId}
+  `;
+}
+
+export async function releaseFrameRegenUsage(
+  usagePeriodId: string,
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "UsagePeriod"
+    SET "framesRegenUsed" = GREATEST("framesRegenUsed" - 1, 0), "updatedAt" = NOW()
     WHERE "id" = ${usagePeriodId}
   `;
 }

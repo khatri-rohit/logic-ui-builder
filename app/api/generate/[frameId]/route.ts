@@ -1,8 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  GenerationPlatform as PrismaGenerationPlatform,
-  Prisma,
-} from "@/app/generated/prisma/client";
+import { Prisma } from "@/app/generated/prisma/client";
 import { streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -12,26 +8,36 @@ import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import { initializeOllama } from "@/lib/ollama";
 import prisma from "@/lib/prisma";
-import { buildScreenPrompt, STAGE3_SYSTEM } from "@/lib/prompts";
+import { buildScreenPrompt, STAGE3_SYSTEM, validateGeneratedTSX } from "@/lib/prompts";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
+import { buildDesignContext } from "@/lib/designContext";
 import {
   frameRegenerateRequestBodySchema,
-  persistedGenerationScreenSchema,
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { guardFrameRegeneration } from "@/lib/plan-guard";
-import { incrementFrameRegenUsage } from "@/lib/usage";
+import { incrementFrameRegenUsage, releaseFrameRegenUsage } from "@/lib/usage";
+import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import { buildFrameRegeneratePrompt } from "@/lib/promptEnhancer";
+import { parseGenerationScreens } from "@/lib/utils";
+import {
+  toApiPlatform,
+  toPrismaPlatform,
+  buildModelPriority,
+  reserveGenerationWithIdempotency,
+  createModelAbortSignal,
+} from "@/lib/generation";
 
 export const runtime = "nodejs";
 
 const STAGE3_MODELS = [
-  "gemma4:31b",
-  "deepseek-v3.1:671b",
-  "qwen3.5",
-  "gpt-oss:120b",
-  "deepseek-v3.2:cloud",
+  "gemma3:27b-cloud",
+  "qwen3-coder:480b-cloud",
+  "mistral-large-3:675b-cloud",
+  "kimi-k2.6:cloud",
+  "gpt-oss:120b-cloud",
 ];
 
 const frameRouteParamsSchema = z.object({
@@ -40,52 +46,7 @@ const frameRouteParamsSchema = z.object({
 
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
-const frameRegenerateBodySchema = frameRegenerateRequestBodySchema.superRefine(
-  (value, ctx) => {
-    if (value.model && !STAGE3_MODELS.includes(value.model)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["model"],
-        message: "Unsupported model selection",
-      });
-    }
-  },
-);
-
-function toApiPlatform(platform: PrismaGenerationPlatform): GenerationPlatform {
-  return platform === "MOBILE" ? "mobile" : "web";
-}
-
-function toPrismaPlatform(
-  platform: GenerationPlatform,
-): PrismaGenerationPlatform {
-  return platform === "mobile" ? "MOBILE" : "WEB";
-}
-
-function buildModelPriority(
-  preferredModel: string | null,
-  defaults: readonly string[],
-) {
-  if (!preferredModel) {
-    return [...defaults];
-  }
-
-  if (defaults.includes(preferredModel)) {
-    return [
-      preferredModel,
-      ...defaults.filter((model) => model !== preferredModel),
-    ];
-  }
-
-  return [preferredModel, ...defaults];
-}
-
-function parseGenerationScreens(
-  value: Prisma.JsonValue | null,
-): PersistedGenerationScreen[] {
-  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
-}
+const frameRegenerateBodySchema = frameRegenerateRequestBodySchema;
 
 function coerceSpec(
   rawSpec: Prisma.JsonValue,
@@ -115,30 +76,6 @@ function coerceSpec(
     layoutDensity: "comfortable",
     components: [],
   };
-}
-
-function buildFrameRegeneratePrompt({
-  basePrompt,
-  prompt,
-  screenName,
-}: {
-  basePrompt: string;
-  prompt?: string;
-  screenName: string;
-}) {
-  const normalizedPrompt = prompt?.trim();
-  if (!normalizedPrompt) {
-    return basePrompt;
-  }
-
-  return [
-    basePrompt,
-    "",
-    "FRAME MODIFICATION REQUEST:",
-    `- Target screen: ${screenName}`,
-    "- Apply changes only to this screen while preserving the established design language.",
-    normalizedPrompt,
-  ].join("\n");
 }
 
 export async function GET(
@@ -206,13 +143,13 @@ export async function POST(
     }
 
     try {
-      const burstLimiter = getGenerationBurstLimit(authContext.planId);
+      const burstLimiter = getGenerationBurstLimit(authContext.effectivePlanId);
       const { success, limit, remaining, reset } = await burstLimiter.limit(
         authContext.appUserId,
       );
       logger.info("Burst rate limit check for generation request", {
         userId: authContext.appUserId,
-        planId: authContext.planId,
+        planId: authContext.effectivePlanId,
         success,
         limit,
         remaining,
@@ -259,6 +196,13 @@ export async function POST(
     }
     const guardResult = await guardFrameRegeneration(authContext);
     if (!guardResult.allowed) return guardResult.response;
+    const { usage } = guardResult;
+    if (!usage) {
+      return NextResponse.json(
+        { error: true, code: "USAGE_UNAVAILABLE", message: "Usage context missing." },
+        { status: 503 },
+      );
+    }
 
     const parsedBody = frameRegenerateBodySchema.safeParse(rawBody);
     if (!parsedBody.success) {
@@ -278,6 +222,9 @@ export async function POST(
     const body = parsedBody.data;
     const promptOverride = body.prompt?.trim();
     const hasPromptOverride = Boolean(promptOverride);
+
+    const abortController = new AbortController();
+    req.signal.addEventListener("abort", () => abortController.abort());
 
     const project = await prisma.project.findUnique({
       where: {
@@ -353,6 +300,8 @@ export async function POST(
       );
     }
 
+    const responseFrameId = body.targetFrameId ?? sourceFrame.id;
+
     const idempotencyHeaderResult = idempotencyHeaderSchema.safeParse(
       req.headers.get("Idempotency-Key"),
     );
@@ -363,32 +312,6 @@ export async function POST(
     const idempotencyKey = hasPromptOverride
       ? `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`
       : null;
-
-    if (idempotencyKey) {
-      const duplicateGeneration = await prisma.generation.findUnique({
-        where: { idempotencyKey },
-        select: {
-          id: true,
-          projectId: true,
-          status: true,
-        },
-      });
-
-      if (duplicateGeneration) {
-        return NextResponse.json(
-          {
-            error: true,
-            code: "DUPLICATE_GENERATION_REQUEST",
-            message: "Duplicate generation request rejected by idempotency key",
-            data: {
-              generationId: duplicateGeneration.id,
-              status: duplicateGeneration.status,
-            },
-          },
-          { status: 409 },
-        );
-      }
-    }
 
     const sourcePlatform = toApiPlatform(sourceGeneration.platform);
     const spec = coerceSpec(
@@ -405,8 +328,8 @@ export async function POST(
             z.object({
               screen: z.string(),
               components: z.array(z.string()),
-              canvasX: z.number(),
-              canvasY: z.number(),
+              canvasX: z.number().optional(),
+              canvasY: z.number().optional(),
               layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
               componentIntents: z.array(z.unknown()).optional(),
             }),
@@ -428,6 +351,11 @@ export async function POST(
             canvasY: sourceFrame.y,
           },
         ];
+    logger.info("Using component tree for frame regeneration", {
+      tree,
+      sourceGenerationId: sourceGeneration.id,
+      sourceFrameId: sourceFrame.id,
+    });
 
     const regeneratePrompt = buildFrameRegeneratePrompt({
       basePrompt: sourceGeneration.prompt,
@@ -435,6 +363,10 @@ export async function POST(
       screenName: sourceFrame.screenName,
     });
 
+    const designContext = await buildDesignContext({
+      prompt: promptOverride ?? sourceGeneration.prompt,
+      platform: sourcePlatform,
+    });
     const sourceModel = STAGE3_MODELS.includes(sourceGeneration.model)
       ? sourceGeneration.model
       : null;
@@ -445,6 +377,51 @@ export async function POST(
     );
     const persistenceModel = body.model ?? sourceGeneration.model;
 
+    let generationId = sourceGeneration.id;
+    let createdPromptGeneration = false;
+
+    if (hasPromptOverride) {
+      const idempotencyResult = await prisma.$transaction(async (tx) => {
+        const result = await reserveGenerationWithIdempotency(tx, {
+          projectId: project.id,
+          prompt: regeneratePrompt,
+          model: persistenceModel,
+          platform: toPrismaPlatform(sourcePlatform),
+          spec: spec as unknown as Prisma.InputJsonValue,
+          idempotencyKey,
+        });
+
+        if (result.isNew) {
+          await tx.project.update({
+            where: { id: project.id },
+            data: { status: "GENERATING" },
+          });
+        }
+
+        return result;
+      });
+
+      if (!idempotencyResult.isNew) {
+        await releaseFrameRegenUsage(usage.usagePeriodId);
+        return NextResponse.json(
+          {
+            error: true,
+            code: "DUPLICATE_GENERATION_REQUEST",
+            message:
+              "Duplicate generation request rejected by idempotency key",
+            data: {
+              generationId: idempotencyResult.generationId,
+              status: idempotencyResult.status,
+            },
+          },
+          { status: 409 },
+        );
+      }
+
+      generationId = idempotencyResult.generationId;
+      createdPromptGeneration = true;
+    }
+
     const ollama = initializeOllama();
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
@@ -453,39 +430,20 @@ export async function POST(
       writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
 
     (async () => {
-      let generationId = sourceGeneration.id;
-      let createdPromptGeneration = false;
       let generatedCode = "";
 
       try {
-        if (hasPromptOverride) {
-          const createdGeneration = await prisma.generation.create({
-            data: {
-              projectId: project.id,
-              prompt: regeneratePrompt,
-              model: persistenceModel,
-              platform: toPrismaPlatform(sourcePlatform),
-              spec: spec as any,
-              status: "RUNNING",
-              idempotencyKey,
-            },
-            select: {
-              id: true,
-            },
-          });
-
-          generationId = createdGeneration.id;
-          createdPromptGeneration = true;
-        }
 
         await write({ type: "generation_id", generationId });
         await write({
           type: "frame_start",
-          frameId: sourceFrame.id,
+          frameId: responseFrameId,
           screen: sourceFrame.screenName,
         });
-
-        await incrementFrameRegenUsage(guardResult.usage.usagePeriodId);
+        logger.info(
+          `Starting frame regeneration for frame '${sourceFrame.screenName}' with generation ID ${generationId}`,
+        );
+        await incrementFrameRegenUsage(usage.usagePeriodId);
 
         let generated = false;
         let streamError: unknown = null;
@@ -498,7 +456,7 @@ export async function POST(
               generatedCode = "";
               await write({
                 type: "frame_reset",
-                frameId: sourceFrame.id,
+                frameId: responseFrameId,
                 screen: sourceFrame.screenName,
                 reason: `retry:${candidateModel}`,
               });
@@ -508,6 +466,7 @@ export async function POST(
               `Frame regenerate '${sourceFrame.screenName}' via model: ${candidateModel}`,
             );
 
+            const modelSignal = createModelAbortSignal(abortController);
             const result = streamText({
               model: ollama(candidateModel),
               system: STAGE3_SYSTEM,
@@ -516,15 +475,18 @@ export async function POST(
                 tree,
                 sourceFrame.screenName,
                 regeneratePrompt,
+                designContext,
               ),
               temperature: 0.2,
+              abortSignal: modelSignal,
             });
 
             for await (const token of result.textStream) {
+              if (abortController.signal.aborted) break;
               generatedCode += token;
               await write({
                 type: "code_chunk",
-                frameId: sourceFrame.id,
+                frameId: responseFrameId,
                 token,
               });
             }
@@ -550,10 +512,18 @@ export async function POST(
           throw new Error("Generation ended before this frame completed.");
         }
 
+        const syntaxValidation = validateGeneratedTSX(generatedCode);
+        if (!syntaxValidation.valid) {
+          throw new Error(
+            `Frame TSX validation failed: ${syntaxValidation.issues.join("; ")}`,
+          );
+        }
+
         const updatedFrame: PersistedGenerationScreen = {
           ...sourceFrame,
+          id: responseFrameId,
           state: "done",
-          content: generatedCode,
+          content: sanitizeGeneratedCode(generatedCode),
           editedContent: null,
           error: null,
         };
@@ -588,18 +558,29 @@ export async function POST(
 
         await write({
           type: "frame_done",
-          frameId: sourceFrame.id,
+          frameId: responseFrameId,
           screen: sourceFrame.screenName,
         });
         await write({ type: "done" });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const isAbort =
+          abortController.signal.aborted ||
+          (error as Error)?.name === "AbortError" ||
+          (error as Error)?.message === "Aborted by client disconnect";
+        const message = isAbort
+          ? "Aborted by client disconnect"
+          : error instanceof Error
+            ? error.message
+            : String(error);
 
         if (createdPromptGeneration) {
           const failedFrame: PersistedGenerationScreen = {
             ...sourceFrame,
+            id: responseFrameId,
             state: "error",
-            content: generatedCode.trim() ? generatedCode : sourceFrame.content,
+            content: generatedCode.trim()
+              ? sanitizeGeneratedCode(generatedCode)
+              : sourceFrame.content,
             editedContent: null,
             error: message,
           };
@@ -613,10 +594,19 @@ export async function POST(
               errorMessage: message,
               errorMeta: {
                 source: "api/generate/[frameId]",
-                stage: "stage3",
+                stage: isAbort ? "abort" : "stage3",
               } as unknown as Prisma.InputJsonValue,
             },
           });
+        }
+
+        await prisma.project.update({
+          where: { id: project.id },
+          data: { status: "ACTIVE" },
+        });
+
+        if (!isAbort) {
+          await releaseFrameRegenUsage(usage.usagePeriodId);
         }
 
         await write({ type: "error", message });

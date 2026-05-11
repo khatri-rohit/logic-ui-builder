@@ -8,7 +8,28 @@ export function BillingPageClient() {
   const { data: usage, isLoading } = useUsageQuery();
   const [showPricing, setShowPricing] = useState(false);
 
-  if (isLoading) return <p>Loading...</p>;
+  if (isLoading) {
+    return (
+      <div className="dark min-h-screen bg-[#0f0f0f] px-8 py-12 text-white">
+        <div className="mx-auto max-w-2xl">
+          <div className="h-8 w-32 animate-pulse rounded bg-white/10" />
+          <div className="mt-8 rounded-xl border border-white/8 bg-[#1a1a1a] p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-3">
+                <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+                <div className="h-8 w-40 animate-pulse rounded bg-white/10" />
+              </div>
+              <div className="h-10 w-28 animate-pulse rounded bg-white/10" />
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-4">
+              <div className="h-16 animate-pulse rounded bg-white/5" />
+              <div className="h-16 animate-pulse rounded bg-white/5" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const periodEnd = usage?.currentPeriodEnd
     ? new Date(usage.currentPeriodEnd).toLocaleDateString("en-IN", {

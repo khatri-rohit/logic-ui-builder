@@ -23,11 +23,11 @@ export interface ProjectStudioRuntimeState {
   generationToken: number;
   generationRunId: string | null;
   activeGenerationId: string | null;
-  frameIdsByScreen: Map<string, string[]>;
-  activeFrameIdsByScreen: Map<string, string>;
-  screenBuffers: Map<string, string>;
-  dirtyScreens: Set<string>;
-  generationReviewEntries: Map<string, ProjectStudioGenerationReviewEntry>;
+  frameIdsByScreen: Record<string, string[]>;
+  activeFrameIdsByScreen: Record<string, string>;
+  screenBuffers: Record<string, string>;
+  dirtyScreens: string[];
+  generationReviewEntries: Record<string, ProjectStudioGenerationReviewEntry>;
   generationLogEmitted: boolean;
   hasHydratedCanvas: boolean;
   hasInitiatedGeneration: boolean;
@@ -62,11 +62,11 @@ function createDefaultRuntimeState(): ProjectStudioRuntimeState {
     generationToken: 0,
     generationRunId: null,
     activeGenerationId: null,
-    frameIdsByScreen: new Map(),
-    activeFrameIdsByScreen: new Map(),
-    screenBuffers: new Map(),
-    dirtyScreens: new Set(),
-    generationReviewEntries: new Map(),
+    frameIdsByScreen: {},
+    activeFrameIdsByScreen: {},
+    screenBuffers: {},
+    dirtyScreens: [],
+    generationReviewEntries: {},
     generationLogEmitted: false,
     hasHydratedCanvas: false,
     hasInitiatedGeneration: false,
@@ -197,11 +197,11 @@ export const createProjectStudioStore = () =>
           generationToken: nextToken,
           generationRunId: runId,
           activeGenerationId: null,
-          frameIdsByScreen: new Map(),
-          activeFrameIdsByScreen: new Map(),
-          screenBuffers: new Map(),
-          dirtyScreens: new Set(),
-          generationReviewEntries: new Map(),
+          frameIdsByScreen: {},
+          activeFrameIdsByScreen: {},
+          screenBuffers: {},
+          dirtyScreens: [],
+          generationReviewEntries: {},
           generationLogEmitted: false,
         },
       });

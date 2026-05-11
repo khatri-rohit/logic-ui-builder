@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { CanvasGrid } from "@/components/canvas/CanvasGrid";
-import { CanvasToolbar } from "@/components/canvas/CanvasToolbar";
+import { StudioToolbar } from "@/components/canvas/StudioToolbar";
 import {
   CanvasTransformHandle,
   FrameRect,
@@ -108,7 +108,7 @@ export const InfiniteCanvas = forwardRef<
         {children}
       </div>
 
-      <CanvasToolbar
+      <StudioToolbar
         zoomPercent={zoomPercent}
         onZoomIn={transformApi.zoomIn}
         onZoomOut={transformApi.zoomOut}

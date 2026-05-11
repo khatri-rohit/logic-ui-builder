@@ -11,6 +11,7 @@ const RAZORPAY_TO_STATUS: Record<string, SubscriptionStatus> = {
   created: "CREATED",
   authenticated: "AUTHENTICATED",
   active: "ACTIVE",
+  trialing: "ACTIVE",
   pending: "PENDING",
   halted: "HALTED",
   cancelled: "CANCELLED",
@@ -215,11 +216,37 @@ export async function POST(req: NextRequest) {
           chargeSuccesses: {
             increment: 1,
           },
+          chargeFailures: 0,
+          chargeRetries: 0,
+          chargeFailureReason: null,
         },
       });
 
       logger.info("Subscription charged successfully", {
         razorpaySubscriptionId,
+      });
+    }
+
+    if (
+      eventType === "subscription.resumed" ||
+      eventType === "subscription.paused"
+    ) {
+      const sub = event.payload.subscription?.entity;
+      if (!sub)
+        throw new Error(`Missing subscription entity in ${eventType}`);
+
+      const razorpaySubscriptionId = sub.id as string;
+      const razorpayStatus = sub.status as string;
+      const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
+
+      await prisma.subscription.updateMany({
+        where: { razorpaySubscriptionId },
+        data: { status: ourStatus },
+      });
+
+      logger.info(`Razorpay ${eventType} handled`, {
+        razorpaySubscriptionId,
+        ourStatus,
       });
     }
 

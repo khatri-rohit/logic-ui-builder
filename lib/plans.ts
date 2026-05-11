@@ -6,7 +6,6 @@ export interface PlanConfig {
   monthlyGenerationLimit: number; // -1 = unlimited
   projectLimit: number; // -1 = unlimited
   frameRegenerationEnabled: boolean;
-  allowedModels: readonly string[];
   organizationEnabled: boolean;
   rolloverGenerations: number; // max rollover from previous period
   razorpayPlanId: string | null;
@@ -19,7 +18,6 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: 10,
     projectLimit: 3,
     frameRegenerationEnabled: false,
-    allowedModels: ["gemma4:31b"],
     organizationEnabled: false,
     rolloverGenerations: 0,
     razorpayPlanId: null,
@@ -30,12 +28,6 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: 100,
     projectLimit: -1,
     frameRegenerationEnabled: true,
-    allowedModels: [
-      "gemma4:31b",
-      "gpt-oss:120b",
-      "deepseek-v3.1:671b",
-      "qwen3.5",
-    ],
     organizationEnabled: false,
     rolloverGenerations: 0,
     razorpayPlanId: process.env.RAZORPAY_PLAN_STANDARD ?? null,
@@ -46,13 +38,6 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: -1,
     projectLimit: -1,
     frameRegenerationEnabled: true,
-    allowedModels: [
-      "gemma4:31b",
-      "gpt-oss:120b",
-      "deepseek-v3.1:671b",
-      "qwen3.5",
-      "deepseek-v3.2:cloud",
-    ],
     organizationEnabled: true,
     rolloverGenerations: 50,
     razorpayPlanId: process.env.RAZORPAY_PLAN_PRO ?? null,
@@ -68,13 +53,6 @@ export function getPlanConfig(planId: PlanId | string): PlanConfig {
     return PLAN_CONFIGS.FREE;
   }
   return cfg;
-}
-
-export function isModelAllowed(
-  planId: PlanId | string,
-  model: string,
-): boolean {
-  return (getPlanConfig(planId).allowedModels as string[]).includes(model);
 }
 
 export function getEffectiveGenerationLimit(

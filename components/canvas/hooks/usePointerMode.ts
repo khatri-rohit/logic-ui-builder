@@ -24,6 +24,7 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
     setMode("canvas");
     setActiveFrameId(null);
     onModeChange?.("canvas");
+    setSelectedFrameId(null);
   }, [onModeChange]);
 
   const openEditor = useCallback(
@@ -39,6 +40,7 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
     setMode("canvas");
     setActiveFrameId(null);
     onModeChange?.("canvas");
+    setSelectedFrameId(null);
   }, [onModeChange]);
 
   useEffect(() => {

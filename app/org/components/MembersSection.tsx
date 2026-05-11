@@ -31,6 +31,14 @@ export function MembersSection({
           {org.seatCount} of {org.maxSeats}
         </span>
       </div>
+      {org.memberships.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center">
+          <p className="text-sm font-medium">No members yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Invite a teammate to start building this organisation.
+          </p>
+        </div>
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -48,6 +56,7 @@ export function MembersSection({
                 membership={member}
                 currentUserId={currentUserId}
                 userRole={org.userRole}
+                canManageActions={canManage}
                 onRemove={onRemoveMember}
                 isRemoving={removingId === member.id}
               />
@@ -55,6 +64,7 @@ export function MembersSection({
           </TableBody>
         </Table>
       </div>
+      )}
     </section>
   );
 }

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -11,6 +10,10 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { X, Maximize2 } from "lucide-react";
+
+interface HTMLVideoElementWithWebkit extends HTMLVideoElement {
+  webkitEnterFullscreen?: () => void;
+}
 
 interface VideoModalProps {
   open: boolean;
@@ -30,12 +33,13 @@ export function VideoModal({ open, onOpenChange, videoUrl }: VideoModalProps) {
 
   // Request fullscreen for mobile
   const handleFullscreen = () => {
-    if (videoRef.current) {
-      if (videoRef.current.requestFullscreen) {
-        videoRef.current.requestFullscreen();
-      } else if ((videoRef.current as any).webkitEnterFullscreen) {
+    const video = videoRef.current as HTMLVideoElementWithWebkit | null;
+    if (video) {
+      if (video.requestFullscreen) {
+        video.requestFullscreen();
+      } else if (video.webkitEnterFullscreen) {
         // iOS Safari
-        (videoRef.current as any).webkitEnterFullscreen();
+        video.webkitEnterFullscreen();
       }
     }
   };

@@ -1,11 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { auth, clerkClient as getClerkClient } from "@clerk/nextjs/server";
+import { Redis } from "@upstash/redis";
 import type { OrgMemberRole } from "@/app/generated/prisma/client";
 
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 
 const EMAIL_FALLBACK_DOMAIN = "clerk.local";
+const redis = Redis.fromEnv();
+
+const CLERK_USER_TTL = 60; // seconds
+const SUBSCRIPTION_TTL = 60;
+const AUTH_CONTEXT_TTL = 60;
 
 type Provider = "GOOGLE" | "GITHUB" | "EMAIL";
 
@@ -122,10 +127,14 @@ function getRequestPath(request: Request | undefined): string | null {
   }
 }
 
-function extractPrimaryEmail(clerkUser: any): string | null {
+function extractPrimaryEmail(clerkUser: unknown): string | null {
+  const user = clerkUser as Record<string, unknown> | null | undefined;
   const primaryId =
-    clerkUser?.primaryEmailAddressId ?? clerkUser?.primary_email_address_id;
-  const addresses = clerkUser?.emailAddresses ?? clerkUser?.email_addresses;
+    (user?.primaryEmailAddressId as string | undefined) ??
+    (user?.primary_email_address_id as string | undefined);
+  const addresses =
+    (user?.emailAddresses as unknown[] | undefined) ??
+    (user?.email_addresses as unknown[] | undefined);
 
   if (!Array.isArray(addresses) || addresses.length === 0) {
     return null;
@@ -133,32 +142,51 @@ function extractPrimaryEmail(clerkUser: any): string | null {
 
   if (primaryId) {
     const primary = addresses.find(
-      (address: any) =>
-        (address?.id ??
-          address?.emailAddressId ??
-          address?.email_address_id) === primaryId,
+      (address: unknown) =>
+        (
+          (address as Record<string, unknown>)?.id ??
+          (address as Record<string, unknown>)?.emailAddressId ??
+          (address as Record<string, unknown>)?.email_address_id
+        ) === primaryId,
     );
 
-    const primaryEmail = primary?.emailAddress ?? primary?.email_address;
+    const primaryEmail =
+      ((primary as Record<string, unknown>)?.emailAddress as
+        | string
+        | undefined) ??
+      ((primary as Record<string, unknown>)?.email_address as
+        | string
+        | undefined);
     if (typeof primaryEmail === "string" && primaryEmail.length > 0) {
       return primaryEmail;
     }
   }
 
-  const fallback = addresses[0]?.emailAddress ?? addresses[0]?.email_address;
+  const firstAddress = addresses[0] as Record<string, unknown> | undefined;
+  const fallback =
+    (firstAddress?.emailAddress as string | undefined) ??
+    (firstAddress?.email_address as string | undefined);
   return typeof fallback === "string" && fallback.length > 0 ? fallback : null;
 }
 
-function extractDisplayName(clerkUser: any, fallbackEmail: string): string {
-  const firstName = clerkUser?.firstName ?? clerkUser?.first_name;
-  const lastName = clerkUser?.lastName ?? clerkUser?.last_name;
+function extractDisplayName(
+  clerkUser: unknown,
+  fallbackEmail: string,
+): string {
+  const user = clerkUser as Record<string, unknown> | null | undefined;
+  const firstName =
+    (user?.firstName as string | undefined) ??
+    (user?.first_name as string | undefined);
+  const lastName =
+    (user?.lastName as string | undefined) ??
+    (user?.last_name as string | undefined);
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
 
   if (fullName.length > 0) {
     return fullName;
   }
 
-  const username = clerkUser?.username;
+  const username = user?.username;
   if (typeof username === "string" && username.length > 0) {
     return username;
   }
@@ -166,17 +194,21 @@ function extractDisplayName(clerkUser: any, fallbackEmail: string): string {
   return fallbackEmail.split("@")[0] ?? "User";
 }
 
-function inferProvider(clerkUser: any): Provider {
-  const accounts = clerkUser?.externalAccounts ?? clerkUser?.external_accounts;
+function inferProvider(clerkUser: unknown): Provider {
+  const user = clerkUser as Record<string, unknown> | null | undefined;
+  const accounts =
+    (user?.externalAccounts as unknown[] | undefined) ??
+    (user?.external_accounts as unknown[] | undefined);
 
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return "EMAIL";
   }
 
+  const firstAccount = accounts[0] as Record<string, unknown> | undefined;
   const provider = String(
-    accounts[0]?.provider ??
-      accounts[0]?.providerName ??
-      accounts[0]?.identificationType ??
+    firstAccount?.provider ??
+      firstAccount?.providerName ??
+      firstAccount?.identificationType ??
       "",
   ).toLowerCase();
 
@@ -203,7 +235,7 @@ function extractOrganizationClaims(sessionClaims: SessionClaims | null): {
   };
 }
 
-async function fetchClerkUser(clerkUserId: string): Promise<any | null> {
+async function fetchClerkUser(clerkUserId: string): Promise<unknown | null> {
   try {
     const clerkClient = await getClerkClient();
     return await clerkClient.users.getUser(clerkUserId);
@@ -214,6 +246,12 @@ async function fetchClerkUser(clerkUserId: string): Promise<any | null> {
     });
     return null;
   }
+}
+
+export async function invalidateAuthContextCache(
+  clerkSessionId: string,
+): Promise<void> {
+  await redis.del(`auth:context:${clerkSessionId}`);
 }
 
 export async function requireAuthContext(
@@ -236,7 +274,16 @@ export async function requireAuthContext(
 
   const clerkUserId = authState.userId;
   const clerkSessionId = authState.sessionId;
-  const clerkUser = await fetchClerkUser(clerkUserId);
+
+  // Try cache first
+  const cached = await redis.get<AppAuthContext>(
+    `auth:context:${clerkSessionId}`,
+  );
+  if (cached) {
+    return cached;
+  }
+
+  const clerkUser = await getCachedClerkUser(clerkUserId);
 
   const fallbackEmail = `${clerkUserId}@${EMAIL_FALLBACK_DOMAIN}`;
   const clerkEmail = extractPrimaryEmail(clerkUser);
@@ -248,9 +295,8 @@ export async function requireAuthContext(
     extractOrganizationClaims(sessionClaims);
 
   const existingByClerkUserId = await prisma.user.findUnique({
-    where: {
-      clerkUserId,
-    },
+    where: { clerkUserId },
+    select: { id: true, email: true, role: true },
   });
 
   const existingByEmailWithoutClerkUserId =
@@ -260,6 +306,7 @@ export async function requireAuthContext(
             email: clerkEmail,
             clerkUserId: null,
           },
+          select: { id: true, email: true, role: true },
         })
       : null;
 
@@ -343,56 +390,70 @@ export async function requireAuthContext(
     },
   });
 
-  await prisma.authAuditEvent.create({
-    data: {
-      userId: user.id,
-      clerkUserId,
-      clerkSessionId,
-      eventType: options.eventType ?? "request.authenticated",
-      eventSource: "REQUEST",
-      metadata: {
-        path: getRequestPath(options.request),
-        method: options.request?.method ?? null,
-        ipAddress,
-        userAgent,
+  await prisma.authAuditEvent
+    .create({
+      data: {
+        userId: user.id,
+        clerkUserId,
+        clerkSessionId,
+        eventType: options.eventType ?? "request.authenticated",
+        eventSource: "REQUEST",
+        metadata: {
+          path: getRequestPath(options.request),
+          method: options.request?.method ?? null,
+          ipAddress,
+          userAgent,
+        },
       },
-    },
-  });
+    })
+    .catch((err) => {
+      logger.warn("Audit event write failed (non-fatal)", err);
+    });
 
   // Auto-provision or load subscription — single indexed @unique lookup
-  const subscription = await prisma.subscription.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, planId: "FREE", status: "ACTIVE" },
-    update: {},
-    select: { planId: true, status: true },
-  });
+  const subscription = await getCachedSubscription(user.id);
+
+  const hasOrgHistory =
+    user.role !== "USER" ||
+    (await redis.get<boolean>(`auth:has-org:${user.id}`));
+
+  let orgMembership = null;
 
   // Check if this user is an ACTIVE member of an org whose owner has an ACTIVE PRO subscription
-  const orgMembership = await prisma.orgMembership.findFirst({
-    where: {
-      userId: user.id,
-      status: "ACTIVE",
-    },
-    select: {
-      id: true,
-      role: true,
-      organisationId: true,
-      organisation: {
-        select: {
-          id: true,
-          ownerId: true,
-          maxSeats: true,
-          owner: {
-            select: {
-              subscription: {
-                select: { planId: true, status: true },
+  if (hasOrgHistory !== false) {
+    // skip if explicitly cached as false
+    orgMembership = await prisma.orgMembership.findFirst({
+      where: {
+        userId: user.id,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        role: true,
+        organisationId: true,
+        organisation: {
+          select: {
+            id: true,
+            ownerId: true,
+            maxSeats: true,
+            owner: {
+              select: {
+                subscription: {
+                  select: { planId: true, status: true },
+                },
               },
             },
           },
         },
       },
-    },
-  });
+    });
+    if (!orgMembership) {
+      // Cache the negative result for 5 minutes to avoid repeated lookups
+      await redis.setex(`auth:has-org:${user.id}`, 300, false);
+    } else {
+      await redis.setex(`auth:has-org:${user.id}`, 60, true);
+    }
+  }
 
   const orgOwnerSub = orgMembership?.organisation?.owner?.subscription;
   const orgIsLive =
@@ -403,7 +464,7 @@ export async function requireAuthContext(
   const personalPlanId = subscription.planId as "FREE" | "STANDARD" | "PRO";
   const effectivePlanId = orgIsLive ? "PRO" : personalPlanId;
 
-  return {
+  const context: AppAuthContext = {
     appUserId: user.id,
     role: user.role,
     email: user.email,
@@ -411,14 +472,53 @@ export async function requireAuthContext(
     clerkSessionId,
     organizationId: user.organizationId,
     organizationSlug: user.organizationSlug,
-    // NEW
     planId: subscription.planId as "FREE" | "STANDARD" | "PRO",
     subscriptionStatus: subscription.status,
-    // NEW — org-aware fields
     effectivePlanId,
     orgId: orgMembership?.organisationId ?? null,
     orgRole: (orgMembership?.role as OrgMemberRole) ?? null,
     isOrgOwner: orgMembership?.role === "OWNER",
     isOrgMember: orgIsLive && !!orgMembership,
   };
+
+  await redis.setex(
+    `auth:context:${clerkSessionId}`,
+    AUTH_CONTEXT_TTL,
+    context,
+  );
+
+  return context;
+}
+
+async function getCachedClerkUser(
+  clerkUserId: string,
+): Promise<unknown | null> {
+  const cached = await redis.get<unknown>(`auth:clerk-user:${clerkUserId}`);
+  if (cached) return cached;
+  const clerkClient = await getClerkClient();
+  const user = await clerkClient.users.getUser(clerkUserId);
+  await redis.setex(`auth:clerk-user:${clerkUserId}`, CLERK_USER_TTL, user);
+  return user;
+}
+
+async function getCachedSubscription(userId: string) {
+  const cached = await redis.get<{
+    planId: string;
+    status: string;
+    cancelAtPeriodEnd: boolean;
+  }>(`auth:subscription:${userId}`);
+  if (cached) return cached;
+  const sub = await prisma.subscription.upsert({
+    where: { userId },
+    create: {
+      userId,
+      planId: "FREE",
+      status: "ACTIVE",
+      cancelAtPeriodEnd: false,
+    },
+    update: {},
+    select: { planId: true, status: true, cancelAtPeriodEnd: true },
+  });
+  await redis.setex(`auth:subscription:${userId}`, SUBSCRIPTION_TTL, sub);
+  return sub;
 }

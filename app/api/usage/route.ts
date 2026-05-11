@@ -19,7 +19,7 @@ export async function GET(req: Request) {
         { status: 503 },
       );
 
-    const planConfig = getPlanConfig(authContext.planId);
+    const planConfig = getPlanConfig(authContext.effectivePlanId);
 
     const subscription = await prisma.subscription.findUnique({
       where: { userId: authContext.appUserId },
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       error: false,
       data: {
-        planId: authContext.planId,
+        planId: authContext.effectivePlanId,
         planDisplayName: planConfig.displayName,
         generationsUsed: usage.generationsUsed,
         generationLimit: usage.generationLimit,
@@ -51,7 +51,6 @@ export async function GET(req: Request) {
         projectLimit: usage.projectLimit,
         projectsRemaining: usage.projectsRemaining,
         frameRegenerationEnabled: usage.frameRegenerationEnabled,
-        allowedModels: [...planConfig.allowedModels],
         periodStart: usage.periodStart.toISOString(),
         periodEnd: usage.periodEnd.toISOString(),
         // In the GET /api/usage response data object, add:

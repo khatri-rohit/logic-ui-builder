@@ -44,6 +44,7 @@ export interface MemberRowProps {
   membership: OrgMember;
   currentUserId: string;
   userRole: OrgDetail["userRole"];
+  canManageActions: boolean;
   onRemove: (memberId: string) => void;
   isRemoving: boolean;
 }

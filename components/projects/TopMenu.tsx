@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import * as React from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Check,
   ChevronLeft,
@@ -39,7 +39,7 @@ type ProjectActionId =
 
 export type ThemeMode = "light" | "dark" | "system";
 
-const projectActions: Array<{ id: ProjectActionId; label: string; icon: any }> =
+const projectActions: Array<{ id: ProjectActionId; label: string; icon: LucideIcon }> =
   [
     { id: "all-projects", label: "Go to all projects", icon: ChevronLeft },
     { id: "share", label: "Share", icon: Share2 },
@@ -55,7 +55,7 @@ const projectActions: Array<{ id: ProjectActionId; label: string; icon: any }> =
     //   { id: "send-feedback", label: "Send feedback", icon: ExternalLink },
   ];
 
-const themeOptions: Array<{ value: ThemeMode; label: string; icon: any }> = [
+const themeOptions: Array<{ value: ThemeMode; label: string; icon: LucideIcon }> = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
   { value: "system", label: "System", icon: Monitor },

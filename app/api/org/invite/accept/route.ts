@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { acceptInvitation, isOrgError } from "@/lib/org";
-import { apiRatelimit } from "@/lib/ratelimit";
+import { orgRatelimit } from "@/lib/ratelimit";
 import logger from "@/lib/logger";
 
 const bodySchema = z.object({ token: z.string().min(64).max(64) });
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       eventType: "org.invite.accepted",
     });
 
-    const { success, limit, remaining, reset } = await apiRatelimit.limit(
+    const { success, limit, remaining, reset } = await orgRatelimit.limit(
       `org-invite-accept:${authContext.appUserId}`,
     );
     logger.info("Rate limit check for org invite acceptance", {

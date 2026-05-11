@@ -191,9 +191,9 @@ function triggerBlobDownload(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function cloneScreenFrameMap(source: Map<string, string[]>) {
-  return new Map(
-    [...source.entries()].map(([screenName, frameIds]) => [
+function cloneScreenFrameMap(source: Record<string, string[]>) {
+  return Object.fromEntries(
+    Object.entries(source).map(([screenName, frameIds]) => [
       screenName,
       [...frameIds],
     ]),
@@ -208,15 +208,15 @@ function resolveFrameIdForScreenFromState({
 }: {
   screenName: string;
   frames: Map<string, CanvasFrameData>;
-  activeFrameIds: Map<string, string>;
-  frameIdsByScreen: Map<string, string[]>;
+  activeFrameIds: Record<string, string>;
+  frameIdsByScreen: Record<string, string[]>;
 }) {
-  const activeFrameId = activeFrameIds.get(screenName);
+  const activeFrameId = activeFrameIds[screenName];
   if (activeFrameId && frames.has(activeFrameId)) {
     return activeFrameId;
   }
 
-  const frameIds = frameIdsByScreen.get(screenName);
+  const frameIds = frameIdsByScreen[screenName];
   if (!frameIds || frameIds.length === 0) return null;
 
   for (const frameId of frameIds) {
@@ -651,7 +651,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     (screenName: string) => {
       const runtime = getStudioRuntime();
       const existingActiveFrameId =
-        runtime.activeFrameIdsByScreen.get(screenName);
+        runtime.activeFrameIdsByScreen[screenName];
       if (existingActiveFrameId) {
         return existingActiveFrameId;
       }
@@ -659,17 +659,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       const frameId = resolveFrameIdForScreen(screenName);
       if (!frameId) return null;
 
-      updateStudioRuntime((current) => {
-        const nextActiveFrameIdsByScreen = new Map(
-          current.activeFrameIdsByScreen,
-        );
-        nextActiveFrameIdsByScreen.set(screenName, frameId);
-
-        return {
-          ...current,
-          activeFrameIdsByScreen: nextActiveFrameIdsByScreen,
-        };
-      });
+      updateStudioRuntime((current) => ({
+        ...current,
+        activeFrameIdsByScreen: {
+          ...current.activeFrameIdsByScreen,
+          [screenName]: frameId,
+        },
+      }));
 
       return frameId;
     },
@@ -692,21 +688,19 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       error: string | null;
       code: string;
     }) => {
-      updateStudioRuntime((runtime) => {
-        const nextReviewEntries = new Map(runtime.generationReviewEntries);
-        nextReviewEntries.set(frameId, {
-          screenName,
-          generationId,
-          state,
-          error,
-          code,
-        });
-
-        return {
-          ...runtime,
-          generationReviewEntries: nextReviewEntries,
-        };
-      });
+      updateStudioRuntime((runtime) => ({
+        ...runtime,
+        generationReviewEntries: {
+          ...runtime.generationReviewEntries,
+          [frameId]: {
+            screenName,
+            generationId,
+            state,
+            error,
+            code,
+          },
+        },
+      }));
     },
     [updateStudioRuntime],
   );
@@ -720,7 +714,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (!runId) return;
 
       const activeGenerationId = runtime.activeGenerationId;
-      let entries = [...runtime.generationReviewEntries.entries()]
+      let entries = Object.entries(runtime.generationReviewEntries)
         .map(([frameId, entry]) => ({ frameId, ...entry }))
         .filter((entry) =>
           activeGenerationId ? entry.generationId === activeGenerationId : true,
@@ -774,16 +768,16 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const flushChunkBuffer = useCallback(() => {
     const runtime = getStudioRuntime();
-    if (runtime.dirtyScreens.size === 0) return;
+    if (runtime.dirtyScreens.length === 0) return;
 
     const dirtyScreens = [...runtime.dirtyScreens];
-    const buffersSnapshot = new Map(runtime.screenBuffers);
-    const activeFrameIdsSnapshot = new Map(runtime.activeFrameIdsByScreen);
+    const buffersSnapshot = { ...runtime.screenBuffers };
+    const activeFrameIdsSnapshot = { ...runtime.activeFrameIdsByScreen };
     const frameIdsSnapshot = cloneScreenFrameMap(runtime.frameIdsByScreen);
 
     updateStudioRuntime((current) => ({
       ...current,
-      dirtyScreens: new Set(),
+      dirtyScreens: [],
     }));
 
     applyFrames((current) => {
@@ -802,7 +796,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         const frame = next.get(frameId);
         if (!frame) continue;
 
-        const bufferedContent = buffersSnapshot.get(screenName) ?? "";
+        const bufferedContent = buffersSnapshot[screenName] ?? "";
         if (bufferedContent === frame.content && frame.state === "streaming") {
           continue;
         }
@@ -845,8 +839,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       stopChunkFlusher();
 
       const runtime = getStudioRuntime();
-      const bufferedScreens = [...runtime.screenBuffers.entries()];
-      const activeFrameIdsSnapshot = new Map(runtime.activeFrameIdsByScreen);
+      const bufferedScreens = Object.entries(runtime.screenBuffers);
+      const activeFrameIdsSnapshot = { ...runtime.activeFrameIdsByScreen };
       const frameIdsSnapshot = cloneScreenFrameMap(runtime.frameIdsByScreen);
 
       applyFrames((current) => {
@@ -916,9 +910,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       updateStudioRuntime((current) => ({
         ...current,
-        activeFrameIdsByScreen: new Map(),
-        screenBuffers: new Map(),
-        dirtyScreens: new Set(),
+        activeFrameIdsByScreen: {},
+        screenBuffers: {},
+        dirtyScreens: [],
       }));
 
       setActiveStreamingScreen(null);
@@ -986,16 +980,16 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       setFrames(restoredFrames);
       framesRef.current = restoredFrames;
-      const restoredFrameIds = new Map<string, string[]>();
+      const restoredFrameIds: Record<string, string[]> = {};
       for (const frame of snapshot.frames) {
-        const frameIds = restoredFrameIds.get(frame.screenName) ?? [];
+        const frameIds = restoredFrameIds[frame.screenName] ?? [];
         frameIds.push(frame.id);
-        restoredFrameIds.set(frame.screenName, frameIds);
+        restoredFrameIds[frame.screenName] = frameIds;
       }
       updateStudioRuntime((runtime) => ({
         ...runtime,
         frameIdsByScreen: restoredFrameIds,
-        activeFrameIdsByScreen: new Map(),
+        activeFrameIdsByScreen: {},
       }));
 
       selectedFrameIdRef.current = snapshot.selectedFrameId ?? null;
@@ -1047,15 +1041,15 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         getStudioRuntime().activeGenerationId ?? crypto.randomUUID();
       setActiveGenerationContext(generationId);
 
-      const nextFrameIdsByScreen = new Map<string, string[]>();
+      const nextFrameIdsByScreen: Record<string, string[]> = {};
       const nextFrames: CanvasFrameData[] = screensWithDims.map(
         (screen, index) => {
           const frameId = crypto.randomUUID();
           const position = positions[index];
-          const frameIds = nextFrameIdsByScreen.get(screen.name) ?? [];
+          const frameIds = nextFrameIdsByScreen[screen.name] ?? [];
 
           frameIds.push(frameId);
-          nextFrameIdsByScreen.set(screen.name, frameIds);
+          nextFrameIdsByScreen[screen.name] = frameIds;
 
           upsertGenerationReviewEntry({
             frameId,
@@ -1086,9 +1080,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       updateStudioRuntime((runtime) => ({
         ...runtime,
         frameIdsByScreen: nextFrameIdsByScreen,
-        activeFrameIdsByScreen: new Map(),
-        screenBuffers: new Map(),
-        dirtyScreens: new Set(),
+        activeFrameIdsByScreen: {},
+        screenBuffers: {},
+        dirtyScreens: [],
       }));
 
       applyFrames((current) => {
@@ -1110,15 +1104,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
     if (event.type === "screen_start") {
       const frameId = claimFrameIdForScreen(event.screen);
-      updateStudioRuntime((runtime) => {
-        const nextBuffers = new Map(runtime.screenBuffers);
-        nextBuffers.set(event.screen, "");
-
-        return {
-          ...runtime,
-          screenBuffers: nextBuffers,
-        };
-      });
+      updateStudioRuntime((runtime) => ({
+        ...runtime,
+        screenBuffers: {
+          ...runtime.screenBuffers,
+          [event.screen]: "",
+        },
+      }));
       setActiveStreamingScreen(event.screen);
       startChunkFlusher();
 
@@ -1147,15 +1139,16 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     if (event.type === "screen_reset") {
       const frameId = resolveFrameIdForScreen(event.screen);
       updateStudioRuntime((runtime) => {
-        const nextBuffers = new Map(runtime.screenBuffers);
-        nextBuffers.set(event.screen, "");
-
-        const nextDirtyScreens = new Set(runtime.dirtyScreens);
-        nextDirtyScreens.delete(event.screen);
+        const nextDirtyScreens = runtime.dirtyScreens.filter(
+          (s) => s !== event.screen,
+        );
 
         return {
           ...runtime,
-          screenBuffers: nextBuffers,
+          screenBuffers: {
+            ...runtime.screenBuffers,
+            [event.screen]: "",
+          },
           dirtyScreens: nextDirtyScreens,
         };
       });
@@ -1180,17 +1173,18 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
     if (event.type === "code_chunk") {
       updateStudioRuntime((runtime) => {
-        const previous = runtime.screenBuffers.get(event.screen) ?? "";
-        const nextBuffers = new Map(runtime.screenBuffers);
-        nextBuffers.set(event.screen, previous + event.token);
-
-        const nextDirtyScreens = new Set(runtime.dirtyScreens);
-        nextDirtyScreens.add(event.screen);
+        const previous = runtime.screenBuffers[event.screen] ?? "";
+        const dirtyScreens = runtime.dirtyScreens.includes(event.screen)
+          ? runtime.dirtyScreens
+          : [...runtime.dirtyScreens, event.screen];
 
         return {
           ...runtime,
-          screenBuffers: nextBuffers,
-          dirtyScreens: nextDirtyScreens,
+          screenBuffers: {
+            ...runtime.screenBuffers,
+            [event.screen]: previous + event.token,
+          },
+          dirtyScreens,
         };
       });
       startChunkFlusher();
@@ -1215,7 +1209,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         return;
       }
 
-      const finalCode = runtime.screenBuffers.get(event.screen) ?? "";
+      const finalCode = runtime.screenBuffers[event.screen] ?? "";
       const hasRenderableContent = finalCode.trim().length > 0;
       const nextState: FrameState = hasRenderableContent ? "done" : "error";
       const nextError = hasRenderableContent
@@ -1226,22 +1220,18 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
 
       updateStudioRuntime((current) => {
-        const nextBuffers = new Map(current.screenBuffers);
-        nextBuffers.delete(event.screen);
-
-        const nextDirtyScreens = new Set(current.dirtyScreens);
-        nextDirtyScreens.delete(event.screen);
-
-        const nextActiveFrameIdsByScreen = new Map(
-          current.activeFrameIdsByScreen,
+        const { [event.screen]: _omitBuf, ...restBuffers } = current.screenBuffers;
+        const nextDirtyScreens = current.dirtyScreens.filter(
+          (s) => s !== event.screen,
         );
-        nextActiveFrameIdsByScreen.delete(event.screen);
+        const { [event.screen]: _omitActive, ...restActive } =
+          current.activeFrameIdsByScreen;
 
         return {
           ...current,
-          screenBuffers: nextBuffers,
+          screenBuffers: restBuffers,
           dirtyScreens: nextDirtyScreens,
-          activeFrameIdsByScreen: nextActiveFrameIdsByScreen,
+          activeFrameIdsByScreen: restActive,
         };
       });
 
@@ -1420,26 +1410,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           return next;
         });
 
-        updateStudioRuntime((runtime) => {
-          const nextFrameIdsByScreen = new Map(runtime.frameIdsByScreen);
-          nextFrameIdsByScreen.set(regenerationSourceFrame.screenName, [
-            regenerationTargetFrameId!,
-          ]);
-
-          const nextActiveFrameIdsByScreen = new Map(
-            runtime.activeFrameIdsByScreen,
-          );
-          nextActiveFrameIdsByScreen.set(
-            regenerationSourceFrame.screenName,
-            regenerationTargetFrameId!,
-          );
-
-          return {
-            ...runtime,
-            frameIdsByScreen: nextFrameIdsByScreen,
-            activeFrameIdsByScreen: nextActiveFrameIdsByScreen,
-          };
-        });
+        updateStudioRuntime((runtime) => ({
+          ...runtime,
+          frameIdsByScreen: {
+            ...runtime.frameIdsByScreen,
+            [regenerationSourceFrame.screenName]: [regenerationTargetFrameId!],
+          },
+          activeFrameIdsByScreen: {
+            ...runtime.activeFrameIdsByScreen,
+            [regenerationSourceFrame.screenName]: regenerationTargetFrameId!,
+          },
+        }));
       }
 
       const response = await fetch("/api/generate", {
@@ -1599,7 +1580,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (
         !streamFailed &&
         !terminalEventReceived &&
-        getStudioRuntime().frameIdsByScreen.size > 0
+        Object.keys(getStudioRuntime().frameIdsByScreen).length > 0
       ) {
         logger.warn(
           "Generation stream closed without terminal done/error event; applying completion fallback.",
@@ -2399,20 +2380,19 @@ npm run dev
       });
 
       updateStudioRuntime((runtime) => {
-        const nextFrameIdsByScreen = new Map(runtime.frameIdsByScreen);
+        const nextFrameIdsByScreen = { ...runtime.frameIdsByScreen };
         const screenName = frameToDelete?.screenName;
         if (screenName) {
-          const frameIds = nextFrameIdsByScreen.get(screenName) ?? [];
-          nextFrameIdsByScreen.set(
-            screenName,
-            frameIds.filter((id) => id !== frameId),
+          const frameIds = nextFrameIdsByScreen[screenName] ?? [];
+          nextFrameIdsByScreen[screenName] = frameIds.filter(
+            (id) => id !== frameId,
           );
         }
         return {
           ...runtime,
           frameIdsByScreen: nextFrameIdsByScreen,
-          activeFrameIdsByScreen: new Map(
-            [...runtime.activeFrameIdsByScreen.entries()].filter(
+          activeFrameIdsByScreen: Object.fromEntries(
+            Object.entries(runtime.activeFrameIdsByScreen).filter(
               ([, id]) => id !== frameId,
             ),
           ),

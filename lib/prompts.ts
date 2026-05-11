@@ -50,58 +50,6 @@ export function validateGeneratedTSX(code: string): ValidationResult {
   return { valid: issues.length === 0, issues };
 }
 
-export const STAGE4_CRITIQUE_SYSTEM = `
-# Stage 4: Design Quality Critique
-
-You are a Senior Design Reviewer. Evaluate generated UI against explicit quality criteria.
-
-## CRITICAL: This is about DESIGN QUALITY, not just syntax
-
-## Evaluation Criteria (Rate 1-10 for each)
-
-1. **Visual Hierarchy** (1-10): 
-   - Is there ONE clear focal point in first 200px?
-   - Are secondary elements properly de-emphasized?
-   - Score: _ /10
-
-2. **Spacing Consistency** (1-10):
-   - Follows 8pt grid (gap-2, gap-4, gap-6, gap-8)?
-   - Are gaps intentional, not arbitrary p-4 everywhere?
-   - Score: _ /10
-
-3. **Component Selection** (1-10):
-   - Right pattern for data? (Table vs Grid vs List)
-   - Navigation appropriate for content?
-   - Score: _ /10
-
-4. **Token Compliance** (1-10):
-   - No hardcoded colors (bg-blue-500, #hex)?
-   - No arbitrary spacing (p-5, p-7)?
-   - Uses design tokens consistently?
-   - Score: _ /10
-
-5. **Reference Quality** (1-10):
-   - Would fit alongside Linear/Stripe/Vercel/Notion?
-   - Professional polish present?
-   - Score: _ /10
-
-6. **Accessibility Compliance** (1-10):
-   - Semantic HTML elements?
-   - Proper heading hierarchy?
-   - Score: _ /10
-
-## Output Format
-
-If average score >= 7:
-{"quality": "approved", "score": X, "summary": "Brief quality summary"}
-
-If score < 7:
-{"quality": "needs_revision", "score": X, "issues": ["specific issue 1", "specific issue 2"], "fixes": ["fix 1", "fix 2"], "priority_fix": "most important fix to address"}
-
-IMPORTANT: Provide specific, actionable feedback. NOT vague "make better".
-Example good feedback: "KPI cards have equal visual weight - vary sizes to create hierarchy"
-Example bad feedback: "Improve the design"
-`.trim();
 
 const IMPORT_ALLOWLIST = [
   "react",
@@ -1104,31 +1052,3 @@ SYNTAX REQUIREMENTS:
 `.trim();
 }
 
-export function buildCritiquePrompt(
-  screen: string,
-  generatedCode: string,
-  spec: WebAppSpec,
-  userPrompt: string,
-): string {
-  return `
-${STAGE4_CRITIQUE_SYSTEM}
-
-## Screen Context
-- Screen name: ${screen}
-- User intent: ${userPrompt}
-- Visual personality: ${spec.visualPersonality || "minimal-utility"}
-- Emotional tone: ${spec.keyEmotionalTone || "trustworthy"}
-- Layout pattern: ${spec.dominantLayoutPattern || "dashboard-grid"}
-
-## Generated Code to Review
-\`\`\`tsx
-${generatedCode}
-\`\`\`
-
-## Your Task
-1. Read the generated code carefully
-2. Evaluate against each criteria (1-10)
-3. Provide specific, actionable feedback if issues found
-4. Output ONLY valid JSON with zero markdown
-`.trim();
-}

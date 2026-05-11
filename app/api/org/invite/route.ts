@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { createInvitation, isOrgError } from "@/lib/org";
 import { guardOrgInvite } from "@/lib/plan-guard";
+import { orgRatelimit } from "@/lib/ratelimit";
 import { sendOrgInviteEmail } from "@/lib/org-mail";
 import { getSiteUrl } from "@/lib/seo";
 import prisma from "@/lib/prisma";
@@ -20,6 +21,16 @@ export async function POST(req: NextRequest) {
       request: req,
       eventType: "org.invite.sent",
     });
+
+    const { success } = await orgRatelimit.limit(
+      `org-invite:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
 
     if (!authContext.orgId) {
       return NextResponse.json(

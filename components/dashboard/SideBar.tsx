@@ -10,12 +10,10 @@ import React, {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { HelpCircle, CalendarDays, History, LucideIcon, X } from "lucide-react";
+import { HelpCircle, X } from "lucide-react";
 import { JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { useProjectsQuery } from "@/lib/projects/queries";
-import { useUserActivityStore } from "@/providers/zustand-provider";
-import { Timeframe } from "@/stores/user-activity";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -26,14 +24,6 @@ const mono = JetBrains_Mono({
 
 const FOCUSABLE_SELECTOR =
   "a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])";
-
-const navItems: Array<{ label: Timeframe; icon: LucideIcon }> = [
-  { label: "Recent", icon: History },
-  { label: "Yesterday", icon: CalendarDays },
-  { label: "Last 7 Days", icon: CalendarDays },
-  { label: "Last 30 Days", icon: CalendarDays },
-  // { label: "Examples", icon: FolderKanban },
-];
 
 interface SidebarProps {
   setIsMobileMenuOpen: Dispatch<SetStateAction<boolean>>;
@@ -46,13 +36,6 @@ const SideBar = ({
   setIsMobileMenuOpen,
   launcherButtonRef,
 }: SidebarProps) => {
-  const selectedTimeframe = useUserActivityStore(
-    (state) => state.selectedTimeframe,
-  );
-  const setSelectedTimeframe = useUserActivityStore(
-    (state) => state.setSelectedTimeframe,
-  );
-
   const router = useRouter();
 
   const shouldReduceMotion = useReducedMotion();
@@ -81,43 +64,62 @@ const SideBar = ({
     }, 0);
   };
 
-  const filteredNavItems = useMemo(() => {
-    if (projects.length === 0) {
-      return [];
+  const groupedProjects = useMemo(() => {
+    const now = Date.now();
+    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+    const twoDaysAgo = new Date(now - 2 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    const groups: Record<string, typeof projects> = {
+      Recent: [],
+      Yesterday: [],
+      "Last 7 Days": [],
+      "Last 30 Days": [],
+      "This Year": [],
+    };
+
+    for (const project of projects) {
+      const updatedAt = new Date(project.updatedAt);
+
+      if (updatedAt >= oneDayAgo) {
+        groups.Recent.push(project);
+      } else if (updatedAt >= twoDaysAgo) {
+        groups.Yesterday.push(project);
+      } else if (updatedAt >= sevenDaysAgo) {
+        groups["Last 7 Days"].push(project);
+      } else if (updatedAt >= thirtyDaysAgo) {
+        groups["Last 30 Days"].push(project);
+      } else {
+        groups["This Year"].push(project);
+      }
     }
 
-    const now = Date.now();
-    const yesterdayStart = new Date(now);
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    yesterdayStart.setHours(0, 0, 0, 0);
+    for (const key of Object.keys(groups)) {
+      groups[key].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+    }
 
-    const yesterdayEnd = new Date(now);
-    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
-    yesterdayEnd.setHours(23, 59, 59, 999);
+    return groups;
+  }, [projects]);
 
-    const recentCutoff = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-    const weekCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const monthCutoff = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const formatDate = (dateStr: string) => {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(dateStr));
+  };
 
-    return projects.filter((item) => {
-      if (selectedTimeframe === "Recent") {
-        return item.updatedAt >= recentCutoff;
-      }
-
-      if (selectedTimeframe === "Yesterday") {
-        return (
-          item.updatedAt >= yesterdayStart.toISOString() &&
-          item.updatedAt <= yesterdayEnd.toISOString()
-        );
-      }
-
-      if (selectedTimeframe === "Last 7 Days") {
-        return item.updatedAt >= weekCutoff;
-      }
-
-      return item.updatedAt >= monthCutoff;
-    });
-  }, [projects, selectedTimeframe]);
+  const groupOrder = [
+    "Recent",
+    "Yesterday",
+    "Last 7 Days",
+    "Last 30 Days",
+    "This Year",
+  ];
 
   const handleOpenProject = (projectId: string) => {
     setIsMobileMenuOpen(false);
@@ -185,6 +187,85 @@ const SideBar = ({
     };
   }, [isMobileMenuOpen]);
 
+  const renderProjectList = () => {
+    if (showProjectSkeletons) {
+      return <ProjectListSkeleton />;
+    }
+
+    if (projects.length === 0) {
+      return (
+        <SidebarEmptyState
+          hasProjects={false}
+          onGenerate={handleFocusPrompt}
+        />
+      );
+    }
+
+    let projectIndex = 0;
+
+    return (
+      <div className="flex flex-col gap-5">
+        {groupOrder.map((group) => {
+          const groupProjects = groupedProjects[group];
+          if (groupProjects.length === 0) return null;
+
+          return (
+            <div key={group} className="flex flex-col gap-2">
+              <p
+                className={cn(
+                  "px-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70",
+                  mono.className,
+                )}
+              >
+                {group}
+              </p>
+              <div className="flex flex-col gap-2">
+                {groupProjects.map((project) => {
+                  const currentIndex = projectIndex++;
+                  return (
+                    <motion.button
+                      key={project.id}
+                      type="button"
+                      className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+                      {...fadeLeft(0.12 + currentIndex * 0.04)}
+                      onMouseEnter={() =>
+                        router.prefetch(`/projects/${project.id}`)
+                      }
+                      onClick={() => handleOpenProject(project.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
+                          <Image
+                            src={project.thumbnailUrl || "/thumbnail.jpg"}
+                            alt={project.title}
+                            width={64}
+                            height={64}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col justify-center">
+                          <span className="truncate text-xs font-semibold">
+                            {project.title}
+                          </span>
+                          <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
+                            {project.description}
+                          </p>
+                          <span className="mt-1 text-[10px] text-muted-foreground/60">
+                            {formatDate(project.updatedAt)}
+                          </span>
+                        </div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <>
       <motion.aside
@@ -201,84 +282,10 @@ const SideBar = ({
             >
               PROJECTS
             </p>
-
-            <nav className="mt-4 flex flex-col gap-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <motion.button
-                    key={item.label}
-                    type="button"
-                    onClick={() => setSelectedTimeframe(item.label)}
-                    aria-current={
-                      selectedTimeframe === item.label ? "page" : undefined
-                    }
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-2 text-left transition-colors duration-75",
-                      selectedTimeframe === item.label
-                        ? "border-l-4 border-primary bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    <span
-                      className={cn(
-                        "text-[11px] uppercase tracking-[0.16em]",
-                        mono.className,
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </nav>
           </div>
 
-          <div className="mt-8 flex flex-1 flex-col gap-4 px-4 w-full max-w-72">
-            {showProjectSkeletons ? (
-              <ProjectListSkeleton />
-            ) : (
-              filteredNavItems.map((project, index) => (
-                <motion.button
-                  key={project.id}
-                  type="button"
-                  className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-                  {...fadeLeft(0.12 + index * 0.04)}
-                  onMouseEnter={() =>
-                    router.prefetch(`/projects/${project.id}`)
-                  }
-                  onClick={() => handleOpenProject(project.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
-                      <Image
-                        src={project.thumbnailUrl || "/thumbnail.jpg"}
-                        alt={project.title}
-                        width={64}
-                        height={64}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col justify-center">
-                      <span className="truncate text-xs font-semibold">
-                        {project.title}
-                      </span>
-                      <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
-                        {project.description}
-                      </p>
-                    </div>
-                  </div>
-                </motion.button>
-              ))
-            )}
-            {!showProjectSkeletons && filteredNavItems.length === 0 && (
-              <SidebarEmptyState
-                hasProjects={projects.length > 0}
-                onGenerate={handleFocusPrompt}
-              />
-            )}
+          <div className="mt-6 flex flex-1 flex-col gap-4 px-4 w-full max-w-72 overflow-y-auto">
+            {renderProjectList()}
           </div>
 
           <div className="mt-auto border-t border-border px-4 pt-4">
@@ -330,7 +337,7 @@ const SideBar = ({
                     mono.className,
                   )}
                 >
-                  Navigation
+                  Projects
                 </span>
                 <Button
                   variant="ghost"
@@ -342,79 +349,8 @@ const SideBar = ({
                 </Button>
               </div>
 
-              <nav className="flex flex-col gap-1 px-3 py-4">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <button
-                      key={`mobile-${item.label}`}
-                      type="button"
-                      onClick={() => setSelectedTimeframe(item.label)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 text-left",
-                        selectedTimeframe === item.label
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span
-                        className={cn(
-                          "text-[11px] uppercase tracking-[0.16em]",
-                          mono.className,
-                        )}
-                      >
-                        {item.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-              <div className="border-t border-border px-3 py-4 min-w-full">
-                {showProjectSkeletons ? (
-                  <ProjectListSkeleton />
-                ) : (
-                  filteredNavItems.map((project, index) => (
-                    <motion.button
-                      key={project.id}
-                      type="button"
-                      className="logic-feed-item group w-full overflow-hidden rounded-lg border border-border bg-card/40 p-2 text-left hover:border-muted-foreground hover:bg-muted/40 hover:-translate-y-1 hover:mb-3 transition-all duration-300 cursor-pointer"
-                      {...fadeLeft(0.12 + index * 0.04)}
-                      onMouseEnter={() =>
-                        router.prefetch(`/projects/${project.id}`)
-                      }
-                      onClick={() => handleOpenProject(project.id)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted/40">
-                          <Image
-                            src={project.thumbnailUrl || "/thumbnail.jpg"}
-                            alt={project.title}
-                            width={56}
-                            height={56}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <div className="flex min-w-0 flex-1 flex-col justify-center">
-                          <span className="truncate text-xs font-semibold">
-                            {project.title}
-                          </span>
-                          <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">
-                            {project.description}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.button>
-                  ))
-                )}
-                {!showProjectSkeletons && filteredNavItems.length === 0 && (
-                  <SidebarEmptyState
-                    hasProjects={projects.length > 0}
-                    onGenerate={handleFocusPrompt}
-                  />
-                )}
+              <div className="flex-1 overflow-y-auto px-3 py-4">
+                {renderProjectList()}
               </div>
             </motion.aside>
           </motion.div>

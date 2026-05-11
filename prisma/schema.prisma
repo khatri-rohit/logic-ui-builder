@@ -236,6 +236,7 @@ model OrgMembership {
     @@unique([organisationId, userId]) // One membership per user per org
     @@index([userId])
     @@index([organisationId, status])
+    @@index([invitedBy])
 }
 
 model OrgInvitation {
@@ -257,9 +258,9 @@ model OrgInvitation {
     inviter      User?        @relation("OrgInvitations", fields: [invitedBy], references: [id])
 
     @@unique([organisationId, email]) // One pending invite per email per org
-    @@index([token])
     @@index([tokenPrefix, status])
     @@index([email, status])
+    @@index([invitedBy])
 }
 
 enum OrgMemberRole {

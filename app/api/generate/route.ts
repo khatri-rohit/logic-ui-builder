@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   GenerationPlatform as PrismaGenerationPlatform,
   Prisma,
@@ -209,20 +208,22 @@ function parseJsonStrict<T>(raw: string): T {
     /* continue */
   }
 
-  // Extract the FIRST complete JSON object using a brace-counter approach
+  // Extract the FIRST complete JSON object using a brace-counter approach.
+  // Handles consecutive backslashes correctly so \" and \\\" are parsed
+  // the same way a real JSON parser would.
   let depth = 0;
   let start = -1;
   let inString = false;
-  let escape = false;
+  let escapeNext = false;
 
   for (let i = 0; i < stripped.length; i++) {
     const ch = stripped[i];
-    if (escape) {
-      escape = false;
+    if (ch === "\\") {
+      escapeNext = !escapeNext;
       continue;
     }
-    if (ch === "\\") {
-      escape = true;
+    if (escapeNext) {
+      escapeNext = false;
       continue;
     }
     if (ch === '"') {
@@ -241,7 +242,7 @@ function parseJsonStrict<T>(raw: string): T {
           return JSON.parse(candidate) as T;
         } catch {
           start = -1;
-        } // not valid JSON, keep scanning
+        }
       }
     }
   }
@@ -480,6 +481,12 @@ export async function POST(req: NextRequest) {
     const guardResult = await guardGenerationRequest(authContext);
     if (!guardResult.allowed) return guardResult.response;
     const { usage } = guardResult;
+    if (!usage) {
+      return NextResponse.json(
+        { error: true, code: "USAGE_UNAVAILABLE", message: "Usage context missing." },
+        { status: 503 },
+      );
+    }
     logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
@@ -551,7 +558,7 @@ export async function POST(req: NextRequest) {
             : toPrismaPlatform(requestedPlatform),
         spec:
           isFrameRegeneration && sourceGeneration
-            ? (sourceGeneration.spec as Prisma.InputJsonValue)
+            ? (sourceGeneration.spec as unknown as Prisma.InputJsonValue)
             : ({} as Prisma.InputJsonValue),
         tree:
           isFrameRegeneration && sourceGeneration
@@ -831,7 +838,7 @@ export async function POST(req: NextRequest) {
 
         await prisma.generation.update({
           where: { id: generationId },
-          data: { spec: spec as any },
+          data: { spec: (spec as unknown as Prisma.InputJsonValue) },
         });
 
         await write({ type: "generation_id", generationId });
@@ -895,7 +902,7 @@ export async function POST(req: NextRequest) {
 
             // Pin the first model that streams successfully. Only fall back to
             // other models when the pinned model itself errors (API failure).
-            const modelsToTry: any = pinnedModel
+            const modelsToTry: string[] = pinnedModel
               ? [
                   pinnedModel,
                   ...stage3ModelPriority.filter((m) => m !== pinnedModel),
@@ -1018,13 +1025,14 @@ export async function POST(req: NextRequest) {
           const dimensions = screensWithDims[index] ?? { w: 1200, h: 800 };
           const frameId = crypto.randomUUID();
 
-          const finalResult: any = await generateScreenWithRetry(
-            screen,
-            position,
-            dimensions,
-            frameId,
-            stage3Prompt,
-          );
+          const finalResult: Awaited<ReturnType<typeof generateScreenWithRetry>> =
+            await generateScreenWithRetry(
+              screen,
+              position,
+              dimensions,
+              frameId,
+              stage3Prompt,
+            );
 
           // Lenient quality check: warn only, never block persistence
           if (finalResult.success && finalResult.code) {

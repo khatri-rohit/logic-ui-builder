@@ -21,6 +21,9 @@ type SkillsIndex = {
 
 let cachedSkillsIndex: SkillsIndex | null = null;
 
+// Eager preload at module initialization (non-blocking)
+loadSkillsIndex().catch(() => {});
+
 const FALLBACK_PALETTE: DesignPalette = {
   name: "Classic Blue Trust",
   primaryHex: "#003366",

@@ -10,7 +10,7 @@ import { hasAvailableSeat } from "@/lib/org";
 import prisma from "./prisma";
 
 export type PlanGuardResult =
-  | { allowed: true; usage: UsageContext }
+  | { allowed: true; usage: UsageContext | null }
   | { allowed: false; response: NextResponse };
 
 function quotaExceededResponse(
@@ -202,8 +202,8 @@ export async function guardOrgCreation(
     };
   }
 
-  // Fake UsageContext — org creation has no usage to return
-  return { allowed: true, usage: null as never };
+  // Org creation has no usage to return
+  return { allowed: true, usage: null };
 }
 
 /**
@@ -263,5 +263,5 @@ export async function guardOrgInvite(
     };
   }
 
-  return { allowed: true, usage: null as never };
+  return { allowed: true, usage: null };
 }

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
@@ -32,8 +31,19 @@ function getTaskNavigationTarget(session: SessionWithTask): string | null {
   return task.redirectUrl ?? task.url ?? task.path ?? null;
 }
 
-function getFieldError(errors: any, fieldName: string) {
-  const fieldError = errors?.fields?.[fieldName];
+type ClerkFieldError = { message?: string };
+
+function getFieldError(errors: unknown, fieldName: string) {
+  const err = errors as
+    | {
+        fields?: Record<string, ClerkFieldError | ClerkFieldError[]> | unknown;
+      }
+    | null
+    | undefined;
+  const fieldError =
+    err?.fields && typeof err.fields === "object" && err.fields !== null
+      ? (err.fields as Record<string, unknown>)[fieldName]
+      : undefined;
 
   if (!fieldError) {
     return "";
@@ -41,12 +51,12 @@ function getFieldError(errors: any, fieldName: string) {
 
   if (Array.isArray(fieldError)) {
     return fieldError
-      .map((errorItem) => errorItem.message)
+      .map((errorItem) => (errorItem as ClerkFieldError).message)
       .filter(Boolean)
       .join(" ");
   }
 
-  return fieldError.message ?? "";
+  return (fieldError as ClerkFieldError).message ?? "";
 }
 
 export default function CustomForgotPasswordFlow() {

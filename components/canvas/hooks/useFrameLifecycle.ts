@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { RefObject, useCallback, useEffect, useRef } from "react";
 import {
   loadSandpackClient,
@@ -66,24 +65,23 @@ export function useFrameLifecycle({
       );
 
       // Capture sandbox lifecycle and errors for observability
-      client.listen((msg) => {
-        if (msg.type === "status") {
-          logger.info("Sandbox status", { status: (msg as any).status });
+      client.listen((msg: unknown) => {
+        const message = msg as Record<string, unknown>;
+        if (message.type === "status") {
+          logger.info("Sandbox status", { status: message.status });
         }
         if (
-          msg.type === "action" &&
-          "action" in msg &&
-          (msg as any).action === "show-error"
+          message.type === "action" &&
+          message.action === "show-error"
         ) {
-          const err = msg as any;
           logger.warn("Sandbox compile error", {
-            message: err.message,
-            path: err.path,
-            line: err.line,
+            message: message.message,
+            path: message.path,
+            line: message.line,
             code: content.slice(0, 200),
           });
         }
-        if (msg.type === "done" && (msg as any).compilationError) {
+        if (message.type === "done" && message.compilationError) {
           logger.warn("Sandbox compilation failed", {
             code: content.slice(0, 200),
           });
@@ -116,8 +114,10 @@ export function useFrameLifecycle({
     }
   }, [iframeRef]);
 
+  // Visibility-driven mount/destroy — content is NOT in deps to avoid
+  // recreating the observer on every streaming chunk.
   useEffect(() => {
-    if (state !== "done" || !content || !containerRef.current) {
+    if (state !== "done" || !containerRef.current) {
       if (destroyTimerRef.current) {
         clearTimeout(destroyTimerRef.current);
         destroyTimerRef.current = null;
@@ -159,14 +159,19 @@ export function useFrameLifecycle({
         destroyTimerRef.current = null;
       }
     };
-  }, [containerRef, content, destroy, mount, state]);
+  }, [containerRef, destroy, mount, state]);
 
+  // Debounced content updates — avoids thrashing Sandpack during streaming
   useEffect(() => {
     if (!clientRef.current || !content || !isMountedRef.current) return;
 
-    clientRef.current.updateSandbox({
-      files: buildSandpackFiles(content, originRef.current),
-    });
+    const timer = setTimeout(() => {
+      clientRef.current?.updateSandbox({
+        files: buildSandpackFiles(content, originRef.current),
+      });
+    }, 150);
+
+    return () => clearTimeout(timer);
   }, [content]);
 
   useEffect(() => {

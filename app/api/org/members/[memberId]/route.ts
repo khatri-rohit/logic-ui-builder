@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { removeMember, isOrgError } from "@/lib/org";
+import { orgRatelimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -15,6 +16,17 @@ export async function DELETE(
       request: req,
       eventType: "org.member.removed",
     });
+
+    const { success } = await orgRatelimit.limit(
+      `org-remove:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
+
     const { memberId } = await params;
 
     if (!authContext.orgId) {
@@ -71,6 +83,17 @@ export async function PATCH(
       request: req,
       eventType: "org.member.role.updated",
     });
+
+    const { success } = await orgRatelimit.limit(
+      `org-role:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
+
     const { memberId } = await params;
 
     if (!authContext.isOrgOwner) {

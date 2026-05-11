@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Prisma } from "@/app/generated/prisma/client";
 import { streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
@@ -197,6 +196,13 @@ export async function POST(
     }
     const guardResult = await guardFrameRegeneration(authContext);
     if (!guardResult.allowed) return guardResult.response;
+    const { usage } = guardResult;
+    if (!usage) {
+      return NextResponse.json(
+        { error: true, code: "USAGE_UNAVAILABLE", message: "Usage context missing." },
+        { status: 503 },
+      );
+    }
 
     const parsedBody = frameRegenerateBodySchema.safeParse(rawBody);
     if (!parsedBody.success) {
@@ -381,7 +387,7 @@ export async function POST(
           prompt: regeneratePrompt,
           model: persistenceModel,
           platform: toPrismaPlatform(sourcePlatform),
-          spec: spec as any,
+          spec: spec as unknown as Prisma.InputJsonValue,
           idempotencyKey,
         });
 
@@ -396,7 +402,7 @@ export async function POST(
       });
 
       if (!idempotencyResult.isNew) {
-        await releaseFrameRegenUsage(guardResult.usage.usagePeriodId);
+        await releaseFrameRegenUsage(usage.usagePeriodId);
         return NextResponse.json(
           {
             error: true,
@@ -437,7 +443,7 @@ export async function POST(
         logger.info(
           `Starting frame regeneration for frame '${sourceFrame.screenName}' with generation ID ${generationId}`,
         );
-        await incrementFrameRegenUsage(guardResult.usage.usagePeriodId);
+        await incrementFrameRegenUsage(usage.usagePeriodId);
 
         let generated = false;
         let streamError: unknown = null;
@@ -600,7 +606,7 @@ export async function POST(
         });
 
         if (!isAbort) {
-          await releaseFrameRegenUsage(guardResult.usage.usagePeriodId);
+          await releaseFrameRegenUsage(usage.usagePeriodId);
         }
 
         await write({ type: "error", message });

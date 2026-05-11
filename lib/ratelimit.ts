@@ -40,3 +40,10 @@ export const apiRatelimit = new Ratelimit({
   analytics: true,
   prefix: "logic:api",
 });
+
+export const orgRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(20, "1 h"),
+  analytics: true,
+  prefix: "logic:org",
+});

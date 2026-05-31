@@ -1,4 +1,5 @@
 import { createStore } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type Timeframe = "Recent" | "Yesterday" | "Last 7 Days" | "Last 30 Days";
 export type Spec = "web" | "mobile";
@@ -26,10 +27,17 @@ const defaultState: UserActivityState = {
 export const createUserActivityStore = (
   initState: Partial<UserActivityState> = {},
 ) =>
-  createStore<ProjectsStore>()((set) => ({
-    ...defaultState,
-    ...initState,
-    setSelectedTimeframe: (selectedTimeframe) => set({ selectedTimeframe }),
-    setSpec: (spec) => set({ spec }),
-    setModel: (model) => set({ model }),
-  }));
+  createStore<ProjectsStore>()(
+    persist(
+      (set) => ({
+        ...defaultState,
+        ...initState,
+        setSelectedTimeframe: (selectedTimeframe) => set({ selectedTimeframe }),
+        setSpec: (spec) => set({ spec }),
+        setModel: (model) => set({ model }),
+      }),
+      {
+        name: "logic-user-activity",
+      },
+    ),
+  );

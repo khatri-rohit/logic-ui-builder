@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!customerId) {
       const customer = await razorpay.customers.create({
         email: authContext.email,
-        name: authContext.email.split("@")[0],
+        name: authContext.name || authContext.email.split("@")[0],
         fail_existing: 0, // return existing customer if email matches
       });
       customerId = customer.id;
@@ -54,17 +54,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Create Razorpay subscription
+    // Note: customer_id is supported by the API but missing from SDK types
     const razorpaySub = await razorpay.subscriptions.create({
       plan_id: planConfig.razorpayPlanId,
-      // customer_notify: 1, // Razorpay will send email to customer
+      customer_id: customerId,
       quantity: 1,
-      total_count: 120,
+      total_count: 999,
       addons: [],
       notify_info: {
         notify_phone: "",
         notify_email: authContext.email,
       },
-    });
+    } as unknown as Parameters<typeof razorpay.subscriptions.create>[0]);
 
     logger.info("Razorpay subscription created", { razorpaySub });
 

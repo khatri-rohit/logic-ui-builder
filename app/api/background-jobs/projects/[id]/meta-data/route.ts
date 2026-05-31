@@ -113,7 +113,8 @@ export const POST = verifySignatureAppRouter(
       },
     });
 
-    revalidateTag("projects" + routeProjectId, "max");
+    revalidateTag(`projects:${routeProjectId}`, { expire: 0 });
+    revalidateTag("projects:list", { expire: 0 });
 
     return new Response(
       "Background meta-data processing completed for project " + routeProjectId,

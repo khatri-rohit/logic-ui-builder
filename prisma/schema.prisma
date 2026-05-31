@@ -80,8 +80,11 @@ model Project {
     description   String?
     initialPrompt String
     status        ProjectStatus @default(PENDING)
+    platform      GenerationPlatform @default(WEB)
     canvasState   Json?
     thumbnailUrl  String?
+    isPublic      Boolean       @default(false)
+    shareToken    String?       @unique
     createdAt     DateTime      @default(now())
     updatedAt     DateTime      @updatedAt
 
@@ -233,6 +236,7 @@ model OrgMembership {
     @@unique([organisationId, userId]) // One membership per user per org
     @@index([userId])
     @@index([organisationId, status])
+    @@index([invitedBy])
 }
 
 model OrgInvitation {
@@ -241,19 +245,22 @@ model OrgInvitation {
     email          String // Invitee email — may not be a User yet
     role           OrgMemberRole       @default(MEMBER)
     status         OrgInvitationStatus @default(PENDING)
-    token          String              @unique // crypto.randomBytes(32).toString('hex')
-    invitedBy      String // userId
+    token          String              @unique // raw token (legacy; will be removed)
+    tokenHash      String?             // bcrypt hash of token
+    tokenPrefix    String?             // first 8 chars of raw token for lookup
+    invitedBy      String? // userId
     expiresAt      DateTime // createdAt + 7 days
     acceptedAt     DateTime?
     createdAt      DateTime            @default(now())
     updatedAt      DateTime            @updatedAt
 
     organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-    inviter      User         @relation("OrgInvitations", fields: [invitedBy], references: [id])
+    inviter      User?        @relation("OrgInvitations", fields: [invitedBy], references: [id])
 
     @@unique([organisationId, email]) // One pending invite per email per org
-    @@index([token])
+    @@index([tokenPrefix, status])
     @@index([email, status])
+    @@index([invitedBy])
 }
 
 enum OrgMemberRole {

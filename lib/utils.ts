@@ -1,5 +1,13 @@
+import {
+  GenerationPlatform as PrismaGenerationPlatform,
+  Prisma,
+} from "@/app/generated/prisma/client";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { PersistedGenerationScreen } from "./canvas-state";
+import { persistedGenerationScreenSchema } from "./schemas/studio";
+import { z } from "zod";
+import { GenerationPlatform } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -39,3 +47,16 @@ export const heroVisualRevealAnimation = (
         animate: { opacity: 1, x: 0, scale: 1 },
         transition: { duration: 0.8, delay: 0.2, ease: STANDARD_EASE },
       };
+
+export function parseGenerationScreens(
+  value: Prisma.JsonValue | null,
+): PersistedGenerationScreen[] {
+  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+export function toApiPlatform(
+  platform: PrismaGenerationPlatform,
+): GenerationPlatform {
+  return platform === "MOBILE" ? "mobile" : "web";
+}

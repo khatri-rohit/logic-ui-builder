@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useRef } from "react";
 
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
 import { CanvasFrameData } from "@/components/canvas/types";
+import { useStudioTheme } from "@/components/canvas/StudioThemeContext";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -47,13 +48,14 @@ interface CanvasFrameProps extends CanvasFrameData {
   scale: number;
   isActive: boolean;
   isSelected: boolean;
+  readOnly?: boolean;
   onSelect: (id: string) => void;
   onActivate: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
   onResize: (id: string, w: number, h: number) => void;
   handleFrame: (id: string) => void;
-  handleSelectContext?: (frameId: string) => void;
   handleDelete: (id: string) => void;
+  handleEditCode: (id: string) => void;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -71,17 +73,17 @@ export const CanvasFrame = memo(function CanvasFrame({
   content,
   editedContent,
   state,
-  error,
   isActive,
   isSelected,
   scale,
+  readOnly = false,
   onSelect,
   onActivate,
   onMove,
   onResize,
-  handleSelectContext,
   handleFrame,
   handleDelete,
+  handleEditCode,
 }: CanvasFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -204,7 +206,7 @@ export const CanvasFrame = memo(function CanvasFrame({
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (isActive || event.button !== 0) return;
+      if (readOnly || isActive || event.button !== 0) return;
       if (isSpacePressedRef.current) return;
 
       event.preventDefault();
@@ -226,12 +228,12 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, id, isActive, onSelect, stopInteraction, x, y],
+    [handleWindowPointerMove, id, isActive, onSelect, readOnly, stopInteraction, x, y],
   );
 
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (isActive || event.button !== 0) return;
+      if (readOnly || isActive || event.button !== 0) return;
       if (isSpacePressedRef.current) return;
 
       event.preventDefault();
@@ -252,7 +254,7 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, h, id, isActive, onSelect, stopInteraction, w],
+    [handleWindowPointerMove, h, id, isActive, onSelect, readOnly, stopInteraction, w],
   );
 
   useEffect(() => {
@@ -275,8 +277,6 @@ export const CanvasFrame = memo(function CanvasFrame({
         if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
 
         onSelect(id);
-        handleSelectContext?.(id);
-
         const clientX = iframeBounds.left + localX;
         const clientY = iframeBounds.top + localY;
 
@@ -302,7 +302,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       const nextWidth =
         platform === "web"
           ? clamp(Math.ceil(reportedWidth), MIN_WEB_W, MAX_WEB_W)
-          : clamp(Math.ceil(reportedWidth), MIN_MOBILE_W, MAX_MOBILE_W);
+          : w;
 
       const nextHeight =
         platform === "web"
@@ -331,7 +331,6 @@ export const CanvasFrame = memo(function CanvasFrame({
     };
   }, [
     h,
-    handleSelectContext,
     id,
     onResize,
     onSelect,
@@ -349,16 +348,6 @@ export const CanvasFrame = memo(function CanvasFrame({
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
   const iframeHeight = h - chromeTopHeight - chromeBottomHeight;
-  const resolvedErrorMessage =
-    error?.trim() || "Generation failed before a valid preview could render.";
-  const isCompileError = /\b(compile|syntax|typescript|tsx|jsx|module)\b/i.test(
-    resolvedErrorMessage,
-  );
-  const errorTitle = isCompileError ? "Compile error" : "Generation failed";
-  const errorDetail =
-    resolvedErrorMessage.length > 220
-      ? `${resolvedErrorMessage.slice(0, 217)}...`
-      : resolvedErrorMessage;
 
   return (
     <ContextMenu
@@ -378,20 +367,21 @@ export const CanvasFrame = memo(function CanvasFrame({
           }}
         >
           <div className="absolute -top-6 left-0 flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-white/45">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-foreground/45">
               {screenName}
             </span>
           </div>
 
           <div
-            className="absolute inset-0 overflow-hidden rounded-lg bg-white shadow-2xl shadow-black/60"
+            className="absolute inset-0 overflow-hidden rounded-xl bg-white shadow-2xl"
             style={{
               boxShadow: isActive
-                ? "0 0 0 2px rgb(59 130 246), 0 24px 48px rgba(0,0,0,0.55)"
+                ? "0 0 0 2px var(--studio-accent), 0 24px 64px rgba(0,0,0,0.35)"
                 : isSelected
-                  ? "0 0 0 1px rgba(255,255,255,0.28), 0 24px 48px rgba(0,0,0,0.45)"
-                  : "0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.35)",
-              transition: "box-shadow 0.15s ease",
+                  ? "0 0 0 1.5px var(--studio-accent-glow), 0 16px 48px rgba(0,0,0,0.30)"
+                  : "0 4px 24px rgba(0,0,0,0.20)",
+              transition: "box-shadow 0.2s ease, transform 0.2s ease",
+              transform: isSelected ? "scale(1.005)" : "scale(1)",
             }}
           >
             {platform === "web" && <BrowserChrome screenName={screenName} />}
@@ -399,7 +389,7 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {(state === "skeleton" || state === "streaming") && (
               <div
-                className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]"
+                className="absolute inset-0 flex items-center justify-center bg-(--frame-skeleton-bg)"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
                 {state === "skeleton" ? <SkeletonView /> : <StreamingView />}
@@ -441,23 +431,40 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 flex items-center justify-center bg-[#1a0000]"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--studio-surface)]"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--studio-error)]/10">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-[var(--studio-error)]"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
                 <div className="max-w-[86%] px-4 text-center">
-                  <span className="font-mono text-[10px] text-red-300/90">
-                    {errorTitle}
+                  <span className="font-mono text-[11px] text-[var(--studio-text-secondary)]">
+                    This screen didn&apos;t compile
                   </span>
-                  <p className="mt-1 font-mono text-[9px] leading-snug text-red-200/80">
-                    {errorDetail}
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-[var(--studio-text-muted)]">
+                    Right-click and select &quot;Regenerate&quot; to try again.
                   </p>
                 </div>
               </div>
             )}
 
             {platform === "mobile" && (
-              <div className="absolute inset-x-0 bottom-0 z-10 flex h-8.5 items-center justify-center bg-black">
-                <div className="h-1.5 w-16 rounded-full bg-white/40" />
+              <div className="absolute inset-x-0 bottom-0 z-10 flex h-8.5 items-center justify-center bg-(--status-bar-bg)">
+                <div className="h-1.5 w-16 rounded-full bg-foreground/40" />
               </div>
             )}
 
@@ -483,15 +490,14 @@ export const CanvasFrame = memo(function CanvasFrame({
               }}
               onContextMenu={() => {
                 onSelect(id);
-                handleSelectContext?.(id);
               }}
             />
 
-            {!isActive && (
+            {!isActive && !readOnly && (
               <button
                 type="button"
                 aria-label="Resize frame"
-                className="absolute bottom-1 right-1 z-30 h-3 w-3 rounded-sm border border-white/50 bg-black/50 hover:bg-black/70"
+                className="absolute bottom-1 right-1 z-30 h-3 w-3 rounded-sm border border-foreground/50 bg-foreground/50 hover:bg-foreground/70"
                 style={{ cursor: "se-resize" }}
                 onPointerDown={startResize}
               />
@@ -500,7 +506,7 @@ export const CanvasFrame = memo(function CanvasFrame({
 
           {isActive && (
             <div className="absolute -top-6 left-0 z-40 pointer-events-none">
-              <span className="font-mono text-[9px] text-blue-400/70">
+              <span className="font-mono text-[9px] text-blue-500/70">
                 ESC to exit frame mode
               </span>
             </div>
@@ -508,30 +514,46 @@ export const CanvasFrame = memo(function CanvasFrame({
         </div>
       </ContextMenuTrigger>
       {/* Context menu content can be added here */}
-      <ContextMenuContent onEscapeKeyDown={(event) => event.stopPropagation()}>
-        <ContextMenuItem onSelect={() => handleFrame(id)}>
-          Regenerate
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => handleDelete(id)}>
-          Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
+      {!(state === "skeleton" || state === "streaming") && !readOnly && (
+        <ContextMenuContent
+          onEscapeKeyDown={(event) => event.stopPropagation()}
+        >
+          {state === "done" && (
+            <ContextMenuItem onSelect={() => handleEditCode(id)}>
+              Edit Code
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onSelect={() => handleFrame(id)}>
+            Regenerate
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleDelete(id)}>
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   );
 });
 
 function SkeletonView() {
   return (
-    <div className="w-3/4 space-y-3">
+    <div className="relative w-3/4 overflow-hidden space-y-3">
       {[80, 60, 90, 50, 70].map((width, index) => (
         <div
           key={index}
-          className="h-3 rounded bg-white/8"
+          className="h-3 rounded-md bg-foreground/[0.06]"
           style={{
             width: `${width}%`,
-            animation: `pulse 1.5s ease-in-out ${index * 100}ms infinite`,
           }}
-        />
+        >
+          <div
+            className="h-full w-full animate-shimmer rounded-md"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)",
+            }}
+          />
+        </div>
       ))}
     </div>
   );
@@ -539,19 +561,21 @@ function SkeletonView() {
 
 function StreamingView() {
   return (
-    <div className="flex flex-col items-center gap-3 animate-pulse">
-      <div className="flex gap-1">
+    <div className="flex flex-col items-center gap-3">
+      <div className="flex items-center gap-1.5">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
-            className="h-1.5 w-1.5 rounded-full bg-blue-400"
+            className="size-2 rounded-full bg-[var(--studio-accent)]"
             style={{
-              animation: `bounce 1s ease-in-out ${index * 120}ms infinite`,
+              animation: `streaming-dot 1s ease-in-out ${index * 120}ms infinite`,
             }}
           />
         ))}
       </div>
-      <span className="font-mono text-[10px] text-white/40">Generating...</span>
+      <span className="font-mono text-[10px] text-[var(--studio-text-muted)]">
+        Generating...
+      </span>
     </div>
   );
 }
@@ -564,7 +588,7 @@ function BrowserChrome({ screenName }: { screenName: string }) {
         <div className="h-3 w-3 rounded-full bg-[#febc2e]" />
         <div className="h-3 w-3 rounded-full bg-[#28c840]" />
       </div>
-      <div className="ml-2 max-w-xs flex-1 truncate rounded bg-white/70 px-2.5 py-1 font-mono text-[11px] text-gray-400">
+      <div className="ml-2 max-w-xs flex-1 truncate rounded bg-background/70 px-2.5 py-1 font-mono text-[11px] text-muted-foreground">
         /{screenName.toLowerCase().replace(/\s+/g, "-")}
       </div>
     </div>
@@ -572,15 +596,20 @@ function BrowserChrome({ screenName }: { screenName: string }) {
 }
 
 function MobileStatusBar() {
+  const { isDark } = useStudioTheme();
+  const iconFill = isDark ? "white" : "#171717";
+
   return (
-    <div className="absolute inset-x-0 top-0 z-10 flex h-11 items-end justify-between bg-black px-5 pb-2">
-      <span className="text-[13px] font-semibold text-white">9:41</span>
+    <div className="absolute inset-x-0 top-0 z-10 flex h-11 items-end justify-between bg-(--status-bar-bg) px-5 pb-2">
+      <span className="text-[13px] font-semibold text-(--status-bar-text)">
+        9:41
+      </span>
       <div className="flex items-center gap-1.5">
         <div className="flex items-end gap-0.5">
           {[3, 5, 7, 9, 11].map((height, index) => (
             <div
               key={index}
-              className="w-0.75 rounded-[1px] bg-white"
+              className="w-0.75 rounded-[1px] bg-(--status-bar-text)"
               style={{ height }}
             />
           ))}
@@ -589,14 +618,24 @@ function MobileStatusBar() {
           width="14"
           height="10"
           viewBox="0 0 14 10"
-          fill="white"
+          fill={iconFill}
           opacity={0.9}
         >
           <path d="M7 7.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0-3a4 4 0 0 1 2.83 1.17l1.06-1.06A5.5 5.5 0 0 0 7 3a5.5 5.5 0 0 0-3.89 1.61l1.06 1.06A4 4 0 0 1 7 4.5zm0-3a7 7 0 0 1 4.95 2.05l1.06-1.06A8.5 8.5 0 0 0 7 0a8.5 8.5 0 0 0-6.01 2.49l1.06 1.06A7 7 0 0 1 7 1.5z" />
         </svg>
-        <div className="relative flex h-3 w-5.5 items-center overflow-hidden rounded-xs border border-white/70 px-0.5">
-          <div className="h-2 w-3.5 rounded-[1px] bg-white" />
-          <div className="absolute -right-0.75 top-1/2 h-1.5 w-0.5 -translate-y-1/2 rounded-r bg-white/50" />
+        <div
+          className="relative flex h-3 w-5.5 items-center overflow-hidden rounded-xs border px-0.5"
+          style={{
+            borderColor: `color-mix(in oklab, ${iconFill} 70%, transparent)`,
+          }}
+        >
+          <div className="h-2 w-3.5 rounded-[1px] bg-(--status-bar-text)" />
+          <div
+            className="absolute -right-0.75 top-1/2 h-1.5 w-0.5 -translate-y-1/2 rounded-r"
+            style={{
+              backgroundColor: `color-mix(in oklab, ${iconFill} 50%, transparent)`,
+            }}
+          />
         </div>
       </div>
     </div>

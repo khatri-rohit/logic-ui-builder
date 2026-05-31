@@ -10,6 +10,8 @@ const bodySchema = z.object({ planId: z.enum(["STANDARD", "PRO"]) });
 
 export const runtime = "nodejs";
 
+// DEPRECATED: Use POST /api/billing/change-plan for all plan changes.
+// This route bypasses scheduling semantics (cycle_end vs now) and rollback safety.
 export async function POST(req: NextRequest) {
   try {
     const authContext = await requireAuthContext({

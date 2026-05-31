@@ -1,4 +1,7 @@
+"use client";
+
 import { MoveLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +13,8 @@ interface OrgHeaderProps {
 }
 
 export function OrgHeader({ name, slug, seatCount, maxSeats }: OrgHeaderProps) {
+  const router = useRouter();
+
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -24,7 +29,7 @@ export function OrgHeader({ name, slug, seatCount, maxSeats }: OrgHeaderProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => (window.location.href = "/")}
+          onClick={() => router.push("/")}
         >
           <MoveLeft className="mr-2 h-4 w-4" />
           Back

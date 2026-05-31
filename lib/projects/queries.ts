@@ -14,16 +14,18 @@ import {
   ProjectSummary,
 } from "../api/types";
 import { CanvasFrameSnapshot, CanvasSnapshotV1 } from "@/lib/canvas-state";
+import { useProjectsCacheStore } from "@/stores/projects-cache";
 
 type CreateProjectInput = {
   prompt: string;
+  platform: "web" | "mobile";
 };
 
 type CreateProjectResult = {
   projectId: string;
   title: string;
   description: string | null;
-  spec: "web" | "mobile";
+  platform: "web" | "mobile";
   model: string;
   updatedAt: string;
 };
@@ -35,10 +37,15 @@ export const projectKeys = {
 };
 
 async function listProjects() {
-  return requestApi<ProjectSummary[]>("/api/projects/all");
+  const data = await requestApi<ProjectSummary[]>("/api/projects/all", {
+    next: { tags: ["projects:list"] },
+  });
+
+  useProjectsCacheStore.getState().setProjects(data);
+  return data;
 }
 
-async function createProject({ prompt }: CreateProjectInput) {
+async function createProject({ prompt, platform }: CreateProjectInput) {
   const normalizedPrompt = prompt.trim();
 
   if (!normalizedPrompt) {
@@ -50,7 +57,7 @@ async function createProject({ prompt }: CreateProjectInput) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: normalizedPrompt }),
+    body: JSON.stringify({ prompt: normalizedPrompt, platform }),
     next: { tags: ["list"] },
   });
 }
@@ -65,7 +72,21 @@ export function projectsListQueryOptions() {
 }
 
 export function useProjectsQuery() {
-  return useQuery(projectsListQueryOptions());
+  const cachedProjects = useProjectsCacheStore((state) => state.projects);
+
+  return useQuery({
+    ...projectsListQueryOptions(),
+    initialData: cachedProjects ?? undefined,
+    refetchInterval: (query) => {
+      const projects = query.state.data;
+      return projects?.some(
+        (project) =>
+          project.status === "PENDING" || project.status === "GENERATING",
+      )
+        ? 5000
+        : false;
+    },
+  });
 }
 
 export function useCreateProjectMutation() {
@@ -74,34 +95,6 @@ export function useCreateProjectMutation() {
   return useMutation({
     mutationFn: createProject,
     onSuccess: async () => {
-      // queryClient.setQueryData<ProjectSummary[]>(
-      //   projectKeys.list(),
-      //   (currentProjects) => {
-      //     if (!currentProjects) {
-      //       return currentProjects;
-      //     }
-
-      //     if (
-      //       currentProjects.some(
-      //         (project) => project.id === createdProject.projectId,
-      //       )
-      //     ) {
-      //       return currentProjects;
-      //     }
-
-      //     return [
-      //       {
-      //         id: createdProject.projectId,
-      //         title: createdProject.title,
-      //         description: createdProject.description,
-      //         thumbnailUrl: null,
-      //         updatedAt: createdProject.updatedAt,
-      //       },
-      //       ...currentProjects,
-      //     ];
-      //   },
-      // );
-
       await queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
@@ -134,9 +127,13 @@ function mergePatchedProjectDetail(
     return {
       id: patchResult.project.id,
       title: patchResult.project.title,
+      description: patchResult.project.description,
       initialPrompt: patchResult.project.initialPrompt,
       status: patchResult.project.status,
+      platform: patchResult.project.platform,
       canvasState: patchResult.project.canvasState,
+      isPublic: patchResult.project.isPublic,
+      shareToken: patchResult.project.shareToken,
       generations,
       frames: flattenGenerationFrames(generations),
     };
@@ -162,9 +159,13 @@ function mergePatchedProjectDetail(
     ...previous,
     id: patchResult.project.id,
     title: patchResult.project.title,
+    description: patchResult.project.description,
     initialPrompt: patchResult.project.initialPrompt,
     status: patchResult.project.status,
+    platform: patchResult.project.platform,
     canvasState: patchResult.project.canvasState,
+    isPublic: patchResult.project.isPublic,
+    shareToken: patchResult.project.shareToken,
     generations,
     frames: flattenGenerationFrames(generations),
   };
@@ -205,6 +206,14 @@ export function useProjectDeleteMutation() {
       );
       // Invalidate detail
       queryClient.removeQueries({ queryKey: ["projects", id], exact: true });
+
+      // Update Zustand cache
+      const currentCache = useProjectsCacheStore.getState().projects;
+      if (currentCache) {
+        useProjectsCacheStore
+          .getState()
+          .setProjects(currentCache.filter((p) => p.id !== id));
+      }
     },
   });
 }
@@ -235,6 +244,92 @@ export function useProjectStatusUpdateMutation() {
       queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
         mergePatchedProjectDetail(prev, data),
       );
+
+      // Update list cache
+      queryClient.setQueryData<ProjectSummary[]>(projectKeys.list(), (prev) =>
+        prev?.map((project) =>
+          project.id === id
+            ? { ...project, status: data.project.status }
+            : project,
+        ),
+      );
+
+      // Update Zustand cache
+      const currentCache = useProjectsCacheStore.getState().projects;
+      if (currentCache) {
+        useProjectsCacheStore
+          .getState()
+          .setProjects(
+            currentCache.map((project) =>
+              project.id === id
+                ? { ...project, status: data.project.status }
+                : project,
+            ),
+          );
+      }
+    },
+  });
+}
+
+export async function updateProjectMetadata(
+  id: string,
+  input: { title: string; description: string },
+) {
+  return requestApi<ProjectPatchResult>(`/api/projects/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+export function useProjectMetadataUpdateMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      title,
+      description,
+    }: {
+      id: string;
+      title: string;
+      description: string;
+    }) => updateProjectMetadata(id, { title, description }),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
+        mergePatchedProjectDetail(prev, data),
+      );
+      queryClient.setQueryData<ProjectSummary[]>(projectKeys.list(), (prev) =>
+        prev?.map((project) =>
+          project.id === id
+            ? {
+                ...project,
+                title: data.project.title,
+                description: data.project.description,
+              }
+            : project,
+        ),
+      );
+
+      // Update Zustand cache
+      const currentCache = useProjectsCacheStore.getState().projects;
+      if (currentCache) {
+        useProjectsCacheStore
+          .getState()
+          .setProjects(
+            currentCache.map((project) =>
+              project.id === id
+                ? {
+                    ...project,
+                    title: data.project.title,
+                    description: data.project.description,
+                  }
+                : project,
+            ),
+          );
+      }
     },
   });
 }
@@ -250,6 +345,7 @@ export async function updateProjectCanvasState(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ canvasState, generationId }),
+    keepalive: true, // Allow the request to outlive the page if the user navigates away
   });
 }
 
@@ -327,6 +423,20 @@ export function useProjectThumbnailUpdateMutation() {
             : project,
         ),
       );
+
+      // Update Zustand cache
+      const currentCache = useProjectsCacheStore.getState().projects;
+      if (currentCache) {
+        useProjectsCacheStore
+          .getState()
+          .setProjects(
+            currentCache.map((project) =>
+              project.id === id
+                ? { ...project, thumbnailUrl: data.thumbnailUrl }
+                : project,
+            ),
+          );
+      }
     },
   });
 }
@@ -387,4 +497,52 @@ export function useDeleteGenerationScreenMutation() {
       );
     },
   });
+}
+
+// -- Toggle project public sharing
+export async function toggleProjectShare(id: string) {
+  return requestApi<{ isPublic: boolean; shareToken: string | null }>(
+    `/api/projects/${id}/share`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function useProjectShareToggleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => toggleProjectShare(id),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData<ProjectDetail>(["projects", id], (prev) =>
+        prev
+          ? {
+              ...prev,
+              isPublic: data.isPublic,
+              shareToken: data.shareToken,
+            }
+          : prev,
+      );
+    },
+  });
+}
+
+// -- Fetch publicly shared project (no auth required)
+export async function getSharedProject(token: string): Promise<ProjectDetail> {
+  return requestApi<ProjectDetail>(`/api/share/${token}`);
+}
+
+export function sharedProjectQueryOptions(token: string) {
+  return queryOptions({
+    queryKey: ["shared-projects", token] as const,
+    queryFn: () => getSharedProject(token),
+    enabled: !!token,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  });
+}
+
+export function useSharedProjectQuery(token: string) {
+  return useQuery(sharedProjectQueryOptions(token));
 }

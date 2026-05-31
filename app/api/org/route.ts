@@ -8,6 +8,7 @@ import {
   OrgError,
 } from "@/lib/org";
 import { guardOrgCreation } from "@/lib/plan-guard";
+import { orgRatelimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
 
@@ -85,6 +86,16 @@ export async function POST(req: NextRequest) {
       eventType: "org.created",
     });
 
+    const { success } = await orgRatelimit.limit(
+      `org-create:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
+
     const guardResult = await guardOrgCreation(authContext);
     if (!guardResult.allowed) return guardResult.response;
 
@@ -127,6 +138,17 @@ export async function DELETE(req: NextRequest) {
       request: req,
       eventType: "org.dissolved",
     });
+
+    const { success } = await orgRatelimit.limit(
+      `org-dissolve:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
+
     if (!authContext.orgId || !authContext.isOrgOwner) {
       return NextResponse.json(
         {

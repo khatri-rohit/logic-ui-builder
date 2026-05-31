@@ -20,14 +20,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useSpeechRecognition } from "../../lib/hooks/useSpeechRecognition";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
@@ -40,7 +32,6 @@ import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
 import { PricingModal } from "./PricingModal";
-import logger from "@/lib/logger";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -85,8 +76,6 @@ const MAX_PROMPT_HEIGHT = 220;
 const Dashboard = () => {
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
-  const selectedModel = useUserActivityStore((state) => state.model);
-  const setSelectedModel = useUserActivityStore((state) => state.setModel);
 
   const {
     mutateAsync: createProject,
@@ -166,6 +155,7 @@ const Dashboard = () => {
     try {
       const createdProject = await createProject({
         prompt: normalizedPrompt,
+        platform: spec,
       });
 
       if (!createdProject.projectId) {
@@ -265,7 +255,6 @@ const Dashboard = () => {
             appearance={clerkUserButtonAppearance}
             userProfileProps={{ appearance: clerkUserProfileAppearance }}
           >
-            <UserButton.Action label="manageAccount" />
             <UserButton.MenuItems>
               <UserButton.Action
                 label="Manage Subscription"
@@ -429,32 +418,6 @@ const Dashboard = () => {
                       </span>
                     </Button>
                   </div>
-                  <Select
-                    value={selectedModel}
-                    onValueChange={setSelectedModel}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      className={cn(
-                        "h-8 min-w-35 border-input bg-muted text-[10px] tracking-[0.16em] uppercase",
-                        mono.className,
-                      )}
-                    >
-                      <SelectValue placeholder="gemma4" />
-                    </SelectTrigger>
-                    <SelectContent className="mt-10 min-w-35 border border-input bg-muted text-foreground">
-                      <SelectGroup>
-                        <SelectItem value="gemma4:31b">gemma4</SelectItem>
-                        <SelectItem value="llama3.1:8b">llama3.1</SelectItem>
-                        <SelectItem value="deepseek-v3.1:671b">
-                          deepseek-v3.1
-                        </SelectItem>
-                        <SelectItem value="deepseek-v3.2:cloud">
-                          deepseek-v3.2
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <div className="flex min-h-16 items-end gap-1 p-2">

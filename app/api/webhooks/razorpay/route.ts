@@ -3,14 +3,18 @@ import prisma from "@/lib/prisma";
 import { verifyWebhookSignature } from "@/lib/razorpay";
 import logger from "@/lib/logger";
 import { SubscriptionStatus } from "@/app/generated/prisma/enums";
+import { Redis } from "@upstash/redis";
 
 export const runtime = "nodejs";
+
+const redis = Redis.fromEnv();
 
 // Razorpay subscription.status → our SubscriptionStatus
 const RAZORPAY_TO_STATUS: Record<string, SubscriptionStatus> = {
   created: "CREATED",
   authenticated: "AUTHENTICATED",
   active: "ACTIVE",
+  trialing: "ACTIVE",
   pending: "PENDING",
   halted: "HALTED",
   cancelled: "CANCELLED",
@@ -27,6 +31,14 @@ function planFromRazorpayPlanId(
   if (razorpayPlanId === process.env.RAZORPAY_PLAN_STANDARD) return "STANDARD";
   if (razorpayPlanId === process.env.RAZORPAY_PLAN_PRO) return "PRO";
   return "FREE";
+}
+
+function isDeadStatus(status: string): boolean {
+  return ["CANCELLED", "COMPLETED", "EXPIRED", "HALTED"].includes(status);
+}
+
+async function invalidateSubscriptionCache(userId: string): Promise<void> {
+  await redis.del(`auth:subscription:${userId}`).catch(() => {});
 }
 
 export async function POST(req: NextRequest) {
@@ -48,6 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   let event: {
+    id: string;
     entity: string;
     event: string;
     payload: Record<string, { entity: Record<string, unknown> }>;
@@ -58,10 +71,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Razorpay does not provide a unique event ID in the body.
-  // Use SHA-256 of the raw body as an idempotency key.
-  const { createHash } = await import("crypto");
-  const eventId = createHash("sha256").update(body).digest("hex").slice(0, 40);
+  // Use Razorpay's native event ID for idempotency
+  const eventId = event.id;
 
   const existing = await prisma.razorpayWebhookEvent.findUnique({
     where: { id: eventId },
@@ -80,9 +91,10 @@ export async function POST(req: NextRequest) {
   try {
     const eventType = event.event;
     logger.info("Received Razorpay webhook", { eventType, eventId });
+
+    // ── subscription.activated | updated | cancelled ──────────────────────
     if (
       eventType === "subscription.activated" ||
-      eventType === "subscription.completed" ||
       eventType === "subscription.updated" ||
       eventType === "subscription.cancelled"
     ) {
@@ -95,53 +107,113 @@ export async function POST(req: NextRequest) {
       const isCancelled = eventType === "subscription.cancelled";
 
       const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
-      const ourPlanId = isCancelled
-        ? "FREE"
-        : planFromRazorpayPlanId(razorpayPlanId);
+
+      // Fetch current DB state to compute conditional updates
+      const dbSub = await prisma.subscription.findUnique({
+        where: { razorpaySubscriptionId },
+        select: {
+          userId: true,
+          razorpayPlanId: true,
+          scheduledPlanId: true,
+          cancelAtPeriodEnd: true,
+        },
+      });
 
       const currentStart = sub.current_start as number | undefined;
       const currentEnd = sub.current_end as number | undefined;
 
+      // Determine if a scheduled change actually took effect
+      const planChanged =
+        Boolean(dbSub?.razorpayPlanId) &&
+        dbSub!.razorpayPlanId !== razorpayPlanId;
+      const shouldClearScheduled =
+        Boolean(dbSub?.scheduledPlanId) &&
+        (planChanged || isCancelled || eventType === "subscription.activated");
+
+      const updateData: Record<string, unknown> = {
+        status: ourStatus,
+        razorpayPlanId: razorpayPlanId ?? undefined,
+        cancelAtPeriodEnd: Boolean(
+          sub.cancel_at_period_end ?? sub.cancel_at_cycle_end,
+        ),
+        cancelledAt: isCancelled ? new Date() : undefined,
+        currentPeriodStart: currentStart
+          ? new Date(currentStart * 1000)
+          : undefined,
+        currentPeriodEnd: currentEnd
+          ? new Date(currentEnd * 1000)
+          : undefined,
+        billingAnchorDay: currentStart
+          ? new Date(currentStart * 1000).getDate()
+          : undefined,
+        generationLimit:
+          planFromRazorpayPlanId(razorpayPlanId) === "FREE"
+            ? 10
+            : planFromRazorpayPlanId(razorpayPlanId) === "STANDARD"
+              ? 100
+              : undefined,
+      };
+
+      if (shouldClearScheduled) {
+        updateData.scheduledPlanId = null;
+        updateData.scheduledChangeAt = null;
+      }
+
+      await prisma.subscription.updateMany({
+        where: { razorpaySubscriptionId },
+        data: updateData as any,
+      });
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
+
+      logger.info(`Razorpay ${eventType} handled`, {
+        razorpaySubscriptionId,
+        ourStatus,
+        planChanged,
+        clearedScheduled: shouldClearScheduled,
+      });
+    }
+
+    // ── subscription.completed | expired ────────────────────────────────────
+    if (
+      eventType === "subscription.completed" ||
+      eventType === "subscription.expired"
+    ) {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) throw new Error(`Missing subscription entity in ${eventType}`);
+
+      const razorpaySubscriptionId = sub.id as string;
+      const razorpayStatus = sub.status as string;
+      const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
+
+      const dbSub = await prisma.subscription.findUnique({
+        where: { razorpaySubscriptionId },
+        select: { userId: true },
+      });
+
       await prisma.subscription.updateMany({
         where: { razorpaySubscriptionId },
         data: {
-          planId: ourPlanId,
           status: ourStatus,
-          razorpayPlanId: razorpayPlanId ?? undefined,
-          cancelAtPeriodEnd: Boolean(
-            sub.cancel_at_period_end ?? sub.cancel_at_cycle_end,
-          ),
-          cancelledAt: isCancelled ? new Date() : null,
-          currentPeriodStart: currentStart
-            ? new Date(currentStart * 1000)
-            : undefined,
-          currentPeriodEnd: currentEnd
-            ? new Date(currentEnd * 1000)
-            : undefined,
-          billingAnchorDay: currentStart
-            ? new Date(currentStart * 1000).getDate()
-            : undefined,
-          generationLimit:
-            ourPlanId === "FREE"
-              ? 10
-              : ourPlanId === "STANDARD"
-                ? 100
-                : undefined, // example of plan-based limit
-
-          // Clear scheduled change when it takes effect
-          // This fires when the cycle_end scheduled change activates
+          cancelAtPeriodEnd: false,
           scheduledPlanId: null,
           scheduledChangeAt: null,
         },
       });
 
-      logger.info(`Razorpay ${eventType} handled`, {
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
+
+      logger.info(`Razorpay ${eventType} handled — access restricted`, {
         razorpaySubscriptionId,
-        ourPlanId,
         ourStatus,
       });
     }
 
+    // ── subscription.pending ────────────────────────────────────────────────
     if (eventType === "subscription.pending") {
       const sub = event.payload.subscription?.entity;
       if (!sub) throw new Error(`Missing subscription entity in ${eventType}`);
@@ -150,6 +222,11 @@ export async function POST(req: NextRequest) {
       const razorpayStatus = sub.status as string;
 
       const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "PENDING";
+
+      const dbSub = await prisma.subscription.findUnique({
+        where: { razorpaySubscriptionId },
+        select: { userId: true },
+      });
 
       await prisma.subscription.updateMany({
         where: { razorpaySubscriptionId },
@@ -162,16 +239,26 @@ export async function POST(req: NextRequest) {
             increment: 1,
           },
           chargeFailureAt: new Date(),
-          chargeFailureReason: `Razorpay subscription is in pending state after ${ourStatus === "PENDING" ? "first" : "second"} failed charge attempt.`,
+          chargeFailureReason: `Razorpay subscription is in pending state after failed charge attempt.`,
         },
       });
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
     }
 
+    // ── subscription.halted ─────────────────────────────────────────────────
     if (eventType === "subscription.halted") {
       const sub = event.payload.subscription?.entity;
       if (!sub) throw new Error(`Missing subscription entity in ${eventType}`);
 
       const razorpaySubscriptionId = sub.id as string;
+
+      const dbSub = await prisma.subscription.findUnique({
+        where: { razorpaySubscriptionId },
+        select: { userId: true },
+      });
 
       await prisma.subscription.updateMany({
         where: { razorpaySubscriptionId },
@@ -185,8 +272,13 @@ export async function POST(req: NextRequest) {
           chargeFailureAt: new Date(),
         },
       });
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
     }
 
+    // ── subscription.charged ────────────────────────────────────────────────
     if (eventType === "subscription.charged") {
       // Successful renewal — update period dates and store last payment ID
       const sub = event.payload.subscription?.entity;
@@ -198,52 +290,84 @@ export async function POST(req: NextRequest) {
       const currentStart = sub.current_start as number | undefined;
       const currentEnd = sub.current_end as number | undefined;
 
-      await prisma.subscription.updateMany({
+      const dbSub = await prisma.subscription.findUnique({
         where: { razorpaySubscriptionId },
-        data: {
-          status: "ACTIVE",
-          razorpayPaymentId: (payment?.id as string) ?? undefined,
-          currentPeriodStart: currentStart
-            ? new Date(currentStart * 1000)
-            : undefined,
-          currentPeriodEnd: currentEnd
-            ? new Date(currentEnd * 1000)
-            : undefined,
-          chargeSuccessAt: currentStart
-            ? new Date(currentStart * 1000)
-            : undefined,
-          chargeSuccesses: {
-            increment: 1,
-          },
-        },
+        select: { userId: true, status: true },
       });
 
-      logger.info("Subscription charged successfully", {
+      const isDead = isDeadStatus(dbSub?.status ?? "");
+
+      const updateData: Record<string, unknown> = {
+        razorpayPaymentId: (payment?.id as string) ?? undefined,
+        currentPeriodStart: currentStart
+          ? new Date(currentStart * 1000)
+          : undefined,
+        currentPeriodEnd: currentEnd
+          ? new Date(currentEnd * 1000)
+          : undefined,
+        chargeSuccessAt: currentStart
+          ? new Date(currentStart * 1000)
+          : undefined,
+        chargeSuccesses: {
+          increment: 1,
+        },
+        chargeFailures: 0,
+        chargeRetries: 0,
+        chargeFailureReason: null,
+      };
+
+      if (!isDead) {
+        updateData.status = "ACTIVE";
+      }
+
+      await prisma.subscription.updateMany({
+        where: { razorpaySubscriptionId },
+        data: updateData as any,
+      });
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
+
+      logger.info("Subscription charged", {
         razorpaySubscriptionId,
+        reactivated: !isDead,
+        previousStatus: dbSub?.status,
       });
     }
 
-    // if (eventType === "subscription.cancelled") {
-    //   // Log org suspension for observability — members lose PRO access automatically
-    //   // on their next request because effectivePlanId is computed from owner's subscription
-    //   const affectedOrg = await prisma.organisation.findUnique({
-    //     where: { ownerId: affectedUser?.id ?? "" },
-    //     select: {
-    //       id: true,
-    //       name: true,
-    //       _count: { select: { memberships: { where: { status: "ACTIVE" } } } },
-    //     },
-    //   });
-    //   if (affectedOrg) {
-    //     logger.info(
-    //       "Org PRO access suspended due to subscription cancellation",
-    //       {
-    //         orgId: affectedOrg.id,
-    //         affectedSeatCount: affectedOrg._count.memberships,
-    //       },
-    //     );
-    //   }
-    // }
+    // ── subscription.resumed | paused ───────────────────────────────────────
+    if (
+      eventType === "subscription.resumed" ||
+      eventType === "subscription.paused"
+    ) {
+      const sub = event.payload.subscription?.entity;
+      if (!sub)
+        throw new Error(`Missing subscription entity in ${eventType}`);
+
+      const razorpaySubscriptionId = sub.id as string;
+      const razorpayStatus = sub.status as string;
+      const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
+
+      const dbSub = await prisma.subscription.findUnique({
+        where: { razorpaySubscriptionId },
+        select: { userId: true },
+      });
+
+      await prisma.subscription.updateMany({
+        where: { razorpaySubscriptionId },
+        data: { status: ourStatus },
+      });
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
+
+      logger.info(`Razorpay ${eventType} handled`, {
+        razorpaySubscriptionId,
+        ourStatus,
+      });
+    }
 
     if (eventType === "payment.failed") {
       const payment = event.payload.payment?.entity;
@@ -253,17 +377,32 @@ export async function POST(req: NextRequest) {
         errorCode: payment?.error_code,
         errorDesc: payment?.error_description,
       });
+
+      const razorpaySubscriptionId = payment?.subscription_id as string;
+      const dbSub = razorpaySubscriptionId
+        ? await prisma.subscription.findUnique({
+            where: { razorpaySubscriptionId },
+            select: { userId: true },
+          })
+        : null;
+
       // Razorpay will retry and eventually emit subscription.halted if retries are exhausted
-      await prisma.subscription.updateMany({
-        where: { razorpaySubscriptionId: payment?.subscription_id as string },
-        data: {
-          status: "PENDING",
-          chargeFailures: {
-            increment: 1,
+      if (razorpaySubscriptionId) {
+        await prisma.subscription.updateMany({
+          where: { razorpaySubscriptionId },
+          data: {
+            status: "PENDING",
+            chargeFailures: {
+              increment: 1,
+            },
+            chargeFailureReason: payment?.error_description as string,
           },
-          chargeFailureReason: payment?.error_description as string,
-        }, // no immediate status change — wait for Razorpay's retry mechanism
-      });
+        });
+      }
+
+      if (dbSub?.userId) {
+        await invalidateSubscriptionCache(dbSub.userId);
+      }
     }
 
     await prisma.razorpayWebhookEvent.update({

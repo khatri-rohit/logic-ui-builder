@@ -3,7 +3,7 @@ import {
   loadSandpackClient,
   SandpackClient,
 } from "@codesandbox/sandpack-client";
-import { useSandpack } from "@codesandbox/sandpack-react";
+// import { useSandpack } from "@codesandbox/sandpack-react";
 import { buildSandpackFiles } from "@/lib/sandpackTemplate";
 import { FrameState } from "@/lib/canvas-state";
 import logger from "@/lib/logger";
@@ -18,6 +18,11 @@ interface UseFrameLifecycleOptions {
 const DESTROY_GRACE_MS = 5000;
 const INTERSECTION_ROOT_MARGIN = "300px 300px";
 
+function getParentOrigin(): string {
+  if (typeof window === "undefined") return "*";
+  return window.location.origin;
+}
+
 export function useFrameLifecycle({
   content,
   state,
@@ -29,13 +34,9 @@ export function useFrameLifecycle({
   const isMountingRef = useRef(false);
   const mountTokenRef = useRef(0);
   const destroyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const { sandpack } = useSandpack();
-  const { error } = sandpack;
+  const originRef = useRef(getParentOrigin());
 
   const mount = useCallback(async () => {
-    // logger.info("mount: ", content);
-    // logger.info("mount: ", iframeRef.current);
     const iframeElement = iframeRef.current;
     if (!iframeElement || !content) return;
     if (isMountedRef.current || isMountingRef.current) return;
@@ -45,10 +46,11 @@ export function useFrameLifecycle({
     isMountingRef.current = true;
 
     try {
+      const origin = originRef.current;
       const client = await loadSandpackClient(
         iframeElement,
         {
-          files: buildSandpackFiles(content),
+          files: buildSandpackFiles(content, origin),
           entry: "/index.tsx",
           template: "create-react-app-typescript",
         },
@@ -61,6 +63,30 @@ export function useFrameLifecycle({
           ],
         },
       );
+
+      // Capture sandbox lifecycle and errors for observability
+      client.listen((msg: unknown) => {
+        const message = msg as Record<string, unknown>;
+        if (message.type === "status") {
+          logger.info("Sandbox status", { status: message.status });
+        }
+        if (
+          message.type === "action" &&
+          message.action === "show-error"
+        ) {
+          logger.warn("Sandbox compile error", {
+            message: message.message,
+            path: message.path,
+            line: message.line,
+            code: content.slice(0, 200),
+          });
+        }
+        if (message.type === "done" && message.compilationError) {
+          logger.warn("Sandbox compilation failed", {
+            code: content.slice(0, 200),
+          });
+        }
+      });
 
       if (mountToken !== mountTokenRef.current) {
         client.destroy();
@@ -88,8 +114,10 @@ export function useFrameLifecycle({
     }
   }, [iframeRef]);
 
+  // Visibility-driven mount/destroy — content is NOT in deps to avoid
+  // recreating the observer on every streaming chunk.
   useEffect(() => {
-    if (state !== "done" || !content || !containerRef.current) {
+    if (state !== "done" || !containerRef.current) {
       if (destroyTimerRef.current) {
         clearTimeout(destroyTimerRef.current);
         destroyTimerRef.current = null;
@@ -131,20 +159,20 @@ export function useFrameLifecycle({
         destroyTimerRef.current = null;
       }
     };
-  }, [containerRef, content, destroy, mount, state]);
+  }, [containerRef, destroy, mount, state]);
 
+  // Debounced content updates — avoids thrashing Sandpack during streaming
   useEffect(() => {
     if (!clientRef.current || !content || !isMountedRef.current) return;
 
-    clientRef.current.updateSandbox({ files: buildSandpackFiles(content) });
-  }, [content]);
+    const timer = setTimeout(() => {
+      clientRef.current?.updateSandbox({
+        files: buildSandpackFiles(content, originRef.current),
+      });
+    }, 150);
 
-  useEffect(() => {
-    if (error) {
-      logger.error("Sandbox error: ", error);
-      destroy();
-    }
-  }, []);
+    return () => clearTimeout(timer);
+  }, [content]);
 
   useEffect(() => {
     return () => {

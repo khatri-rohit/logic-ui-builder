@@ -6,6 +6,7 @@ import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/browser";
 import { z } from "zod";
+import { invalidateAuthContextCache } from "@/lib/get-auth";
 
 export const runtime = "nodejs";
 
@@ -365,6 +366,11 @@ export async function POST(req: NextRequest) {
                 },
               },
             });
+
+            // Invalidate cached auth context for ended/revoked sessions
+            if (evt.type === "session.ended" || evt.type === "session.revoked") {
+              await invalidateAuthContextCache(clerkSessionId).catch(() => {});
+            }
           }
         }
 

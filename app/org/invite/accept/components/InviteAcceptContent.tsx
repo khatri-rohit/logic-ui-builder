@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
@@ -25,7 +25,7 @@ export function InviteAcceptContent() {
     role: "MEMBER",
   });
 
-  const fetchInvitationDetails = async () => {
+  const fetchInvitationDetails = useCallback(async () => {
     try {
       const res = await fetch(`/api/org/invite/details?token=${token}`);
       if (res.ok) {
@@ -40,7 +40,7 @@ export function InviteAcceptContent() {
       // Silently fail - we'll show generic invitation if details can't be fetched
       logger.error("Failed to fetch invitation details:", error);
     }
-  };
+  }, [token]);
 
   const handleAccept = async () => {
     setStatus("accepting");
@@ -83,9 +83,13 @@ export function InviteAcceptContent() {
   // Fetch invitation details on mount
   useEffect(() => {
     if (isSignedIn && token && status === "idle") {
-      fetchInvitationDetails();
+      const timeoutId = window.setTimeout(() => {
+        void fetchInvitationDetails();
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
     }
-  }, [isSignedIn, token, status]);
+  }, [fetchInvitationDetails, isSignedIn, token, status]);
 
   // If not signed in, redirect to sign-up with the token preserved
   useEffect(() => {

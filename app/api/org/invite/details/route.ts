@@ -1,54 +1,80 @@
+import { NextRequest, NextResponse } from "next/server";
+import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
+  try {
+    await requireAuthContext({
+      request,
+      eventType: "org.invite.details.viewed",
+    });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: true, code: error.code, message: error.message },
+        { status: error.status },
+      );
+    }
+    return NextResponse.json(
+      { error: true, message: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
   const { searchParams } = new URL(request.nextUrl);
   const token = searchParams.get("token");
-  logger.info("Received request for invitation details with token:", token);
 
-  if (!token) {
-    return NextResponse.json({ error: "Token is required" }, { status: 400 });
+  if (!token || token.length !== 64) {
+    return NextResponse.json(
+      { error: true, message: "Invalid token" },
+      { status: 400 },
+    );
   }
 
   try {
-    // In a real implementation, you would verify the token and fetch details from your database
     const invitationDetails = await prisma.orgInvitation.findUnique({
       where: { token },
       select: {
-        organisation: {
-          select: {
-            name: true,
-          },
-        },
+        organisation: { select: { name: true } },
         role: true,
-        inviter: {
-          select: {
-            email: true,
-          },
-        },
+        inviter: { select: { email: true } },
+        expiresAt: true,
+        status: true,
       },
     });
 
-    if (!invitationDetails) {
+    if (!invitationDetails || invitationDetails.status !== "PENDING") {
       return NextResponse.json(
-        { error: "Invitation not found" },
+        {
+          error: true,
+          message: !invitationDetails
+            ? "Invitation not found"
+            : "Invitation is not pending",
+        },
         { status: 404 },
       );
     }
 
-    return NextResponse.json(
-      {
-        invitedBy: invitationDetails.inviter.email,
-        orgName: invitationDetails.organisation.name,
-        role: invitationDetails.role,
-      },
-      { status: 200 },
-    );
+    if (invitationDetails.expiresAt < new Date()) {
+      return NextResponse.json(
+        { error: true, message: "Invitation expired" },
+        { status: 410 },
+      );
+    }
+
+    return NextResponse.json({
+      invitedBy: invitationDetails.inviter?.email ?? null,
+      orgName: invitationDetails.organisation.name,
+      role: invitationDetails.role,
+    });
   } catch (error) {
     logger.error("Error fetching invitation details:", error);
     return NextResponse.json(
-      { error: "Failed to fetch invitation details" },
+      {
+        error: true,
+        message: "Failed to fetch invitation details",
+      },
       { status: 500 },
     );
   }

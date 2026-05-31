@@ -10,6 +10,7 @@ export function MemberRow({
   membership,
   currentUserId,
   userRole,
+  canManageActions,
   onRemove,
   isRemoving,
 }: MemberRowProps) {
@@ -45,22 +46,28 @@ export function MemberRow({
       <TableCell className="text-xs text-muted-foreground">
         {new Date(membership.joinedAt).toLocaleDateString()}
       </TableCell>
-      <TableCell className="text-right">
-        {canRemove && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onRemove(membership.id)}
-            disabled={isRemoving}
-            aria-label={`Remove ${membership.user.name} from organisation`}
-            title="Remove member"
-          >
-            {isRemoving ? <LoadingSpinner /> : <Trash2 className="h-4 w-4" />}
-            <span className="sr-only">Remove member</span>
-          </Button>
-        )}
-      </TableCell>
+      {canManageActions && (
+        <TableCell className="text-right">
+          {canRemove && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onRemove(membership.id)}
+              disabled={isRemoving}
+              aria-label={`Remove ${membership.user.name} from organisation`}
+              title="Remove member"
+            >
+              {isRemoving ? (
+                <LoadingSpinner />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              <span className="sr-only">Remove member</span>
+            </Button>
+          )}
+        </TableCell>
+      )}
     </TableRow>
   );
 }

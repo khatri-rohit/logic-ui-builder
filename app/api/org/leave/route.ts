@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { leaveOrganisation, isOrgError } from "@/lib/org";
+import { orgRatelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,16 @@ export async function POST(req: NextRequest) {
       request: req,
       eventType: "org.member.left",
     });
+
+    const { success } = await orgRatelimit.limit(
+      `org-leave:${authContext.appUserId}`,
+    );
+    if (!success) {
+      return NextResponse.json(
+        { error: true, message: "Too many requests." },
+        { status: 429 },
+      );
+    }
 
     if (!authContext.orgId) {
       return NextResponse.json(

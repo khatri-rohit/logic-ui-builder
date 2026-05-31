@@ -11,8 +11,9 @@ interface ProjectPageProps {
 const PROJECT_ID_PATTERN = /^c[a-z0-9]{24}$/;
 
 export const metadata: Metadata = {
-  title: "Project Studio",
-  description: "Private project workspace for UI generation and refinement.",
+  title: "Design Studio",
+  description:
+    "A powerful design tool for creating stunning websites with ease.",
   robots: {
     index: false,
     follow: false,

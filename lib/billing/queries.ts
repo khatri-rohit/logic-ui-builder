@@ -16,7 +16,6 @@ export interface UserUsage {
   projectLimit: number;
   projectsRemaining: number;
   frameRegenerationEnabled: boolean;
-  allowedModels: string[];
   periodStart: string;
   periodEnd: string;
   scheduledPlanId: "FREE" | "STANDARD" | "PRO" | null;

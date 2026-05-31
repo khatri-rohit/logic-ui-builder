@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!customerId) {
       const customer = await razorpay.customers.create({
         email: authContext.email,
-        name: authContext.email.split("@")[0],
+        name: authContext.name || authContext.email.split("@")[0],
         fail_existing: 0, // return existing customer if email matches
       });
       customerId = customer.id;
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       plan_id: planConfig.razorpayPlanId,
       customer_id: customerId,
       quantity: 1,
-      total_count: 120,
+      total_count: 999,
       addons: [],
       notify_info: {
         notify_phone: "",

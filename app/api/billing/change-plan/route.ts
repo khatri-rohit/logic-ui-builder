@@ -166,7 +166,6 @@ export async function POST(req: NextRequest) {
         await razorpay.subscriptions.update(subscriptionId, {
           plan_id: targetConfig.razorpayPlanId,
           quantity: 1,
-          remaining_count: 0,
           schedule_change_at: "now",
         });
       } catch (razorpayError) {
@@ -234,12 +233,32 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      await razorpay.subscriptions.update(subscriptionId, {
-        plan_id: targetConfig.razorpayPlanId,
-        quantity: 1,
-        remaining_count: 0,
-        schedule_change_at: "cycle_end",
+      await prisma.subscription.update({
+        where: { userId: authContext.appUserId },
+        data: { scheduledPlanId: targetPlanId }, // record intent
       });
+
+      try {
+        await razorpay.subscriptions.update(subscriptionId, {
+          plan_id: targetConfig.razorpayPlanId,
+          quantity: 1,
+          schedule_change_at: "cycle_end",
+        });
+      } catch (razorpayError) {
+        // Roll back intent — Razorpay call failed, nothing changed on their side
+        await prisma.subscription.update({
+          where: { userId: authContext.appUserId },
+          data: { scheduledPlanId: null },
+        });
+        logger.error("Razorpay subscription downgrade failed", { razorpayError });
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Failed to schedule plan change with payment provider.",
+          },
+          { status: 502 },
+        );
+      }
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },

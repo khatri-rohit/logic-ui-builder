@@ -63,6 +63,15 @@ export async function getOrCreateUsagePeriod(
     return null;
   }
 
+  // Do not create usage periods for dead subscriptions
+  if (
+    ["CANCELLED", "COMPLETED", "EXPIRED", "HALTED"].includes(
+      subscription.status,
+    )
+  ) {
+    return null;
+  }
+
   // const planId = subscription.planId as PlanId;
   // Use override when provided (member inheriting org PRO)
   const planId = (effectivePlanOverride ?? subscription.planId) as PlanId;

@@ -1,6 +1,7 @@
 "use client";
 
 import { ElementType, useEffect, useRef, useState } from "react";
+import * as React from "react";
 import {
   Check,
   ChevronLeft,
@@ -34,11 +35,7 @@ interface StudioHeaderProps {
   themeMode: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   onAction: (action: ProjectActionId) => void;
-  // setMenuOpen: (open: boolean) => void;
-  // setThemeOpen: (open: boolean) => void;
-  // menuOpen: boolean;
-  // themeOpen: boolean;
-  // menuRef: React.RefObject<HTMLDivElement | null>;
+  canvasRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const projectActions: Array<{
@@ -70,15 +67,12 @@ export function StudioHeader({
   themeMode,
   onThemeChange,
   onAction,
-  // setMenuOpen,
-  // setThemeOpen,
-  // menuOpen,
-  // themeOpen,
-  // menuRef,
+  canvasRef,
 }: StudioHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
 
   const visibleActions =
     platform === "web"
@@ -87,16 +81,17 @@ export function StudioHeader({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (toggleRef.current?.contains(target)) return;
+      if (canvasRef?.current?.contains(target)) return;
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setMenuOpen(false);
         setThemeOpen(false);
       }
     }
-    if (menuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [menuOpen]);
+  }, [canvasRef]);
 
   return (
     <div className="pointer-events-auto absolute left-5 top-5 z-50">
@@ -107,7 +102,10 @@ export function StudioHeader({
       >
         <button
           type="button"
-          onClick={() => setMenuOpen(!menuOpen)}
+          ref={toggleRef}
+          onClick={() => {
+            if (!menuOpen) setMenuOpen(true);
+          }}
           className={cn(
             "inline-flex size-8 items-center justify-center rounded-md text-(--studio-text-secondary) transition-all duration-150",
             "hover:bg-(--studio-surface-hover) hover:text-(--studio-text-primary) hover:scale-105 active:scale-95",

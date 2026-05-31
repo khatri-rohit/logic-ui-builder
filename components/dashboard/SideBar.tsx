@@ -55,7 +55,8 @@ const SideBar = ({
         };
 
   const { data: projects = [], isLoading, isFetching } = useProjectsQuery();
-  const showProjectSkeletons = isLoading || (isFetching && projects.length === 0);
+  const showProjectSkeletons =
+    isLoading || (isFetching && projects.length === 0);
 
   const handleFocusPrompt = () => {
     setIsMobileMenuOpen(false);
@@ -194,10 +195,7 @@ const SideBar = ({
 
     if (projects.length === 0) {
       return (
-        <SidebarEmptyState
-          hasProjects={false}
-          onGenerate={handleFocusPrompt}
-        />
+        <SidebarEmptyState hasProjects={false} onGenerate={handleFocusPrompt} />
       );
     }
 
@@ -310,7 +308,7 @@ const SideBar = ({
       <AnimatePresence>
         {isMobileMenuOpen ? (
           <motion.div
-            className="md:hidden flex fixed inset-0 z-50"
+            className="logic-sidebar md:hidden flex fixed inset-0 z-50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -330,7 +328,7 @@ const SideBar = ({
               exit={{ x: "100%" }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
-              <div className="flex items-center justify-between border-b border-border px-4 py-4">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <span
                   className={cn(
                     "text-[11px] uppercase tracking-[0.18em]",

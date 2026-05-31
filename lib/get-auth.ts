@@ -18,14 +18,13 @@ export interface AppAuthContext {
   appUserId: string;
   role: string;
   email: string;
+  name: string;
   clerkUserId: string;
   clerkSessionId: string;
   organizationId: string | null;
   organizationSlug: string | null;
-  // NEW
   planId: "FREE" | "STANDARD" | "PRO";
   subscriptionStatus: string;
-  // NEW
   effectivePlanId: "FREE" | "STANDARD" | "PRO"; // Personal OR inherited from org
   orgId: string | null; // Our Organisation.id
   orgRole: OrgMemberRole | null;
@@ -462,12 +461,30 @@ export async function requireAuthContext(
     ["ACTIVE", "AUTHENTICATED", "TRIALING"].includes(orgOwnerSub.status);
 
   const personalPlanId = subscription.planId as "FREE" | "STANDARD" | "PRO";
-  const effectivePlanId = orgIsLive ? "PRO" : personalPlanId;
+
+  // Compute whether the personal subscription grants paid access
+  const inGracePeriod =
+    subscription.status === "CANCELLED" &&
+    subscription.cancelAtPeriodEnd &&
+    subscription.currentPeriodEnd &&
+    now < new Date(subscription.currentPeriodEnd);
+
+  const personalIsLive =
+    ["ACTIVE", "AUTHENTICATED", "TRIALING", "PENDING", "CREATED"].includes(
+      subscription.status,
+    ) || inGracePeriod;
+
+  const effectivePlanId = orgIsLive
+    ? "PRO"
+    : personalIsLive
+      ? personalPlanId
+      : "FREE";
 
   const context: AppAuthContext = {
     appUserId: user.id,
     role: user.role,
     email: user.email,
+    name: user.name,
     clerkUserId,
     clerkSessionId,
     organizationId: user.organizationId,
@@ -506,6 +523,7 @@ async function getCachedSubscription(userId: string) {
     planId: string;
     status: string;
     cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: string | null;
   }>(`auth:subscription:${userId}`);
   if (cached) return cached;
   const sub = await prisma.subscription.upsert({
@@ -517,7 +535,12 @@ async function getCachedSubscription(userId: string) {
       cancelAtPeriodEnd: false,
     },
     update: {},
-    select: { planId: true, status: true, cancelAtPeriodEnd: true },
+    select: {
+      planId: true,
+      status: true,
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: true,
+    },
   });
   await redis.setex(`auth:subscription:${userId}`, SUBSCRIPTION_TTL, sub);
   return sub;

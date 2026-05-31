@@ -51,7 +51,6 @@ export async function POST(req: NextRequest) {
         subscription.razorpayPlanId ||
         undefined,
       quantity: 1,
-      // remaining_count: 0,
       schedule_change_at: "now",
     });
 

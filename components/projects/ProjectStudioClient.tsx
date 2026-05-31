@@ -2792,11 +2792,7 @@ npm run dev
         themeMode={themeMode}
         onThemeChange={handleThemeChange}
         onAction={handleMenuClick}
-        // setMenuOpen={setMenuOpen}
-        // setThemeOpen={setThemeOpen}
-        // menuOpen={menuOpen}
-        // themeOpen={themeOpen}
-        // menuRef={menuRef}
+        canvasRef={domRef}
       />
 
       <StudioStatusBar

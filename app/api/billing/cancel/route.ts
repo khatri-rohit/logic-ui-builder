@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
         razorpaySubscriptionId: true,
         razorpayPlanId: true,
         planId: true,
+        cancelAtPeriodEnd: true,
       },
     });
 
@@ -27,6 +28,14 @@ export async function POST(req: NextRequest) {
         { error: true, message: "No active subscription found." },
         { status: 404 },
       );
+    }
+
+    if (subscription.cancelAtPeriodEnd) {
+      return NextResponse.json({
+        error: false,
+        message: "Subscription is already scheduled for cancellation.",
+        data: { planId: subscription.planId, changed: false },
+      });
     }
 
     if (!subscription.razorpayPlanId) {
@@ -40,10 +49,10 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await razorpay.subscriptions.update(subscription.razorpaySubscriptionId, {
-        customer_notify: 1,
-        schedule_change_at: "cycle_end",
-      });
+      await razorpay.subscriptions.cancel(
+        subscription.razorpaySubscriptionId,
+        true, // cancel_at_cycle_end = true
+      );
     } catch (error) {
       logger.error("Error canceling Razorpay subscription: ", { error });
       return NextResponse.json(
@@ -55,15 +64,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Keep current plan features until the actual cancellation date.
+    // planId stays as-is; restriction happens via status + effectivePlanId.
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
       data: {
         cancelAtPeriodEnd: true,
         cancelledAt: new Date(),
-        planId: "FREE",
-        generationLimit: 10,
-        projectLimit: 3,
-        status: "ACTIVE",
+        scheduledPlanId: "FREE",
+        scheduledChangeAt: null, // will be populated by webhook when cycle ends
       },
     });
 
@@ -71,6 +80,7 @@ export async function POST(req: NextRequest) {
       error: false,
       message:
         "Subscription cancellation initiated. Your subscription is active until the end of the current billing period.",
+      data: { planId: subscription.planId, scheduledPlanId: "FREE" },
     });
   } catch (error) {
     if (isAuthError(error)) {

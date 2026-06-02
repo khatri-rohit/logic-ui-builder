@@ -5,6 +5,10 @@ import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getPlanConfig } from "@/lib/plans";
 import logger from "@/lib/logger";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+const CHECKOUT_LOCK_TTL = 120; // seconds
 
 const bodySchema = z.object({ planId: z.enum(["STANDARD", "PRO"]) });
 
@@ -30,6 +34,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: true, message: "Razorpay plan not configured for this tier." },
         { status: 500 },
+      );
+    }
+
+    // Prevent duplicate checkout attempts within the lock window
+    const lockKey = `checkout:lock:${authContext.appUserId}`;
+    const existingLock = await redis.get<string>(lockKey);
+    if (existingLock) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "CHECKOUT_IN_PROGRESS",
+          message: "A checkout is already in progress. Please complete or cancel it first.",
+        },
+        { status: 429 },
       );
     }
 
@@ -74,6 +92,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Acquire lock to prevent concurrent checkout attempts
+    await redis.setex(lockKey, CHECKOUT_LOCK_TTL, body.data.planId);
+
     // Create Razorpay subscription
     // Note: customer_id is supported by the API but missing from SDK types
     const razorpaySub = await razorpay.subscriptions.create({
@@ -90,13 +111,27 @@ export async function POST(req: NextRequest) {
 
     logger.info("Razorpay subscription created", { razorpaySub });
 
-    // Store the pending subscription ID — will be activated via webhook
+    // Store the pending subscription ID — will be activated via webhook.
+    // Wipe all stale lifecycle fields from any prior subscription history.
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
       data: {
         razorpaySubscriptionId: razorpaySub.id,
         razorpayPlanId: planConfig.razorpayPlanId,
         status: "CREATED",
+        planId: "FREE", // stays FREE until webhook confirms ACTIVE
+        scheduledPlanId: null,
+        scheduledChangeAt: null,
+        cancelledAt: null,
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+        currentPeriodStart: null,
+        billingAnchorDay: null,
+        chargeFailures: 0,
+        chargeRetries: 0,
+        chargeHaltCount: 0,
+        chargeFailureReason: null,
+        chargeFailureAt: null,
       },
     });
 

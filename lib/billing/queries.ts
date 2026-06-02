@@ -23,6 +23,8 @@ export interface UserUsage {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
   razorpaySubscriptionId: string | null;
+  razorpayPlanId: string | null;
+  pendingPlanId: "FREE" | "STANDARD" | "PRO" | null;
   status:
     | "ACTIVE"
     | "AUTHENTICATED"

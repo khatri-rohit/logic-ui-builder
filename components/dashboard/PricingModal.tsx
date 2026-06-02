@@ -23,7 +23,10 @@ import {
   useCancelMutation,
 } from "@/lib/billing/queries";
 import { useUser } from "@clerk/nextjs";
-import { useRazorpayCheckout } from "../billing/RazorpayCheckout";
+import {
+  useRazorpayCheckout,
+  type CheckoutState,
+} from "../billing/RazorpayCheckout";
 import logger from "@/lib/logger";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "700"] });
@@ -98,15 +101,34 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   const { mutateAsync: cancel, isPending: cancelling } = useCancelMutation();
 
   const { user } = useUser();
-  const { openCheckout } = useRazorpayCheckout({
+  const { openCheckout, checkoutState, resetCheckout } = useRazorpayCheckout({
     email: user?.primaryEmailAddress?.emailAddress,
     onClose: () => {
       /* panel can stay open or close */
     },
   });
 
+  // Reset checkout state machine when modal closes
+  const handleOpenChange = (value: boolean) => {
+    if (!value) {
+      resetCheckout();
+    }
+    onOpenChange(value);
+  };
+
+  const checkoutBusy =
+    checkoutState === "opening" ||
+    checkoutState === "modal_open" ||
+    checkoutState === "verifying" ||
+    checkoutState === "polling";
+
   const anyLoading =
-    subscribing || upgrading || scheduling || undoing || cancelling;
+    subscribing ||
+    upgrading ||
+    scheduling ||
+    undoing ||
+    cancelling ||
+    checkoutBusy;
   const currentPlan = usage?.planId ?? "FREE";
   const scheduledPlan = usage?.scheduledPlanId;
   const cancelAtPeriodEnd = usage?.cancelAtPeriodEnd ?? false;
@@ -212,10 +234,12 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       return { label: "Subscribe", variant: "subscribe", disabled: false };
     }
 
-    // Payment pending
+    // Payment pending — show only on the plan the user is checking out for
     if (["CREATED", "PENDING"].includes(usage?.status ?? "")) {
       if (planId === "FREE") return { label: "—", variant: "noop", disabled: true };
-      return { label: "Payment pending…", variant: "noop", disabled: true };
+      if (planId === usage?.pendingPlanId)
+        return { label: "Payment pending…", variant: "noop", disabled: true };
+      return { label: "Subscribe", variant: "subscribe", disabled: false };
     }
 
     // Active subscription states
@@ -319,7 +343,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
 
   if (usageLoading) {
     return (
-      <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+      <Drawer open={open} onOpenChange={handleOpenChange} direction="right">
         <DrawerContent className="dark bg-[#0f0f0f] border-l border-white/8 w-full! sm:max-w-4xl! h-full mt-0 rounded-none">
           <DrawerHeader className="border-b border-white/8 px-6 py-5">
             <div className="flex items-start justify-between">
@@ -334,7 +358,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleOpenChange(false)}
                 className="text-white/40 hover:text-white"
               >
                 <X className="size-4" />
@@ -368,7 +392,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+    <Drawer open={open} onOpenChange={handleOpenChange} direction="right">
       <DrawerContent className="dark bg-[#0f0f0f] border-l border-white/8 w-full! sm:max-w-4xl! h-full mt-0 rounded-none">
         <DrawerHeader className="border-b border-white/8 px-6 py-5">
           <div className="flex items-start justify-between">
@@ -400,7 +424,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
               className="text-white/40 hover:text-white"
             >
               <X className="size-4" />
@@ -436,6 +460,25 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                 >
                   {undoing ? "Undoing..." : "Undo"}
                 </button>
+              </p>
+            </div>
+          )}
+
+          {/* Checkout state banners */}
+          {(checkoutState === "verifying" || checkoutState === "polling") && (
+            <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3">
+              <Loader2 className="size-4 animate-spin text-blue-400" />
+              <p className="text-sm text-blue-300/80">
+                Waiting for payment confirmation… This usually takes a few
+                seconds.
+              </p>
+            </div>
+          )}
+          {checkoutState === "timeout" && (
+            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+              <p className="text-sm text-amber-300/80">
+                Payment confirmation is taking longer than expected. Please
+                refresh the page or check your email for updates.
               </p>
             </div>
           )}

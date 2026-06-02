@@ -4,6 +4,15 @@ import { getOrCreateUsagePeriod } from "@/lib/usage";
 import { getPlanConfig } from "@/lib/plans";
 import prisma from "@/lib/prisma";
 
+function planFromRazorpayPlanId(
+  razorpayPlanId: string | null,
+): "FREE" | "STANDARD" | "PRO" | null {
+  if (!razorpayPlanId) return null;
+  if (razorpayPlanId === process.env.RAZORPAY_PLAN_STANDARD) return "STANDARD";
+  if (razorpayPlanId === process.env.RAZORPAY_PLAN_PRO) return "PRO";
+  return null;
+}
+
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
@@ -12,7 +21,10 @@ export async function GET(req: Request) {
       request: req,
       eventType: "usage.checked",
     });
-    const usage = await getOrCreateUsagePeriod(authContext.appUserId);
+    const usage = await getOrCreateUsagePeriod(
+      authContext.appUserId,
+      authContext.effectivePlanId,
+    );
     if (!usage)
       return NextResponse.json(
         { error: true, message: "Usage unavailable" },
@@ -30,6 +42,7 @@ export async function GET(req: Request) {
         cancelAtPeriodEnd: true,
         currentPeriodEnd: true,
         razorpaySubscriptionId: true,
+        razorpayPlanId: true,
       },
     });
 
@@ -62,6 +75,8 @@ export async function GET(req: Request) {
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
         razorpaySubscriptionId: subscription.razorpaySubscriptionId ?? null,
+        razorpayPlanId: subscription.razorpayPlanId ?? null,
+        pendingPlanId: planFromRazorpayPlanId(subscription.razorpayPlanId),
       },
     });
   } catch (error) {

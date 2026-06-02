@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       where: { userId: authContext.appUserId },
       select: {
         planId: true,
+        status: true,
         razorpaySubscriptionId: true,
         cancelAtPeriodEnd: true,
         scheduledPlanId: true,
@@ -32,6 +33,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const mutableStatuses = ["ACTIVE", "AUTHENTICATED"];
+    if (!mutableStatuses.includes(subscription.status)) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "SUBSCRIPTION_NOT_MUTABLE",
+          message: `Cannot undo change on a subscription with status: ${subscription.status}. Please complete payment setup first.`,
+        },
+        { status: 409 },
+      );
+    }
+
     const hasScheduledChange =
       subscription.scheduledPlanId || subscription.cancelAtPeriodEnd;
     if (!hasScheduledChange) {
@@ -43,7 +56,15 @@ export async function POST(req: NextRequest) {
     }
 
     const currentConfig = getPlanConfig(subscription.planId);
+    const _sub = await razorpay.subscriptions.fetch(
+      subscription.razorpaySubscriptionId,
+    );
+    logger.info("Fetched subscription from Razorpay", { _sub });
 
+    const user = await prisma.subscription.findUnique({
+      where: { userId: authContext.appUserId },
+    });
+    logger.info("Fetched subscription from Prisma", { user });
     // Restore the current plan on Razorpay (clears the scheduled change)
     await razorpay.subscriptions.update(subscription.razorpaySubscriptionId, {
       plan_id:
@@ -82,14 +103,14 @@ export async function POST(req: NextRequest) {
       );
     }
     logger.error("Error undoing plan change", { error });
-    if (error.error) {
+    if (error?.error) {
       return NextResponse.json(
         {
           error: true,
-          code: error.error.code,
-          message: error.error.description,
+          code: error.error?.code || "RAZORPAY_ERROR",
+          message: error.error?.description || "Failed to undo plan change.",
         },
-        { status: error.statusCode || 500 },
+        { status: error?.statusCode || 500 },
       );
     }
     return NextResponse.json(

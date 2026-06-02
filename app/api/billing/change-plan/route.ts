@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Guard: subscription must be in a mutable state ──────────────────────
-    const mutableStatuses = ["ACTIVE", "AUTHENTICATED", "PENDING", "CREATED"];
+    const mutableStatuses = ["ACTIVE", "AUTHENTICATED"];
     if (!mutableStatuses.includes(subscription.status)) {
       return NextResponse.json(
         {

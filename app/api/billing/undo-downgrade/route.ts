@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { razorpay } from "@/lib/razorpay";
 import prisma from "@/lib/prisma";
-import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import { getPlanConfig } from "@/lib/plans";
 import logger from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -10,18 +11,17 @@ export async function POST(req: NextRequest) {
   try {
     const authContext = await requireAuthContext({
       request: req,
-      eventType: "billing.cancel.initiated",
+      eventType: "billing.undo_downgrade.initiated",
     });
 
     const subscription = await prisma.subscription.findUnique({
       where: { userId: authContext.appUserId },
       select: {
-        razorpaySubscriptionId: true,
-        razorpayPlanId: true,
         planId: true,
         status: true,
-        cancelAtPeriodEnd: true,
-        currentPeriodEnd: true,
+        razorpaySubscriptionId: true,
+        razorpayPlanId: true,
+        scheduledPlanId: true,
       },
     });
 
@@ -38,65 +38,61 @@ export async function POST(req: NextRequest) {
         {
           error: true,
           code: "SUBSCRIPTION_NOT_MUTABLE",
-          message: `Cannot cancel a subscription with status: ${subscription.status}. Please complete payment setup first.`,
+          message: `Cannot undo downgrade on a subscription with status: ${subscription.status}.`,
         },
         { status: 409 },
       );
     }
 
-    if (subscription.cancelAtPeriodEnd) {
+    if (!subscription.scheduledPlanId) {
       return NextResponse.json({
         error: false,
-        message: "Subscription is already scheduled for cancellation.",
-        data: { planId: subscription.planId, changed: false },
+        message: "No scheduled downgrade to undo.",
+        data: { changed: false },
       });
     }
 
-    if (!subscription.razorpayPlanId) {
-      return NextResponse.json(
-        {
-          error: true,
-          message: "Razorpay plan ID not found for subscription.",
-        },
-        { status: 500 },
-      );
-    }
+    const currentConfig = getPlanConfig(subscription.planId);
 
     try {
-      await razorpay.subscriptions.cancel(
-        subscription.razorpaySubscriptionId,
-        true, // cancel_at_cycle_end = true
-      );
-    } catch (error) {
-      logger.error("Error canceling Razorpay subscription: ", { error });
+      await razorpay.subscriptions.update(subscription.razorpaySubscriptionId, {
+        plan_id:
+          currentConfig.razorpayPlanId ||
+          subscription.razorpayPlanId ||
+          undefined,
+        quantity: 1,
+        schedule_change_at: "now",
+      });
+    } catch (razorpayError) {
+      logger.error("Razorpay undo downgrade failed", { razorpayError });
       return NextResponse.json(
         {
           error: true,
-          message: "Failed to cancel subscription.",
+          message: "Failed to undo downgrade with payment provider.",
         },
-        { status: 500 },
+        { status: 502 },
       );
     }
 
-    // Immediately mark as cancelled in DB — do NOT wait for webhook.
-    // Razorpay cancel() sets status to 'cancelled' immediately.
-    // planId stays as-is until currentPeriodEnd passes; grace period is
-    // computed in get-auth.ts from status + currentPeriodEnd.
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
       data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
         cancelAtPeriodEnd: false,
         scheduledPlanId: null,
         scheduledChangeAt: null,
+        cancelledAt: null,
       },
+    });
+
+    logger.info("Scheduled downgrade undone", {
+      userId: authContext.appUserId,
+      planId: subscription.planId,
     });
 
     return NextResponse.json({
       error: false,
       message:
-        `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${subscription.currentPeriodEnd?.toLocaleDateString("en-IN") ?? "the end of your billing period"}.`,
+        "Downgrade cancelled. Your plan continues as normal.",
       data: { planId: subscription.planId, changed: true },
     });
   } catch (error) {
@@ -106,12 +102,9 @@ export async function POST(req: NextRequest) {
         { status: error.status },
       );
     }
-    logger.error("Error canceling subscription: ", { error });
+    logger.error("Undo downgrade failed", { error });
     return NextResponse.json(
-      {
-        error: true,
-        message: "Failed to cancel subscription.",
-      },
+      { error: true, message: "Failed to undo downgrade. Please try again." },
       { status: 500 },
     );
   }

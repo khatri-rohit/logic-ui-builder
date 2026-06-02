@@ -16,9 +16,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   useUsageQuery,
-  useCreateSubscriptionMutation,
-  useChangePlanMutation,
-  useUndoPlanChangeMutation,
+  useCheckoutMutation,
+  useUpgradeMutation,
+  useScheduleDowngradeMutation,
+  useUndoDowngradeMutation,
+  useCancelMutation,
 } from "@/lib/billing/queries";
 import { useUser } from "@clerk/nextjs";
 import { useRazorpayCheckout } from "../billing/RazorpayCheckout";
@@ -43,10 +45,10 @@ type CtaVariant =
   | "current"
   | "subscribe"
   | "upgrade"
-  | "downgrade"
-  | "cancel"
-  | "scheduled"
-  | "reactivate"
+  | "schedule_downgrade"
+  | "cancel_renewal"
+  | "undo_downgrade"
+  | "expired"
   | "noop";
 
 const PLAN_FEATURES: PlanFeature[] = [
@@ -87,16 +89,14 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     mutateAsync: subscribe,
     isPending: subscribing,
     isIdle: subscribeIdle,
-  } = useCreateSubscriptionMutation();
-  const {
-    mutateAsync: changePlan,
-    isPending: changing,
-    isIdle: changePlanIdle,
-  } = useChangePlanMutation();
-  const { mutateAsync: undoChange, isPending: undoing } =
-    useUndoPlanChangeMutation();
+  } = useCheckoutMutation();
+  const { mutateAsync: upgrade, isPending: upgrading } = useUpgradeMutation();
+  const { mutateAsync: scheduleDowngrade, isPending: scheduling } =
+    useScheduleDowngradeMutation();
+  const { mutateAsync: undoDowngrade, isPending: undoing } =
+    useUndoDowngradeMutation();
+  const { mutateAsync: cancel, isPending: cancelling } = useCancelMutation();
 
-  // Inside PricingPanel component, replace the subscribe logic:
   const { user } = useUser();
   const { openCheckout } = useRazorpayCheckout({
     email: user?.primaryEmailAddress?.emailAddress,
@@ -105,7 +105,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     },
   });
 
-  const anyLoading = subscribing || changing || undoing;
+  const anyLoading =
+    subscribing || upgrading || scheduling || undoing || cancelling;
   const currentPlan = usage?.planId ?? "FREE";
   const scheduledPlan = usage?.scheduledPlanId;
   const cancelAtPeriodEnd = usage?.cancelAtPeriodEnd ?? false;
@@ -117,25 +118,18 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       })
     : null;
 
-  const handleFreePlanCta = async () => {
-    // FREE plan CTA when on paid plan = cancel
-    if (currentPlan === "FREE") return; // already free, no-op
-    try {
-      const result = await changePlan("FREE");
-      toast.success(result.message ?? "Cancellation scheduled.");
-    } catch {
-      toast.error("Failed to schedule cancellation. Please try again.");
-    }
-  };
+  // Grace period check
+  const isInGracePeriod =
+    usage?.status === "CANCELLED" &&
+    usage?.currentPeriodEnd &&
+    new Date() < new Date(usage.currentPeriodEnd);
 
-  // Replace handleSubscribeOrChange for FREE users:
-  const handleSubscribeOrChange = async (targetPlan: "STANDARD" | "PRO") => {
-    if (currentPlan === "FREE") {
+  const handleSubscribeOrChange = async (targetPlan: "FREE" | "STANDARD" | "PRO") => {
+    if (targetPlan === "FREE") return;
+    if (currentPlan === "FREE" || isInGracePeriod) {
       try {
-        // 1. Server creates subscription → returns subscriptionId + keyId
         const data = await subscribe(targetPlan);
         logger.info("Subscription created, opening checkout", { data });
-        // 2. Open Razorpay.js modal — no redirect, stays in your app
         await openCheckout(data.subscriptionId, data.razorpayKeyId);
       } catch {
         toast.error("Failed to start checkout. Please try again.");
@@ -143,27 +137,52 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       return;
     }
 
-    // Paid users: use change-plan (no checkout needed)
+    // Paid users: use upgrade (no checkout needed)
     try {
-      const result = await changePlan(targetPlan);
+      const result = await upgrade(targetPlan);
       if (result.changed) {
-        toast.success(result.message ?? "Plan updated.");
+        toast.success(result.message ?? "Plan upgraded.");
       }
     } catch {
-      toast.error("Failed to change plan. Please try again.");
+      toast.error("Failed to upgrade plan. Please try again.");
     }
   };
 
-  const handleUndoChange = async () => {
+  const handleScheduleDowngrade = async (targetPlan: "STANDARD" | "PRO") => {
     try {
-      await undoChange();
-      toast.success(
-        "Scheduled change cancelled. Your plan continues as normal.",
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      logger.error("Failed to undo change: ", { error });
-      toast.error(error.message ?? "Failed to undo change. Please try again.");
+      const result = await scheduleDowngrade(targetPlan);
+      if (result.changed) {
+        toast.success(result.message ?? "Downgrade scheduled.");
+      }
+    } catch {
+      toast.error("Failed to schedule downgrade. Please try again.");
+    }
+  };
+
+  const handleUndoDowngrade = async () => {
+    try {
+      const result = await undoDowngrade();
+      if (result.changed) {
+        toast.success(result.message ?? "Downgrade cancelled.");
+      }
+    } catch {
+      toast.error("Failed to undo downgrade. Please try again.");
+    }
+  };
+
+  const handleCancelRenewal = async () => {
+    const confirmed = window.confirm(
+      `You won't be charged again. Your ${currentPlan} access continues until ${periodEnd ?? "the end of your billing period"}, then you'll switch to Free. This cannot be undone — to resubscribe later, you'll need to complete checkout again.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await cancel();
+      if (result.changed) {
+        toast.success(result.message ?? "Subscription cancelled.");
+      }
+    } catch {
+      toast.error("Failed to cancel subscription. Please try again.");
     }
   };
 
@@ -172,26 +191,47 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     variant: CtaVariant;
     disabled: boolean;
   } {
-    if (currentPlan === planId && !scheduledPlan && !cancelAtPeriodEnd) {
+    // Truly dead (past grace period)
+    if (
+      usage?.status === "CANCELLED" &&
+      usage?.currentPeriodEnd &&
+      new Date() >= new Date(usage.currentPeriodEnd)
+    ) {
+      if (planId === "FREE") return { label: "Subscribe", variant: "subscribe", disabled: false };
+      return { label: `Subscribe`, variant: "subscribe", disabled: false };
+    }
+
+    // Grace period (cancelled but still has access)
+    if (isInGracePeriod) {
+      if (planId === "FREE")
+        return {
+          label: `Expired ${periodEnd} — resubscribe`,
+          variant: "expired",
+          disabled: false,
+        };
+      return { label: "Subscribe", variant: "subscribe", disabled: false };
+    }
+
+    // Payment pending
+    if (["CREATED", "PENDING"].includes(usage?.status ?? "")) {
+      if (planId === "FREE") return { label: "—", variant: "noop", disabled: true };
+      return { label: "Payment pending…", variant: "noop", disabled: true };
+    }
+
+    // Active subscription states
+    if (currentPlan === planId && !scheduledPlan) {
       return { label: "Current Plan", variant: "current", disabled: true };
     }
 
     if (planId === "FREE") {
-      if (cancelAtPeriodEnd) {
+      if (["STANDARD", "PRO"].includes(currentPlan)) {
         return {
-          label: `Cancels ${periodEnd ?? "at period end"}`,
-          variant: "scheduled",
+          label: `Cancel renewal · active until ${periodEnd ?? "period end"}`,
+          variant: "cancel_renewal",
           disabled: false,
         };
       }
-      if (currentPlan === "FREE") {
-        return { label: "Current Plan", variant: "current", disabled: true };
-      }
-      return {
-        label: "Cancel subscription",
-        variant: "cancel",
-        disabled: false,
-      };
+      return { label: "Current Plan", variant: "current", disabled: true };
     }
 
     if (planId === "STANDARD") {
@@ -202,24 +242,23 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
           disabled: false,
         };
       }
-      if (currentPlan === "STANDARD" && cancelAtPeriodEnd) {
-        return {
-          label: `Reactivate (cancels ${periodEnd})`,
-          variant: "reactivate",
-          disabled: false,
-        };
+      if (currentPlan === "STANDARD") {
+        return { label: "Current Plan", variant: "current", disabled: true };
       }
       if (currentPlan === "PRO" && scheduledPlan === "STANDARD") {
         return {
-          label: `Scheduled ${periodEnd ?? "at period end"}`,
-          variant: "scheduled",
+          label: "Undo downgrade",
+          variant: "undo_downgrade",
           disabled: false,
         };
       }
       if (currentPlan === "PRO") {
-        return { label: "Downgrade", variant: "downgrade", disabled: false };
+        return {
+          label: `Schedule downgrade on ${periodEnd ?? "period end"}`,
+          variant: "schedule_downgrade",
+          disabled: false,
+        };
       }
-      return { label: "Current Plan", variant: "current", disabled: true };
     }
 
     if (planId === "PRO") {
@@ -231,20 +270,11 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
         };
       }
       if (currentPlan === "STANDARD") {
-        return {
-          label: "Upgrade — free switch",
-          variant: "upgrade",
-          disabled: false,
-        };
+        return { label: "Upgrade now", variant: "upgrade", disabled: false };
       }
-      if (currentPlan === "PRO" && cancelAtPeriodEnd) {
-        return {
-          label: `Reactivate (cancels ${periodEnd})`,
-          variant: "reactivate",
-          disabled: false,
-        };
+      if (currentPlan === "PRO") {
+        return { label: "Current Plan", variant: "current", disabled: true };
       }
-      return { label: "Current Plan", variant: "current", disabled: true };
     }
 
     return { label: "—", variant: "noop", disabled: true };
@@ -255,20 +285,32 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     variant: CtaVariant,
   ) {
     if (variant === "current" || variant === "noop") return;
-    if (variant === "scheduled") {
-      await handleUndoChange();
+    if (variant === "cancel_renewal") {
+      await handleCancelRenewal();
       return;
     }
-    if (variant === "reactivate") {
-      await handleUndoChange();
+    if (variant === "undo_downgrade") {
+      await handleUndoDowngrade();
       return;
     }
-    if (variant === "cancel") {
-      await handleFreePlanCta();
+    if (variant === "expired") {
+      // Free card during grace period — nothing to do on Free, just close
       return;
     }
-    if (planId === "FREE") return;
-    await handleSubscribeOrChange(planId);
+    if (variant === "subscribe") {
+      if (planId === "FREE") return;
+      await handleSubscribeOrChange(planId);
+      return;
+    }
+    if (variant === "upgrade") {
+      await handleSubscribeOrChange(planId);
+      return;
+    }
+    if (variant === "schedule_downgrade") {
+      if (planId === "FREE") return;
+      await handleScheduleDowngrade(planId);
+      return;
+    }
   }
 
   const freeCta = getCtaState("FREE");
@@ -367,15 +409,28 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
         </DrawerHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Quota exceeded banner */}
+          {usage?.generationsRemaining === 0 &&
+            usage?.planId !== "PRO" && (
+              <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                <p className="text-sm text-amber-300/80">
+                  You&apos;ve used all {usage.generationLimit} generations this
+                  month.{" "}
+                  <span className="underline underline-offset-2">
+                    Upgrade for more
+                  </span>
+                </p>
+              </div>
+            )}
+
           {/* Scheduled change banner */}
-          {(scheduledPlan || cancelAtPeriodEnd) && (
+          {scheduledPlan && (
             <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
               <p className="text-sm text-amber-300/80">
-                {cancelAtPeriodEnd && !scheduledPlan
-                  ? `Your subscription cancels on ${periodEnd ?? "your next billing date"}.`
-                  : `Downgrade to ${scheduledPlan} scheduled for ${periodEnd ?? "your next billing date"}.`}{" "}
+                Your plan will change to {scheduledPlan} on{" "}
+                {periodEnd ?? "your next billing date"}.{" "}
                 <button
-                  onClick={handleUndoChange}
+                  onClick={handleUndoDowngrade}
                   disabled={undoing}
                   className="underline underline-offset-2 hover:text-amber-200"
                 >
@@ -423,10 +478,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white">
-                    {plan.name}
-                  </p>
-                  {currentPlan === plan.id && (
+                  <p className="text-sm font-semibold text-white">{plan.name}</p>
+                  {currentPlan === plan.id && !isInGracePeriod && (
                     <span
                       className={cn(
                         "inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
@@ -443,9 +496,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   )}
                 </div>
                 <div className="mt-1 flex items-baseline gap-0.5">
-                  <span className="text-2xl font-bold text-white">
-                    {plan.price}
-                  </span>
+                  <span className="text-2xl font-bold text-white">{plan.price}</span>
                   <span className="text-xs text-white/40">{plan.period}</span>
                 </div>
 
@@ -469,13 +520,32 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   ))}
                 </div>
 
+                {/* Usage bar for current plan */}
+                {usage?.planId === plan.id &&
+                  usage.generationLimit > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-[10px] text-white/40">
+                        <span>{usage.generationsUsed} used</span>
+                        <span>{usage.generationsRemaining} remaining</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-blue-500"
+                          style={{
+                            width: `${Math.min(100, (usage.generationsUsed / usage.generationLimit) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                 <Button
                   onClick={() => executeCta(plan.id, plan.cta.variant)}
                   disabled={
                     plan.cta.disabled ||
                     anyLoading ||
                     !subscribeIdle ||
-                    !changePlanIdle
+                    (plan.cta.variant === "current" && false)
                   }
                   size="sm"
                   className={cn(
@@ -488,14 +558,14 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                           ? plan.id === "PRO"
                             ? "bg-amber-500 text-black hover:bg-amber-400"
                             : "bg-blue-500 text-white hover:bg-blue-400"
-                          : plan.cta.variant === "cancel"
+                          : plan.cta.variant === "cancel_renewal"
                             ? "border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10"
-                            : plan.cta.variant === "downgrade"
+                            : plan.cta.variant === "schedule_downgrade"
                               ? "border border-white/8 bg-transparent text-white/60 hover:bg-white/5"
-                              : plan.cta.variant === "scheduled"
-                                ? "border border-amber-500/20 bg-transparent text-amber-300/70 hover:bg-amber-500/5"
-                                : plan.cta.variant === "reactivate"
-                                  ? "border border-emerald-500/30 bg-transparent text-emerald-400 hover:bg-emerald-500/10"
+                              : plan.cta.variant === "undo_downgrade"
+                                ? "border border-emerald-500/30 bg-transparent text-emerald-400 hover:bg-emerald-500/10"
+                                : plan.cta.variant === "expired"
+                                  ? "border border-amber-500/20 bg-transparent text-amber-300/70 hover:bg-amber-500/5"
                                   : "border border-white/8 bg-transparent text-white/30",
                     mono.className,
                   )}
@@ -510,7 +580,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
           </div>
 
           {/* Upgrade note for STANDARD → PRO */}
-          {currentPlan === "STANDARD" && (
+          {currentPlan === "STANDARD" && !scheduledPlan && (
             <p className="mt-4 text-center text-xs text-white/35">
               Upgrading to Pro takes effect immediately with no extra charge
               this cycle.
@@ -518,7 +588,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
           )}
 
           {/* Downgrade note */}
-          {currentPlan === "PRO" && (
+          {currentPlan === "PRO" && !scheduledPlan && (
             <p className="mt-4 text-center text-xs text-white/35">
               Downgrades take effect at the end of your current billing period.
               You keep Pro access until then.

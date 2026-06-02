@@ -23,6 +23,15 @@ export interface UserUsage {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
   razorpaySubscriptionId: string | null;
+  status:
+    | "ACTIVE"
+    | "AUTHENTICATED"
+    | "CREATED"
+    | "PENDING"
+    | "CANCELLED"
+    | "COMPLETED"
+    | "EXPIRED"
+    | "HALTED";
 }
 
 export const billingKeys = {
@@ -42,13 +51,13 @@ export function useUsageQuery() {
   );
 }
 
-export function useCreateSubscriptionMutation() {
+export function useCheckoutMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (planId: "STANDARD" | "PRO") => {
       return requestApi<{
         subscriptionId: string;
-        shortUrl: string;
+        shortUrl: string | null;
         razorpayKeyId: string;
       }>("/api/billing/checkout", {
         method: "POST",
@@ -62,31 +71,74 @@ export function useCreateSubscriptionMutation() {
   });
 }
 
-// export function useUpdateSubscriptionMutation() {
-//   const queryClient = useQueryClient();
-//   return useMutation({
-//     mutationFn: async (planId: "STANDARD" | "PRO") => {
-//       return requestApi<{
-//         planId: string;
-//         status: string;
-//         shortUrl: string | null;
-//       }>("/api/billing/update", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ planId }),
-//       });
-//     },
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: billingKeys.all });
-//     },
-//   });
-// }
-
-export function useCancelSubscriptionMutation() {
+export function useUpgradeMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () =>
-      requestApi("/api/billing/cancel", { method: "POST" }),
+    mutationFn: async (targetPlanId: "STANDARD" | "PRO") => {
+      return requestApi<{
+        planId: string;
+        changed: boolean;
+        message: string;
+      }>("/api/billing/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetPlanId }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
+}
+
+export function useScheduleDowngradeMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (targetPlanId: "STANDARD" | "PRO") => {
+      return requestApi<{
+        planId: string;
+        scheduledPlanId?: string | null;
+        scheduledChangeAt?: string | null;
+        changed: boolean;
+        message: string;
+      }>("/api/billing/schedule-downgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetPlanId }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
+}
+
+export function useUndoDowngradeMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      return requestApi<{
+        planId: string;
+        changed: boolean;
+        message: string;
+      }>("/api/billing/undo-downgrade", { method: "POST" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
+}
+
+export function useCancelMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      return requestApi<{
+        planId: string;
+        changed: boolean;
+        message: string;
+      }>("/api/billing/cancel", { method: "POST" });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: billingKeys.all });
     },
@@ -110,38 +162,4 @@ export function getCurrentSubscription() {
     status: string | null;
     cancelAtPeriodEnd: boolean;
   }>("/api/billing");
-}
-
-// -- Helpers for plan change logic (used in route handler and can be reused in frontend if needed for UI logic)
-export function useChangePlanMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (targetPlanId: "FREE" | "STANDARD" | "PRO") =>
-      requestApi<{
-        planId: string;
-        scheduledPlanId?: string | null;
-        scheduledChangeAt?: string | null;
-        changed: boolean;
-        message: string;
-      }>("/api/billing/change-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetPlanId }),
-      }),
-    onSuccess: () => {
-      // Invalidate usage so the header badge and plan status update
-      queryClient.invalidateQueries({ queryKey: billingKeys.all });
-    },
-  });
-}
-
-export function useUndoPlanChangeMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      requestApi("/api/billing/undo-change", { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: billingKeys.all });
-    },
-  });
 }

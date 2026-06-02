@@ -8,3 +8,5 @@ Users expect to see past invoices and receipts in their billing dashboard. This 
 - A new Invoice table with razorpayInvoiceId, subscriptionId, amount, status, periodStart, periodEnd, pdfUrl
 - A GET /api/billing/invoices endpoint
 - UI list in BillingPageClient
+
+Here are the UI changes we need make

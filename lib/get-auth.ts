@@ -465,12 +465,11 @@ export async function requireAuthContext(
   // Compute whether the personal subscription grants paid access
   const inGracePeriod =
     subscription.status === "CANCELLED" &&
-    subscription.cancelAtPeriodEnd &&
     subscription.currentPeriodEnd &&
     now < new Date(subscription.currentPeriodEnd);
 
   const personalIsLive =
-    ["ACTIVE", "AUTHENTICATED", "TRIALING", "PENDING", "CREATED"].includes(
+    ["ACTIVE", "AUTHENTICATED", "TRIALING"].includes(
       subscription.status,
     ) || inGracePeriod;
 

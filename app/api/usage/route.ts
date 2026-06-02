@@ -24,6 +24,7 @@ export async function GET(req: Request) {
     const subscription = await prisma.subscription.findUnique({
       where: { userId: authContext.appUserId },
       select: {
+        status: true,
         scheduledPlanId: true,
         scheduledChangeAt: true,
         cancelAtPeriodEnd: true,
@@ -54,6 +55,7 @@ export async function GET(req: Request) {
         periodStart: usage.periodStart.toISOString(),
         periodEnd: usage.periodEnd.toISOString(),
         // In the GET /api/usage response data object, add:
+        status: subscription.status,
         scheduledPlanId: subscription.scheduledPlanId ?? null,
         scheduledChangeAt:
           subscription.scheduledChangeAt?.toISOString() ?? null,

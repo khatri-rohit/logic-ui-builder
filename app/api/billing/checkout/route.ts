@@ -33,13 +33,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get or create Razorpay customer
-    const subscription = await prisma.subscription.findUnique({
+    const existingSubscription = await prisma.subscription.findUnique({
       where: { userId: authContext.appUserId },
-      select: { razorpayCustomerId: true },
+      select: {
+        razorpayCustomerId: true,
+        razorpaySubscriptionId: true,
+        status: true,
+      },
     });
 
-    let customerId = subscription?.razorpayCustomerId;
+    // Prevent overwriting an active subscription with a new checkout
+    if (
+      existingSubscription?.razorpaySubscriptionId &&
+      ["ACTIVE", "AUTHENTICATED", "TRIALING"].includes(
+        existingSubscription.status,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "ACTIVE_SUBSCRIPTION_EXISTS",
+          message:
+            "You already have an active subscription. Use the plan change flow instead.",
+        },
+        { status: 409 },
+      );
+    }
+
+    let customerId = existingSubscription?.razorpayCustomerId;
     if (!customerId) {
       const customer = await razorpay.customers.create({
         email: authContext.email,
@@ -89,7 +110,8 @@ export async function POST(req: NextRequest) {
         razorpayKeyId: process.env.RAZORPAY_KEY_ID,
       },
     });
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: true, code: error.code, message: error.message },
@@ -98,8 +120,11 @@ export async function POST(req: NextRequest) {
     }
     logger.error("Error creating subscription: ", { error });
     return NextResponse.json(
-      { error: true, message: "Failed to create subscription." },
-      { status: 500 },
+      {
+        error: true,
+        message: error.error.description ?? "Failed to create subscription.",
+      },
+      { status: error?.statusCode ?? 500 },
     );
   }
 }

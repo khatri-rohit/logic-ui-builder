@@ -96,7 +96,8 @@ export async function POST(req: NextRequest) {
     if (
       eventType === "subscription.activated" ||
       eventType === "subscription.updated" ||
-      eventType === "subscription.cancelled"
+      eventType === "subscription.cancelled" ||
+      eventType === "subscription.canceled"
     ) {
       const sub = event.payload.subscription?.entity;
       if (!sub) throw new Error(`Missing subscription entity in ${eventType}`);
@@ -104,7 +105,9 @@ export async function POST(req: NextRequest) {
       const razorpaySubscriptionId = sub.id as string;
       const razorpayStatus = sub.status as string;
       const razorpayPlanId = sub.plan_id as string | undefined;
-      const isCancelled = eventType === "subscription.cancelled";
+      const isCancelled =
+        eventType === "subscription.cancelled" ||
+        eventType === "subscription.canceled";
 
       const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
 
@@ -130,12 +133,17 @@ export async function POST(req: NextRequest) {
         Boolean(dbSub?.scheduledPlanId) &&
         (planChanged || isCancelled || eventType === "subscription.activated");
 
+      // For cancelled subs, keep access until currentPeriodEnd (grace period).
+      // cancelAtPeriodEnd is a Stripe concept; Razorpay has no equivalent field.
+      const isGracePeriodCancelled =
+        isCancelled &&
+        currentEnd &&
+        Date.now() < currentEnd * 1000;
+
       const updateData: Record<string, unknown> = {
         status: ourStatus,
         razorpayPlanId: razorpayPlanId ?? undefined,
-        cancelAtPeriodEnd: Boolean(
-          sub.cancel_at_period_end ?? sub.cancel_at_cycle_end,
-        ),
+        cancelAtPeriodEnd: isGracePeriodCancelled,
         cancelledAt: isCancelled ? new Date() : undefined,
         currentPeriodStart: currentStart
           ? new Date(currentStart * 1000)

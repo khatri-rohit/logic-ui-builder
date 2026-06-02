@@ -63,12 +63,16 @@ export async function getOrCreateUsagePeriod(
     return null;
   }
 
-  // Do not create usage periods for dead subscriptions
-  if (
-    ["CANCELLED", "COMPLETED", "EXPIRED", "HALTED"].includes(
-      subscription.status,
-    )
-  ) {
+  const now = new Date();
+
+  // CANCELLED subscriptions with a future currentPeriodEnd are still in grace period
+  const trulyDead =
+    ["COMPLETED", "EXPIRED", "HALTED"].includes(subscription.status) ||
+    (subscription.status === "CANCELLED" &&
+      subscription.currentPeriodEnd &&
+      now >= new Date(subscription.currentPeriodEnd));
+
+  if (trulyDead) {
     return null;
   }
 

@@ -23,10 +23,7 @@ import {
   useCancelMutation,
 } from "@/lib/billing/queries";
 import { useUser } from "@clerk/nextjs";
-import {
-  useRazorpayCheckout,
-  type CheckoutState,
-} from "../billing/RazorpayCheckout";
+import { useRazorpayCheckout } from "../billing/RazorpayCheckout";
 import logger from "@/lib/logger";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "700"] });
@@ -88,11 +85,8 @@ function FeatureValue({ value }: { value: boolean | string }) {
 
 export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   const { data: usage, isLoading: usageLoading } = useUsageQuery();
-  const {
-    mutateAsync: subscribe,
-    isPending: subscribing,
-    isIdle: subscribeIdle,
-  } = useCheckoutMutation();
+  const { mutateAsync: subscribe, isPending: subscribing } =
+    useCheckoutMutation();
   const { mutateAsync: upgrade, isPending: upgrading } = useUpgradeMutation();
   const { mutateAsync: scheduleDowngrade, isPending: scheduling } =
     useScheduleDowngradeMutation();
@@ -131,7 +125,6 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     checkoutBusy;
   const currentPlan = usage?.planId ?? "FREE";
   const scheduledPlan = usage?.scheduledPlanId;
-  const cancelAtPeriodEnd = usage?.cancelAtPeriodEnd ?? false;
   const periodEnd = usage?.currentPeriodEnd
     ? new Date(usage.currentPeriodEnd).toLocaleDateString("en-IN", {
         day: "numeric",
@@ -146,15 +139,24 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     usage?.currentPeriodEnd &&
     new Date() < new Date(usage.currentPeriodEnd);
 
-  const handleSubscribeOrChange = async (targetPlan: "FREE" | "STANDARD" | "PRO") => {
+  const handleSubscribeOrChange = async (
+    targetPlan: "FREE" | "STANDARD" | "PRO",
+  ) => {
     if (targetPlan === "FREE") return;
     if (currentPlan === "FREE" || isInGracePeriod) {
       try {
         const data = await subscribe(targetPlan);
         logger.info("Subscription created, opening checkout", { data });
         await openCheckout(data.subscriptionId, data.razorpayKeyId);
-      } catch {
-        toast.error("Failed to start checkout. Please try again.");
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === "CHECKOUT_IN_PROGRESS") {
+          toast.error(
+            "A checkout is already in progress. Please complete or cancel it first.",
+          );
+        } else {
+          toast.error("Failed to start checkout. Please try again.");
+        }
       }
       return;
     }
@@ -219,7 +221,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       usage?.currentPeriodEnd &&
       new Date() >= new Date(usage.currentPeriodEnd)
     ) {
-      if (planId === "FREE") return { label: "Subscribe", variant: "subscribe", disabled: false };
+      if (planId === "FREE")
+        return { label: "Subscribe", variant: "subscribe", disabled: false };
       return { label: `Subscribe`, variant: "subscribe", disabled: false };
     }
 
@@ -227,7 +230,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     if (isInGracePeriod) {
       if (planId === "FREE")
         return {
-          label: `Expired ${periodEnd} — resubscribe`,
+          label: `Expired${periodEnd ? ` ${periodEnd}` : ""} — resubscribe`,
           variant: "expired",
           disabled: false,
         };
@@ -236,7 +239,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
 
     // Payment pending — show only on the plan the user is checking out for
     if (["CREATED", "PENDING"].includes(usage?.status ?? "")) {
-      if (planId === "FREE") return { label: "—", variant: "noop", disabled: true };
+      if (planId === "FREE")
+        return { label: "—", variant: "noop", disabled: true };
       if (planId === usage?.pendingPlanId)
         return { label: "Payment pending…", variant: "noop", disabled: true };
       return { label: "Subscribe", variant: "subscribe", disabled: false };
@@ -434,18 +438,17 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {/* Quota exceeded banner */}
-          {usage?.generationsRemaining === 0 &&
-            usage?.planId !== "PRO" && (
-              <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <p className="text-sm text-amber-300/80">
-                  You&apos;ve used all {usage.generationLimit} generations this
-                  month.{" "}
-                  <span className="underline underline-offset-2">
-                    Upgrade for more
-                  </span>
-                </p>
-              </div>
-            )}
+          {usage?.generationsRemaining === 0 && usage?.planId !== "PRO" && (
+            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+              <p className="text-sm text-amber-300/80">
+                You&apos;ve used all {usage.generationLimit} generations this
+                month.{" "}
+                <span className="underline underline-offset-2">
+                  Upgrade for more
+                </span>
+              </p>
+            </div>
+          )}
 
           {/* Scheduled change banner */}
           {scheduledPlan && (
@@ -479,6 +482,14 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
               <p className="text-sm text-amber-300/80">
                 Payment confirmation is taking longer than expected. Please
                 refresh the page or check your email for updates.
+              </p>
+            </div>
+          )}
+          {checkoutState === "failed" && (
+            <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+              <p className="text-sm text-red-300/80">
+                Payment failed. Please try again or use a different payment
+                method.
               </p>
             </div>
           )}
@@ -521,7 +532,9 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white">{plan.name}</p>
+                  <p className="text-sm font-semibold text-white">
+                    {plan.name}
+                  </p>
                   {currentPlan === plan.id && !isInGracePeriod && (
                     <span
                       className={cn(
@@ -539,7 +552,9 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   )}
                 </div>
                 <div className="mt-1 flex items-baseline gap-0.5">
-                  <span className="text-2xl font-bold text-white">{plan.price}</span>
+                  <span className="text-2xl font-bold text-white">
+                    {plan.price}
+                  </span>
                   <span className="text-xs text-white/40">{plan.period}</span>
                 </div>
 
@@ -564,30 +579,28 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                 </div>
 
                 {/* Usage bar for current plan */}
-                {usage?.planId === plan.id &&
-                  usage.generationLimit > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-[10px] text-white/40">
-                        <span>{usage.generationsUsed} used</span>
-                        <span>{usage.generationsRemaining} remaining</span>
-                      </div>
-                      <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-blue-500"
-                          style={{
-                            width: `${Math.min(100, (usage.generationsUsed / usage.generationLimit) * 100)}%`,
-                          }}
-                        />
-                      </div>
+                {usage?.planId === plan.id && usage.generationLimit > 0 && (
+                  <div className="mt-4">
+                    <div className="flex justify-between text-[10px] text-white/40">
+                      <span>{usage.generationsUsed} used</span>
+                      <span>{usage.generationsRemaining} remaining</span>
                     </div>
-                  )}
+                    <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{
+                          width: `${Math.min(100, (usage.generationsUsed / usage.generationLimit) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <Button
                   onClick={() => executeCta(plan.id, plan.cta.variant)}
                   disabled={
                     plan.cta.disabled ||
                     anyLoading ||
-                    !subscribeIdle ||
                     (plan.cta.variant === "current" && false)
                   }
                   size="sm"

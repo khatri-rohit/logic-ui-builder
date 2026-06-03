@@ -56,15 +56,6 @@ export async function POST(req: NextRequest) {
     }
 
     const currentConfig = getPlanConfig(subscription.planId);
-    const _sub = await razorpay.subscriptions.fetch(
-      subscription.razorpaySubscriptionId,
-    );
-    logger.info("Fetched subscription from Razorpay", { _sub });
-
-    const user = await prisma.subscription.findUnique({
-      where: { userId: authContext.appUserId },
-    });
-    logger.info("Fetched subscription from Prisma", { user });
     // Restore the current plan on Razorpay (clears the scheduled change)
     await razorpay.subscriptions.update(subscription.razorpaySubscriptionId, {
       plan_id:

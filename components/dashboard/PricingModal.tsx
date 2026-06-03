@@ -222,8 +222,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       new Date() >= new Date(usage.currentPeriodEnd)
     ) {
       if (planId === "FREE")
-        return { label: "Subscribe", variant: "subscribe", disabled: false };
-      return { label: `Subscribe`, variant: "subscribe", disabled: false };
+        return { label: "Current Plan", variant: "current", disabled: true };
+      return { label: "Subscribe", variant: "subscribe", disabled: false };
     }
 
     // Grace period (cancelled but still has access)
@@ -600,8 +600,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   onClick={() => executeCta(plan.id, plan.cta.variant)}
                   disabled={
                     plan.cta.disabled ||
-                    anyLoading ||
-                    (plan.cta.variant === "current" && false)
+                    anyLoading
                   }
                   size="sm"
                   className={cn(

@@ -22,9 +22,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // compiler: {
-  //   removeConsole: true,
-  // },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
+  },
   reactCompiler: true,
 };
 

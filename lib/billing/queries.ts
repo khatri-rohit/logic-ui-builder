@@ -161,7 +161,7 @@ export function useGetSubscriptionDetailsQuery() {
 export function getCurrentSubscription() {
   return requestApi<{
     planId: string | null;
-    status: string | null;
+    status: UserUsage["status"] | null;
     cancelAtPeriodEnd: boolean;
   }>("/api/billing");
 }

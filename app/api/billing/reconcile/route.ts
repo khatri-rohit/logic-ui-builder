@@ -4,12 +4,13 @@ import { razorpay } from "@/lib/razorpay";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
 import { Redis } from "@upstash/redis";
+import { SubscriptionStatus } from "@/app/generated/prisma/enums";
 
 export const runtime = "nodejs";
 
 const redis = Redis.fromEnv();
 
-const RAZORPAY_TO_STATUS: Record<string, string> = {
+const RAZORPAY_TO_STATUS: Record<string, SubscriptionStatus> = {
   created: "CREATED",
   authenticated: "AUTHENTICATED",
   active: "ACTIVE",
@@ -25,6 +26,15 @@ const RAZORPAY_TO_STATUS: Record<string, string> = {
 async function invalidateSubscriptionCache(userId: string): Promise<void> {
   await redis.del(`auth:subscription:${userId}`).catch(() => {});
   await redis.del(`auth:context:${userId}`).catch(() => {});
+}
+
+function planFromRazorpayPlanId(
+  razorpayPlanId: string | undefined,
+): "FREE" | "STANDARD" | "PRO" {
+  if (!razorpayPlanId) return "FREE";
+  if (razorpayPlanId === process.env.RAZORPAY_PLAN_STANDARD) return "STANDARD";
+  if (razorpayPlanId === process.env.RAZORPAY_PLAN_PRO) return "PRO";
+  return "FREE";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -82,6 +92,7 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
 
         if (rzpSub.plan_id && dbSub.razorpayPlanId !== rzpSub.plan_id) {
           needsUpdate.razorpayPlanId = rzpSub.plan_id;
+          needsUpdate.planId = planFromRazorpayPlanId(rzpSub.plan_id);
           mismatches++;
         }
 

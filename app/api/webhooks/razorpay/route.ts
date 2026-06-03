@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.razorpayWebhookEvent.upsert({
       where: { id: eventId },
-      create: { id: eventId, type: event.event, rawPayload: JSON.parse(body) },
+      create: { id: eventId, type: event.event, rawPayload: event as any },
       update: {},
     });
   }
@@ -332,6 +332,8 @@ export async function POST(req: NextRequest) {
         updateData.status = "ACTIVE";
         const rzpPlanId = sub.plan_id as string | undefined;
         updateData.planId = planFromRazorpayPlanId(rzpPlanId);
+        updateData.cancelAtPeriodEnd = false;
+        updateData.cancelledAt = null;
       }
 
       await prisma.subscription.updateMany({

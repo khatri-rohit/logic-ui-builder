@@ -37,10 +37,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Prevent duplicate checkout attempts within the lock window
+    // Atomically acquire lock to prevent duplicate checkout attempts
     const lockKey = `checkout:lock:${authContext.appUserId}`;
-    const existingLock = await redis.get<string>(lockKey);
-    if (existingLock) {
+    const lockAcquired = await redis.set(lockKey, body.data.planId, {
+      nx: true,
+      ex: CHECKOUT_LOCK_TTL,
+    });
+    if (!lockAcquired) {
       return NextResponse.json(
         {
           error: true,
@@ -91,9 +94,6 @@ export async function POST(req: NextRequest) {
         data: { razorpayCustomerId: customerId },
       });
     }
-
-    // Acquire lock to prevent concurrent checkout attempts
-    await redis.setex(lockKey, CHECKOUT_LOCK_TTL, body.data.planId);
 
     // Create Razorpay subscription
     // Note: customer_id is supported by the API but missing from SDK types
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: true,
-        message: error.error.description ?? "Failed to create subscription.",
+        message: error?.error?.description ?? error?.message ?? "Failed to create subscription.",
       },
       { status: error?.statusCode ?? 500 },
     );

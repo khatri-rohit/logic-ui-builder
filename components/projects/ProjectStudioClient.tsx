@@ -34,6 +34,7 @@ import {
   useProjectStatusUpdateMutation,
   useProjectThumbnailUpdateMutation,
 } from "@/lib/projects/queries";
+import { useUsageQuery } from "@/lib/billing/queries";
 import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
@@ -281,6 +282,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     refetch: refetchProject,
   } = useProjectQuery(projectId);
 
+  const { data: usage } = useUsageQuery();
+
   const [canvasSaveMessage, setCanvasSaveMessage] = useState<string | null>(
     null,
   );
@@ -478,6 +481,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   } = usePointerMode();
 
   const canGenerate = !!prompt.trim() && !isGenerating;
+  const canRegenerate = usage?.frameRegenerationEnabled ?? false;
+  const canEditCode = usage?.planId !== "FREE";
 
   useEffect(() => {
     handleGenerateRef.current = handleGenerate;
@@ -1944,6 +1949,19 @@ npm run dev
     [openEditor, setSelectedFrameId],
   );
 
+  const handleLockedAction = useCallback(
+    (feature: string) => {
+      toast.error(`${feature} is a premium feature`, {
+        description: "Upgrade to Standard or Pro to unlock this.",
+        action: {
+          label: "Upgrade",
+          onClick: () => router.push("/billing/upgrade"),
+        },
+      });
+    },
+    [router],
+  );
+
   const handleSaveCodeEditor = useCallback(() => {
     if (!activeFrameId) return;
 
@@ -2741,6 +2759,9 @@ npm run dev
                   handleFrame={handleFrame}
                   handleDelete={handleDelete}
                   handleEditCode={handleOpenCodeEditor}
+                  canRegenerate={canRegenerate}
+                  canEditCode={canEditCode}
+                  onLockedAction={handleLockedAction}
                 />
               ))}
               {/* </SandpackProvider> */}

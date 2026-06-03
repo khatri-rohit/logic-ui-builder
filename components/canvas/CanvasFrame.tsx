@@ -11,6 +11,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "../ui/context-menu";
+import { Lock } from "lucide-react";
 
 const WEB_CHROME_H = 36;
 const MOBILE_STATUS_H = 44;
@@ -56,6 +57,9 @@ interface CanvasFrameProps extends CanvasFrameData {
   handleFrame: (id: string) => void;
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
+  canRegenerate?: boolean;
+  canEditCode?: boolean;
+  onLockedAction?: (featureName: string) => void;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -84,6 +88,9 @@ export const CanvasFrame = memo(function CanvasFrame({
   handleFrame,
   handleDelete,
   handleEditCode,
+  canRegenerate = true,
+  canEditCode = true,
+  onLockedAction,
 }: CanvasFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -518,14 +525,31 @@ export const CanvasFrame = memo(function CanvasFrame({
         <ContextMenuContent
           onEscapeKeyDown={(event) => event.stopPropagation()}
         >
-          {state === "done" && (
-            <ContextMenuItem onSelect={() => handleEditCode(id)}>
-              Edit Code
+          {state === "done" &&
+            (canEditCode ? (
+              <ContextMenuItem onSelect={() => handleEditCode(id)}>
+                Edit Code
+              </ContextMenuItem>
+            ) : (
+              <ContextMenuItem
+                onSelect={() => onLockedAction?.("Edit Code")}
+              >
+                <span className="opacity-50">Edit Code</span>
+                <Lock className="ml-auto size-3 text-amber-400" />
+              </ContextMenuItem>
+            ))}
+          {canRegenerate ? (
+            <ContextMenuItem onSelect={() => handleFrame(id)}>
+              Regenerate
+            </ContextMenuItem>
+          ) : (
+            <ContextMenuItem
+              onSelect={() => onLockedAction?.("Regenerate")}
+            >
+              <span className="opacity-50">Regenerate</span>
+              <Lock className="ml-auto size-3 text-amber-400" />
             </ContextMenuItem>
           )}
-          <ContextMenuItem onSelect={() => handleFrame(id)}>
-            Regenerate
-          </ContextMenuItem>
           <ContextMenuItem onSelect={() => handleDelete(id)}>
             Delete
           </ContextMenuItem>

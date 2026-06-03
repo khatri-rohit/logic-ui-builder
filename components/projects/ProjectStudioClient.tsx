@@ -638,6 +638,27 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     resolvePersistGenerationId,
   ]);
 
+  const recoverStalledFrames = useCallback(() => {
+    let changed = false;
+    const next = new Map(framesRef.current);
+
+    for (const [frameId, frame] of framesRef.current) {
+      if (frame.state !== "skeleton" && frame.state !== "streaming") continue;
+
+      changed = true;
+      next.set(frameId, {
+        ...frame,
+        state: "error",
+        error: "Generation was interrupted before this screen completed.",
+      });
+    }
+
+    if (!changed) return;
+
+    applyFrames(() => next, true);
+    scheduleSnapshotPersist();
+  }, [applyFrames, scheduleSnapshotPersist]);
+
   const resolveFrameIdForScreen = useCallback(
     (screenName: string) => {
       const runtime = getStudioRuntime();
@@ -2552,6 +2573,7 @@ npm run dev
         setActiveGenerationContext(canvasSnapshot.selectedGenerationId);
       }
       setRuntimeHydrated(true);
+      recoverStalledFrames();
     }
 
     if (
@@ -2570,6 +2592,7 @@ npm run dev
     project,
     projectError,
     projectLoading,
+    recoverStalledFrames,
     restoreFromSnapshot,
     setActiveGenerationContext,
     setRuntimeHydrated,

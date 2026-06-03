@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyWebhookSignature } from "@/lib/razorpay";
@@ -71,22 +72,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Use Razorpay's native event ID for idempotency
+  // Use Razorpay's native event ID for idempotency when available.
+  // Test/simulated webhooks may not include an event id.
   const eventId = event.id;
 
-  const existing = await prisma.razorpayWebhookEvent.findUnique({
-    where: { id: eventId },
-    select: { processedAt: true },
-  });
-  if (existing?.processedAt) {
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
+  if (eventId) {
+    const existing = await prisma.razorpayWebhookEvent.findUnique({
+      where: { id: eventId },
+      select: { processedAt: true },
+    });
+    if (existing?.processedAt) {
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
 
-  await prisma.razorpayWebhookEvent.upsert({
-    where: { id: eventId },
-    create: { id: eventId, type: event.event, rawPayload: JSON.parse(body) },
-    update: {},
-  });
+    await prisma.razorpayWebhookEvent.upsert({
+      where: { id: eventId },
+      create: { id: eventId, type: event.event, rawPayload: JSON.parse(body) },
+      update: {},
+    });
+  }
 
   try {
     const eventType = event.event;
@@ -136,21 +140,22 @@ export async function POST(req: NextRequest) {
       // For cancelled subs, keep access until currentPeriodEnd (grace period).
       // cancelAtPeriodEnd is a Stripe concept; Razorpay has no equivalent field.
       const isGracePeriodCancelled =
-        isCancelled &&
-        currentEnd &&
-        Date.now() < currentEnd * 1000;
+        isCancelled && currentEnd && Date.now() < currentEnd * 1000;
 
       const updateData: Record<string, unknown> = {
         status: ourStatus,
         razorpayPlanId: razorpayPlanId ?? undefined,
+        // On activation/upgrade update planId to match the paid plan.
+        // On cancellation keep the old planId so grace-period limits work.
+        planId: isCancelled
+          ? undefined
+          : planFromRazorpayPlanId(razorpayPlanId),
         cancelAtPeriodEnd: isGracePeriodCancelled,
         cancelledAt: isCancelled ? new Date() : undefined,
         currentPeriodStart: currentStart
           ? new Date(currentStart * 1000)
           : undefined,
-        currentPeriodEnd: currentEnd
-          ? new Date(currentEnd * 1000)
-          : undefined,
+        currentPeriodEnd: currentEnd ? new Date(currentEnd * 1000) : undefined,
         billingAnchorDay: currentStart
           ? new Date(currentStart * 1000).getDate()
           : undefined,
@@ -205,6 +210,7 @@ export async function POST(req: NextRequest) {
         where: { razorpaySubscriptionId },
         data: {
           status: ourStatus,
+          planId: "FREE",
           cancelAtPeriodEnd: false,
           scheduledPlanId: null,
           scheduledChangeAt: null,
@@ -310,9 +316,7 @@ export async function POST(req: NextRequest) {
         currentPeriodStart: currentStart
           ? new Date(currentStart * 1000)
           : undefined,
-        currentPeriodEnd: currentEnd
-          ? new Date(currentEnd * 1000)
-          : undefined,
+        currentPeriodEnd: currentEnd ? new Date(currentEnd * 1000) : undefined,
         chargeSuccessAt: currentStart
           ? new Date(currentStart * 1000)
           : undefined,
@@ -326,6 +330,8 @@ export async function POST(req: NextRequest) {
 
       if (!isDead) {
         updateData.status = "ACTIVE";
+        const rzpPlanId = sub.plan_id as string | undefined;
+        updateData.planId = planFromRazorpayPlanId(rzpPlanId);
       }
 
       await prisma.subscription.updateMany({
@@ -350,21 +356,26 @@ export async function POST(req: NextRequest) {
       eventType === "subscription.paused"
     ) {
       const sub = event.payload.subscription?.entity;
-      if (!sub)
-        throw new Error(`Missing subscription entity in ${eventType}`);
+      if (!sub) throw new Error(`Missing subscription entity in ${eventType}`);
 
       const razorpaySubscriptionId = sub.id as string;
       const razorpayStatus = sub.status as string;
       const ourStatus = RAZORPAY_TO_STATUS[razorpayStatus] ?? "ACTIVE";
+      const rzpPlanId = sub.plan_id as string | undefined;
 
       const dbSub = await prisma.subscription.findUnique({
         where: { razorpaySubscriptionId },
         select: { userId: true },
       });
 
+      const updateData: Record<string, unknown> = { status: ourStatus };
+      if (eventType === "subscription.resumed") {
+        updateData.planId = planFromRazorpayPlanId(rzpPlanId);
+      }
+
       await prisma.subscription.updateMany({
         where: { razorpaySubscriptionId },
-        data: { status: ourStatus },
+        data: updateData,
       });
 
       if (dbSub?.userId) {
@@ -413,18 +424,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await prisma.razorpayWebhookEvent.update({
-      where: { id: eventId },
-      data: { processedAt: new Date() },
-    });
+    if (eventId) {
+      await prisma.razorpayWebhookEvent.update({
+        where: { id: eventId },
+        data: { processedAt: new Date() },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     logger.error("Razorpay webhook processing error", { eventId, error });
-    await prisma.razorpayWebhookEvent.update({
-      where: { id: eventId },
-      data: { errorAt: new Date(), errorMsg: String(error) },
-    });
+    if (eventId) {
+      await prisma.razorpayWebhookEvent.update({
+        where: { id: eventId },
+        data: { errorAt: new Date(), errorMsg: String(error) },
+      });
+    }
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 }

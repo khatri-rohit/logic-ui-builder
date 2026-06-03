@@ -27,6 +27,7 @@ async function invalidateSubscriptionCache(userId: string): Promise<void> {
   await redis.del(`auth:context:${userId}`).catch(() => {});
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
   try {
     const now = new Date();

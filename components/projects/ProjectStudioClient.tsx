@@ -84,11 +84,23 @@ const mono = JetBrains_Mono({
 
 type GenerationEvent =
   | { type: "generation_id"; generationId: string }
+  | {
+      type: "layout";
+      layout: Array<{
+        screen: string;
+        frameId: string;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }>;
+      platform: GenerationPlatform;
+    }
   | { type: "spec"; spec: WebAppSpec }
-  | { type: "screen_start"; screen: string }
-  | { type: "screen_reset"; screen: string; reason?: string }
-  | { type: "code_chunk"; screen: string; token: string }
-  | { type: "screen_done"; screen: string }
+  | { type: "screen_start"; screen: string; frameId: string }
+  | { type: "screen_reset"; screen: string; frameId: string; reason?: string }
+  | { type: "code_chunk"; screen: string; frameId: string; token: string }
+  | { type: "screen_done"; screen: string; frameId: string }
   | { type: "done" }
   | { type: "error"; message: string }
   | { type: "design_context"; designContext: unknown }
@@ -386,6 +398,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const isUploadingThumbnailRef = useRef(false);
   const activeFrameIdRef = useRef<string | null>(null);
   const selectedFrameIdRef = useRef<string | null>(null);
+  const generationAbortControllerRef = useRef<AbortController | null>(null);
   const frameRegenerationTokenRef = useRef(0);
   const canvasTransformRef = useRef<Transform>({
     x: 0,
@@ -621,10 +634,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const flushPendingSnapshotPersist = useCallback(() => {
     if (!projectId || !getStudioRuntime().hasHydratedCanvas) return;
-    if (!snapshotSaveTimeoutRef.current) return;
 
-    clearTimeout(snapshotSaveTimeoutRef.current);
-    snapshotSaveTimeoutRef.current = null;
+    if (snapshotSaveTimeoutRef.current) {
+      clearTimeout(snapshotSaveTimeoutRef.current);
+      snapshotSaveTimeoutRef.current = null;
+    }
+
     persistCanvasState({
       id: projectId,
       canvasState: buildSnapshot(),
@@ -658,45 +673,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     applyFrames(() => next, true);
     scheduleSnapshotPersist();
   }, [applyFrames, scheduleSnapshotPersist]);
-
-  const resolveFrameIdForScreen = useCallback(
-    (screenName: string) => {
-      const runtime = getStudioRuntime();
-
-      return resolveFrameIdForScreenFromState({
-        screenName,
-        frames: framesRef.current,
-        activeFrameIds: runtime.activeFrameIdsByScreen,
-        frameIdsByScreen: runtime.frameIdsByScreen,
-      });
-    },
-    [getStudioRuntime],
-  );
-
-  const claimFrameIdForScreen = useCallback(
-    (screenName: string) => {
-      const runtime = getStudioRuntime();
-      const existingActiveFrameId =
-        runtime.activeFrameIdsByScreen[screenName];
-      if (existingActiveFrameId) {
-        return existingActiveFrameId;
-      }
-
-      const frameId = resolveFrameIdForScreen(screenName);
-      if (!frameId) return null;
-
-      updateStudioRuntime((current) => ({
-        ...current,
-        activeFrameIdsByScreen: {
-          ...current.activeFrameIdsByScreen,
-          [screenName]: frameId,
-        },
-      }));
-
-      return frameId;
-    },
-    [getStudioRuntime, resolveFrameIdForScreen, updateStudioRuntime],
-  );
 
   const upsertGenerationReviewEntry = useCallback(
     ({
@@ -1050,58 +1026,42 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       return;
     }
 
-    if (event.type === "spec") {
-      const platform: GenerationPlatform =
-        event.spec.platform === "mobile" ? "mobile" : "web";
-
-      const screensWithDims = event.spec.screens.map((screenName) => ({
-        name: screenName,
-        ...getInitialDimensionsForPlatform(screenName, platform),
-      }));
-      const positions = getGenerationLayout(
-        [...framesRef.current.values()],
-        screensWithDims,
-      );
-
+    if (event.type === "layout") {
+      const platform = event.platform;
       const generationId =
         getStudioRuntime().activeGenerationId ?? crypto.randomUUID();
       setActiveGenerationContext(generationId);
 
       const nextFrameIdsByScreen: Record<string, string[]> = {};
-      const nextFrames: CanvasFrameData[] = screensWithDims.map(
-        (screen, index) => {
-          const frameId = crypto.randomUUID();
-          const position = positions[index];
-          const frameIds = nextFrameIdsByScreen[screen.name] ?? [];
+      const nextFrames: CanvasFrameData[] = event.layout.map((item) => {
+        const frameIds = nextFrameIdsByScreen[item.screen] ?? [];
+        frameIds.push(item.frameId);
+        nextFrameIdsByScreen[item.screen] = frameIds;
 
-          frameIds.push(frameId);
-          nextFrameIdsByScreen[screen.name] = frameIds;
+        upsertGenerationReviewEntry({
+          frameId: item.frameId,
+          screenName: item.screen,
+          generationId,
+          state: "skeleton",
+          error: null,
+          code: "",
+        });
 
-          upsertGenerationReviewEntry({
-            frameId,
-            screenName: screen.name,
-            generationId,
-            state: "skeleton",
-            error: null,
-            code: "",
-          });
-
-          return {
-            id: frameId,
-            screenName: screen.name,
-            platform,
-            x: position.x,
-            y: position.y,
-            w: screen.w,
-            h: screen.h,
-            content: "",
-            editedContent: null,
-            state: "skeleton",
-            generationId,
-            error: null,
-          };
-        },
-      );
+        return {
+          id: item.frameId,
+          screenName: item.screen,
+          platform,
+          x: item.x,
+          y: item.y,
+          w: item.w,
+          h: item.h,
+          content: "",
+          editedContent: null,
+          state: "skeleton",
+          generationId,
+          error: null,
+        };
+      });
 
       updateStudioRuntime((runtime) => ({
         ...runtime,
@@ -1116,7 +1076,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         for (const frame of nextFrames) {
           next.set(frame.id, frame);
         }
-
         return next;
       });
 
@@ -1128,25 +1087,26 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       return;
     }
 
+    if (event.type === "spec") {
+      // Spec is now informational only; frames are created from the `layout` event.
+      return;
+    }
+
     if (event.type === "screen_start") {
-      const frameId = claimFrameIdForScreen(event.screen);
+      const frameId = event.frameId;
       updateStudioRuntime((runtime) => ({
         ...runtime,
         screenBuffers: {
           ...runtime.screenBuffers,
           [event.screen]: "",
         },
+        activeFrameIdsByScreen: {
+          ...runtime.activeFrameIdsByScreen,
+          [event.screen]: frameId,
+        },
       }));
       setActiveStreamingScreen(event.screen);
       startChunkFlusher();
-
-      if (!frameId) {
-        logger.warn("Unable to resolve frame for screen_start event", {
-          screen: event.screen,
-          generationId: getStudioRuntime().activeGenerationId,
-        });
-        return;
-      }
 
       applyFrames((current) => {
         const frame = current.get(frameId);
@@ -1163,7 +1123,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     }
 
     if (event.type === "screen_reset") {
-      const frameId = resolveFrameIdForScreen(event.screen);
+      const frameId = event.frameId;
       updateStudioRuntime((runtime) => {
         const nextDirtyScreens = runtime.dirtyScreens.filter(
           (s) => s !== event.screen,
@@ -1179,8 +1139,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         };
       });
       startChunkFlusher();
-
-      if (!frameId) return;
 
       applyFrames((current) => {
         const frame = current.get(frameId);
@@ -1219,21 +1177,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
     if (event.type === "screen_done") {
       const runtime = getStudioRuntime();
-
-      const frameId = resolveFrameIdForScreenFromState({
-        screenName: event.screen,
-        frames: framesRef.current,
-        activeFrameIds: runtime.activeFrameIdsByScreen,
-        frameIdsByScreen: runtime.frameIdsByScreen,
-      });
-
-      if (!frameId) {
-        logger.warn("Unable to resolve frame for screen_done event", {
-          screen: event.screen,
-          generationId: runtime.activeGenerationId,
-        });
-        return;
-      }
+      const frameId = event.frameId;
 
       const finalCode = runtime.screenBuffers[event.screen] ?? "";
       const hasRenderableContent = finalCode.trim().length > 0;
@@ -1388,6 +1332,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     const isStaleGeneration = () =>
       generationToken !== getStudioRuntime().generationToken;
 
+    generationAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    generationAbortControllerRef.current = abortController;
+
     setIsGenerating(true);
     setActiveStreamingScreen(null);
     setGenerationErrorMessage(null);
@@ -1467,6 +1415,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
             targetFrameId: regenerationTargetFrameId ?? undefined,
           }),
         }),
+        signal: abortController.signal,
       });
 
       setPrompt("");
@@ -1563,7 +1512,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         }
       }
     } catch (error) {
-      if (isStaleGeneration()) {
+      if (isStaleGeneration() || abortController.signal.aborted) {
         return;
       }
 
@@ -1599,7 +1548,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       logger.error("Error generating layout:", error);
       emitGenerationReviewLog("request-failed");
     } finally {
-      if (isStaleGeneration()) {
+      if (isStaleGeneration() || abortController.signal.aborted) {
         return;
       }
 
@@ -2608,6 +2557,7 @@ npm run dev
 
   useEffect(() => {
     return () => {
+      generationAbortControllerRef.current?.abort();
       stopChunkFlusher();
       flushPendingSnapshotPersist();
 

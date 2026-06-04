@@ -183,6 +183,20 @@ function stripGenerationFrames(
     }));
 }
 
+function mergeGenerationScreens(
+  existing: PersistedGenerationScreen[],
+  incoming: PersistedGenerationScreen[],
+): PersistedGenerationScreen[] {
+  const merged = new Map<string, PersistedGenerationScreen>();
+  for (const screen of existing) {
+    merged.set(screen.id, screen);
+  }
+  for (const screen of incoming) {
+    merged.set(screen.id, screen);
+  }
+  return Array.from(merged.values());
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -461,11 +475,21 @@ export async function PATCH(
           }
 
           if (generationScreensPayload !== undefined) {
+            const existingScreens = parseGenerationScreens(
+              existingGeneration.screens,
+            );
+            const shouldMerge =
+              existingGeneration.status === PrismaGenerationStatus.RUNNING ||
+              existingGeneration.status === PrismaGenerationStatus.PENDING;
+
+            const nextScreens = shouldMerge
+              ? mergeGenerationScreens(existingScreens, generationScreensPayload)
+              : generationScreensPayload;
+
             updatedGenerationRecord = (await tx.generation.update({
               where: { id: generationId },
               data: {
-                screens:
-                  generationScreensPayload as unknown as Prisma.InputJsonValue,
+                screens: nextScreens as unknown as Prisma.InputJsonValue,
               },
               select: generationSelect,
             })) as GenerationRecord;

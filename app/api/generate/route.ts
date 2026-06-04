@@ -616,6 +616,23 @@ export async function POST(req: NextRequest) {
             screenName: sourceFrame!.screenName,
           });
 
+          const regenerationFrameId = targetFrameId ?? body.frameId!;
+
+          // Pre-populate with an error placeholder so the outer catch handler
+          // always writes a valid frame record if the stream is interrupted.
+          persistedScreens.push({
+            id: regenerationFrameId,
+            state: "error",
+            x: sourceFrame.x,
+            y: sourceFrame.y,
+            w: sourceFrame.w,
+            h: sourceFrame.h,
+            screenName: sourceFrame.screenName,
+            content: "",
+            editedContent: null,
+            error: "Generation was interrupted before this screen completed.",
+          });
+
           await write({ type: "generation_id", generationId });
 
           const sourcePlatform = toApiPlatform(sourceGeneration.platform);
@@ -671,7 +688,11 @@ export async function POST(req: NextRequest) {
                 components: [],
               };
 
-          await write({ type: "screen_start", screen: sourceFrame.screenName });
+          await write({
+            type: "screen_start",
+            screen: sourceFrame.screenName,
+            frameId: regenerationFrameId,
+          });
 
           let screenGenerated = false;
           let streamErr: unknown = null;
@@ -685,6 +706,7 @@ export async function POST(req: NextRequest) {
                 await write({
                   type: "screen_reset",
                   screen: sourceFrame.screenName,
+                  frameId: regenerationFrameId,
                   reason: `retry:${candidateModel}`,
                 });
               }
@@ -713,6 +735,7 @@ export async function POST(req: NextRequest) {
                 await write({
                   type: "code_chunk",
                   screen: sourceFrame.screenName,
+                  frameId: regenerationFrameId,
                   token,
                 });
               }
@@ -737,18 +760,18 @@ export async function POST(req: NextRequest) {
           }
 
           if (!screenGenerated) {
-            persistedScreens.push({
-              id: targetFrameId ?? body.frameId!,
+            persistedScreens[0] = {
+              id: regenerationFrameId,
               state: "error",
-              x: sourceFrame!.x,
-              y: sourceFrame!.y,
-              w: sourceFrame!.w,
-              h: sourceFrame!.h,
-              screenName: sourceFrame!.screenName,
+              x: sourceFrame.x,
+              y: sourceFrame.y,
+              w: sourceFrame.w,
+              h: sourceFrame.h,
+              screenName: sourceFrame.screenName,
               content: sanitizeGeneratedCode(finalCode),
               editedContent: null,
               error: `All stage 3 models failed: ${String(streamErr)}`,
-            });
+            };
 
             throw new Error(
               `All stage 3 models failed for frame ${body.frameId}: ${String(streamErr)}`,
@@ -759,24 +782,24 @@ export async function POST(req: NextRequest) {
           const frameSyntaxValidation = validateGeneratedTSX(finalCode);
           if (!frameSyntaxValidation.valid) {
             logger.warn(
-              `Frame regeneration TSX issues for '${sourceFrame!.screenName}': ${frameSyntaxValidation.issues.join("; ")}`,
+              `Frame regeneration TSX issues for '${sourceFrame.screenName}': ${frameSyntaxValidation.issues.join("; ")}`,
             );
             await write({
               type: "quality_warning",
-              screen: sourceFrame!.screenName,
+              screen: sourceFrame.screenName,
               issues: frameSyntaxValidation.issues,
               score: 0,
             });
           }
 
-          persistedScreens.push({
-            id: targetFrameId ?? body.frameId!,
+          persistedScreens[0] = {
+            id: regenerationFrameId,
             state: finalCode.trim() ? "done" : "error",
-            x: sourceFrame!.x,
-            y: sourceFrame!.y,
-            w: sourceFrame!.w,
-            h: sourceFrame!.h,
-            screenName: sourceFrame!.screenName,
+            x: sourceFrame.x,
+            y: sourceFrame.y,
+            w: sourceFrame.w,
+            h: sourceFrame.h,
+            screenName: sourceFrame.screenName,
             content: sanitizeGeneratedCode(finalCode),
             editedContent: null,
             error: finalCode.trim()
@@ -784,9 +807,13 @@ export async function POST(req: NextRequest) {
                 ? null
                 : `TSX issues: ${frameSyntaxValidation.issues.join("; ")}`
               : "Generation ended before this screen completed.",
-          });
+          };
 
-          await write({ type: "screen_done", screen: sourceFrame.screenName });
+          await write({
+            type: "screen_done",
+            screen: sourceFrame.screenName,
+            frameId: regenerationFrameId,
+          });
 
           if (generationId) {
             await prisma.$transaction([
@@ -872,6 +899,38 @@ export async function POST(req: NextRequest) {
         }));
         const positions = getGenerationLayout([], screensWithDims);
 
+        const frameAssignments = screensWithDims.map((screen, index) => ({
+          screen: screen.name,
+          frameId: crypto.randomUUID(),
+          x: positions[index]?.x ?? 100 + index * 40,
+          y: positions[index]?.y ?? 100 + index * 40,
+          w: screen.w,
+          h: screen.h,
+        }));
+
+        await write({
+          type: "layout",
+          layout: frameAssignments,
+          platform: requestedPlatform,
+        });
+
+        // Pre-populate persistedScreens with error placeholders so the abort
+        // handler always writes a complete set — no frames are ever lost.
+        persistedScreens.push(
+          ...frameAssignments.map((a) => ({
+            id: a.frameId,
+            state: "error" as const,
+            x: a.x,
+            y: a.y,
+            w: a.w,
+            h: a.h,
+            screenName: a.screen,
+            content: "",
+            editedContent: null,
+            error: "Generation was interrupted before this screen completed.",
+          })),
+        );
+
         const MAX_CRITIQUE_ITERATIONS = 3;
 
         const generateScreenWithRetry = async (
@@ -917,6 +976,7 @@ export async function POST(req: NextRequest) {
                   await write({
                     type: "screen_reset",
                     screen,
+                    frameId,
                     reason:
                       iteration > 0
                         ? `critique-retry:${iteration}`
@@ -950,7 +1010,7 @@ export async function POST(req: NextRequest) {
                 for await (const token of textStream) {
                   if (abortController.signal.aborted) break;
                   currentCode += token;
-                  await write({ type: "code_chunk", screen, token });
+                  await write({ type: "code_chunk", screen, frameId, token });
                 }
                 logger.info("Response stream complete for screen", {
                   usage: stage3Usage,
@@ -1016,21 +1076,22 @@ export async function POST(req: NextRequest) {
         };
 
         for (const [index, screen] of spec.screens.entries()) {
-          await write({ type: "screen_start", screen });
+          const assignment = frameAssignments[index];
+          await write({
+            type: "screen_start",
+            screen,
+            frameId: assignment.frameId,
+          });
 
-          const position = positions[index] ?? {
-            x: 100 + index * 40,
-            y: 100 + index * 40,
-          };
-          const dimensions = screensWithDims[index] ?? { w: 1200, h: 800 };
-          const frameId = crypto.randomUUID();
+          const position = { x: assignment.x, y: assignment.y };
+          const dimensions = { w: assignment.w, h: assignment.h };
 
           const finalResult: Awaited<ReturnType<typeof generateScreenWithRetry>> =
             await generateScreenWithRetry(
               screen,
               position,
               dimensions,
-              frameId,
+              assignment.frameId,
               stage3Prompt,
             );
 
@@ -1055,37 +1116,24 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          if (!finalResult.success) {
-            persistedScreens.push({
-              id: frameId,
-              state: "error",
-              x: position.x,
-              y: position.y,
-              w: dimensions.w,
-              h: dimensions.h,
-              screenName: screen,
-              content: finalResult.code,
-              editedContent: null,
-              error: finalResult.error,
-            });
-            await write({ type: "screen_done", screen });
-            continue;
-          }
-
-          persistedScreens.push({
-            id: frameId,
-            state: "done",
-            x: position.x,
-            y: position.y,
-            w: dimensions.w,
-            h: dimensions.h,
+          persistedScreens[index] = {
+            id: assignment.frameId,
+            state: finalResult.success ? "done" : "error",
+            x: assignment.x,
+            y: assignment.y,
+            w: assignment.w,
+            h: assignment.h,
             screenName: screen,
             content: finalResult.code,
             editedContent: null,
-            error: null,
-          });
+            error: finalResult.success ? null : finalResult.error,
+          };
 
-          await write({ type: "screen_done", screen });
+          await write({
+            type: "screen_done",
+            screen,
+            frameId: assignment.frameId,
+          });
         }
 
         if (generationId) {
@@ -1122,6 +1170,15 @@ export async function POST(req: NextRequest) {
           : err instanceof Error
             ? err.message
             : String(err);
+
+        // Ensure any placeholder error messages reflect the actual failure reason
+        if (isAbort) {
+          for (const screen of persistedScreens) {
+            if (screen.state === "error") {
+              screen.error = message;
+            }
+          }
+        }
 
         if (generationId) {
           await prisma.$transaction([

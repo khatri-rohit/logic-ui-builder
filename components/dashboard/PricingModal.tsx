@@ -598,13 +598,10 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
 
                 <Button
                   onClick={() => executeCta(plan.id, plan.cta.variant)}
-                  disabled={
-                    plan.cta.disabled ||
-                    anyLoading
-                  }
+                  disabled={plan.cta.disabled || anyLoading}
                   size="sm"
                   className={cn(
-                    "mt-5 h-9 w-full text-xs font-semibold cursor-pointer",
+                    "mt-5 h-9 w-full text-[10px] font-semibold cursor-pointer",
                     plan.cta.variant === "current"
                       ? "border border-white/8 bg-transparent text-white/30 cursor-default"
                       : plan.cta.variant === "upgrade"

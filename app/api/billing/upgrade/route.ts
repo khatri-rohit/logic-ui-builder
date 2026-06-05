@@ -116,7 +116,6 @@ export async function POST(req: NextRequest) {
         cancelAtPeriodEnd: false,
         scheduledPlanId: null,
         scheduledChangeAt: null,
-        cancelledAt: null,
       },
     });
 

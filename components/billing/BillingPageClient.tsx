@@ -31,8 +31,8 @@ export function BillingPageClient() {
     );
   }
 
-  const periodEnd = usage?.currentPeriodEnd
-    ? new Date(usage.currentPeriodEnd).toLocaleDateString("en-IN", {
+  const periodEnd = usage?.periodEnd
+    ? new Date(usage.periodEnd).toLocaleDateString("en-IN", {
         day: "numeric",
         month: "long",
         year: "numeric",

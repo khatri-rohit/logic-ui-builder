@@ -93,8 +93,8 @@ export function UpgradePageClient() {
   const [busyPlan, setBusyPlan] = useState<PlanId | null>(null);
 
   const currentPlan = usage?.planId ?? "FREE";
-  const periodEnd = usage?.currentPeriodEnd
-    ? new Date(usage.currentPeriodEnd).toLocaleDateString("en-IN", {
+  const periodEnd = usage?.periodEnd
+    ? new Date(usage.periodEnd).toLocaleDateString("en-IN", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -103,8 +103,8 @@ export function UpgradePageClient() {
 
   const isInGracePeriod =
     usage?.status === "CANCELLED" &&
-    usage?.currentPeriodEnd &&
-    new Date() < new Date(usage.currentPeriodEnd);
+    usage?.periodEnd &&
+    new Date() < new Date(usage.periodEnd);
 
   const checkoutBusy =
     checkoutState === "opening" ||

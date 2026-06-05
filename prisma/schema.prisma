@@ -74,19 +74,19 @@ model ClerkWebhookEvent {
 }
 
 model Project {
-    id            String        @id @default(cuid())
+    id            String             @id @default(cuid())
     userId        String
     title         String?
     description   String?
     initialPrompt String
-    status        ProjectStatus @default(PENDING)
+    status        ProjectStatus      @default(PENDING)
     platform      GenerationPlatform @default(WEB)
     canvasState   Json?
     thumbnailUrl  String?
-    isPublic      Boolean       @default(false)
-    shareToken    String?       @unique
-    createdAt     DateTime      @default(now())
-    updatedAt     DateTime      @updatedAt
+    isPublic      Boolean            @default(false)
+    shareToken    String?            @unique
+    createdAt     DateTime           @default(now())
+    updatedAt     DateTime           @updatedAt
 
     user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
     generations Generation[]
@@ -137,9 +137,6 @@ model Subscription {
     currentPeriodEnd   DateTime?
     billingAnchorDay   Int? // 1-31
     cancelAtPeriodEnd  Boolean   @default(false)
-    cancelledAt        DateTime?
-    trialStart         DateTime?
-    trialEnd           DateTime?
 
     // Per-user overrides (admin grants, beta access)
     generationLimit Int? // null = use plan default
@@ -153,9 +150,6 @@ model Subscription {
     chargeHaltCount     Int       @default(0) // Incremented each time Razorpay halts the subscription after repeated failures
     chargeFailureReason String? // Last failure reason from Razorpay (e.g. "insufficient_funds")
     chargeFailureAt     DateTime? // Timestamp of last failed charge
-
-    chargeSuccessAt DateTime? // Timestamp of last successful charge
-    chargeSuccesses Int       @default(0) // Total successful charges
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -246,8 +240,8 @@ model OrgInvitation {
     role           OrgMemberRole       @default(MEMBER)
     status         OrgInvitationStatus @default(PENDING)
     token          String              @unique // raw token (legacy; will be removed)
-    tokenHash      String?             // bcrypt hash of token
-    tokenPrefix    String?             // first 8 chars of raw token for lookup
+    tokenHash      String? // bcrypt hash of token
+    tokenPrefix    String? // first 8 chars of raw token for lookup
     invitedBy      String? // userId
     expiresAt      DateTime // createdAt + 7 days
     acceptedAt     DateTime?

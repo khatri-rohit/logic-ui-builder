@@ -12,18 +12,12 @@ export interface UserUsage {
   generationsUsed: number;
   generationLimit: number; // -1 = unlimited
   generationsRemaining: number; // -1 = unlimited
-  projectsCreated: number;
-  projectLimit: number;
-  projectsRemaining: number;
   frameRegenerationEnabled: boolean;
   periodStart: string;
   periodEnd: string;
   scheduledPlanId: "FREE" | "STANDARD" | "PRO" | null;
   scheduledChangeAt: string | null;
   cancelAtPeriodEnd: boolean;
-  currentPeriodEnd: string | null;
-  razorpaySubscriptionId: string | null;
-  razorpayPlanId: string | null;
   pendingPlanId: "FREE" | "STANDARD" | "PRO" | null;
   status:
     | "ACTIVE"

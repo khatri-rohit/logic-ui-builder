@@ -64,19 +64,28 @@ export async function getOrCreateUsagePeriod(
   }
 
   const now = new Date();
+  const razorpayPeriodEnd = subscription.currentPeriodEnd
+    ? new Date(subscription.currentPeriodEnd)
+    : null;
+
+  // Stale-date guard: if Razorpay currentPeriodEnd is in the past, webhooks
+  // failed to update it. Treat as missing so usage rolls over via anchor-day
+  // math instead of getting stuck in an expired period forever.
+  const razorpayDatesValid =
+    subscription.currentPeriodStart &&
+    razorpayPeriodEnd &&
+    razorpayPeriodEnd > now;
 
   // CANCELLED subscriptions with a future currentPeriodEnd are still in grace period
   const trulyDead =
     ["COMPLETED", "EXPIRED", "HALTED"].includes(subscription.status) ||
     (subscription.status === "CANCELLED" &&
-      subscription.currentPeriodEnd &&
-      now >= new Date(subscription.currentPeriodEnd));
+      (!razorpayPeriodEnd || now >= razorpayPeriodEnd));
 
   if (trulyDead) {
     return null;
   }
 
-  // const planId = subscription.planId as PlanId;
   // Use override when provided (member inheriting org PRO)
   const planId = (effectivePlanOverride ?? subscription.planId) as PlanId;
 
@@ -90,14 +99,15 @@ export async function getOrCreateUsagePeriod(
     subscription.projectLimit,
   );
 
-  // Use Razorpay period dates when available; fall back to calendar calculation
-  const periodBounds =
-    subscription.currentPeriodStart && subscription.currentPeriodEnd
-      ? {
-          periodStart: subscription.currentPeriodStart,
-          periodEnd: subscription.currentPeriodEnd,
-        }
-      : getPeriodBounds(subscription.billingAnchorDay);
+  let periodBounds: { periodStart: Date; periodEnd: Date };
+  if (razorpayDatesValid) {
+    periodBounds = {
+      periodStart: subscription.currentPeriodStart!,
+      periodEnd: subscription.currentPeriodEnd!,
+    };
+  } else {
+    periodBounds = getPeriodBounds(subscription.billingAnchorDay);
+  }
 
   // Upsert is safe for concurrent requests — @@unique constraint prevents duplicates
   const usagePeriod = await prisma.usagePeriod.upsert({

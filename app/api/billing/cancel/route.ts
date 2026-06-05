@@ -86,17 +86,20 @@ export async function POST(req: NextRequest) {
       where: { userId: authContext.appUserId },
       data: {
         status: "CANCELLED",
-        cancelledAt: new Date(),
         cancelAtPeriodEnd: false,
         scheduledPlanId: null,
         scheduledChangeAt: null,
       },
     });
 
+    const periodEndValid =
+      subscription.currentPeriodEnd &&
+      new Date(subscription.currentPeriodEnd) > new Date();
+
     return NextResponse.json({
       error: false,
       message:
-        `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${subscription.currentPeriodEnd?.toLocaleDateString("en-IN") ?? "the end of your billing period"}.`,
+        `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${periodEndValid ? subscription.currentPeriodEnd!.toLocaleDateString("en-IN") : "the end of your billing period"}.`,
       data: { planId: subscription.planId, changed: true },
     });
   } catch (error) {

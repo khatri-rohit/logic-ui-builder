@@ -125,8 +125,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     checkoutBusy;
   const currentPlan = usage?.planId ?? "FREE";
   const scheduledPlan = usage?.scheduledPlanId;
-  const periodEnd = usage?.currentPeriodEnd
-    ? new Date(usage.currentPeriodEnd).toLocaleDateString("en-IN", {
+  const periodEnd = usage?.periodEnd
+    ? new Date(usage.periodEnd).toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
         year: "numeric",
@@ -136,8 +136,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   // Grace period check
   const isInGracePeriod =
     usage?.status === "CANCELLED" &&
-    usage?.currentPeriodEnd &&
-    new Date() < new Date(usage.currentPeriodEnd);
+    usage?.periodEnd &&
+    new Date() < new Date(usage.periodEnd);
 
   const handleSubscribeOrChange = async (
     targetPlan: "FREE" | "STANDARD" | "PRO",
@@ -218,8 +218,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     // Truly dead (past grace period)
     if (
       usage?.status === "CANCELLED" &&
-      usage?.currentPeriodEnd &&
-      new Date() >= new Date(usage.currentPeriodEnd)
+      usage?.periodEnd &&
+      new Date() >= new Date(usage.periodEnd)
     ) {
       if (planId === "FREE")
         return { label: "Current Plan", variant: "current", disabled: true };
@@ -601,7 +601,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   disabled={plan.cta.disabled || anyLoading}
                   size="sm"
                   className={cn(
-                    "mt-5 h-9 w-full text-[10px] font-semibold cursor-pointer",
+                    "mt-5 min-h-9 h-auto w-full py-2 text-[10px] font-semibold leading-snug cursor-pointer whitespace-normal",
                     plan.cta.variant === "current"
                       ? "border border-white/8 bg-transparent text-white/30 cursor-default"
                       : plan.cta.variant === "upgrade"

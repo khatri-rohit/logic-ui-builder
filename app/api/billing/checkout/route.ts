@@ -122,7 +122,6 @@ export async function POST(req: NextRequest) {
         planId: "FREE", // stays FREE until webhook confirms ACTIVE
         scheduledPlanId: null,
         scheduledChangeAt: null,
-        cancelledAt: null,
         cancelAtPeriodEnd: false,
         currentPeriodEnd: null,
         currentPeriodStart: null,

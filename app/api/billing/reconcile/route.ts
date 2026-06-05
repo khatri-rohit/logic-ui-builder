@@ -106,7 +106,6 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
           needsUpdate.planId = "FREE";
           needsUpdate.razorpaySubscriptionId = null;
           needsUpdate.razorpayPlanId = null;
-          needsUpdate.cancelledAt = null;
           needsUpdate.scheduledPlanId = null;
           needsUpdate.scheduledChangeAt = null;
           mismatches++;

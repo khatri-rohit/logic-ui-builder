@@ -40,8 +40,6 @@ export async function GET(req: Request) {
         scheduledPlanId: true,
         scheduledChangeAt: true,
         cancelAtPeriodEnd: true,
-        currentPeriodEnd: true,
-        razorpaySubscriptionId: true,
         razorpayPlanId: true,
       },
     });
@@ -61,21 +59,14 @@ export async function GET(req: Request) {
         generationsUsed: usage.generationsUsed,
         generationLimit: usage.generationLimit,
         generationsRemaining: usage.generationsRemaining,
-        projectsCreated: usage.projectsCreated,
-        projectLimit: usage.projectLimit,
-        projectsRemaining: usage.projectsRemaining,
         frameRegenerationEnabled: usage.frameRegenerationEnabled,
         periodStart: usage.periodStart.toISOString(),
         periodEnd: usage.periodEnd.toISOString(),
-        // In the GET /api/usage response data object, add:
         status: subscription.status,
         scheduledPlanId: subscription.scheduledPlanId ?? null,
         scheduledChangeAt:
           subscription.scheduledChangeAt?.toISOString() ?? null,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-        razorpaySubscriptionId: subscription.razorpaySubscriptionId ?? null,
-        razorpayPlanId: subscription.razorpayPlanId ?? null,
         pendingPlanId: planFromRazorpayPlanId(subscription.razorpayPlanId),
       },
     });

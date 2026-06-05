@@ -151,7 +151,6 @@ export async function POST(req: NextRequest) {
           ? undefined
           : planFromRazorpayPlanId(razorpayPlanId),
         cancelAtPeriodEnd: isGracePeriodCancelled,
-        cancelledAt: isCancelled ? new Date() : undefined,
         currentPeriodStart: currentStart
           ? new Date(currentStart * 1000)
           : undefined,
@@ -317,12 +316,6 @@ export async function POST(req: NextRequest) {
           ? new Date(currentStart * 1000)
           : undefined,
         currentPeriodEnd: currentEnd ? new Date(currentEnd * 1000) : undefined,
-        chargeSuccessAt: currentStart
-          ? new Date(currentStart * 1000)
-          : undefined,
-        chargeSuccesses: {
-          increment: 1,
-        },
         chargeFailures: 0,
         chargeRetries: 0,
         chargeFailureReason: null,
@@ -333,7 +326,6 @@ export async function POST(req: NextRequest) {
         const rzpPlanId = sub.plan_id as string | undefined;
         updateData.planId = planFromRazorpayPlanId(rzpPlanId);
         updateData.cancelAtPeriodEnd = false;
-        updateData.cancelledAt = null;
       }
 
       await prisma.subscription.updateMany({

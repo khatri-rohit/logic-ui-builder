@@ -5,13 +5,11 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { initializeOllama } from "@/lib/ollama";
 
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import {
-  buildScreenPrompt,
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
-  STAGE3_SYSTEM,
   validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -37,15 +35,15 @@ import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 import { guardGenerationRequest } from "@/lib/plan-guard";
-import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import {
   toApiPlatform,
   toPrismaPlatform,
   buildModelPriority,
   reserveGenerationWithIdempotency,
-  createModelAbortSignal,
 } from "@/lib/generation";
 import { releaseGenerationSlot } from "@/lib/usage";
+import { runFullGeneration, runScreenGeneration } from "@/lib/execution/generationPipeline";
+import type { PipelineContext } from "@/lib/execution/types";
 
 export const runtime = "nodejs";
 
@@ -70,11 +68,6 @@ const STAGE3_MODELS = [
 const generationBodySchema = generationRequestBodySchema;
 
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
-
-function normalizePlatform(value: unknown): GenerationPlatform {
-  return value === "mobile" ? "mobile" : "web";
-}
-
 
 const MOBILE_COMPLEXITY_KEYWORDS = [
   "landing",
@@ -688,125 +681,35 @@ export async function POST(req: NextRequest) {
                 components: [],
               };
 
-          await write({
-            type: "screen_start",
-            screen: sourceFrame.screenName,
-            frameId: regenerationFrameId,
-          });
+          const framePipelineContext: PipelineContext = {
+            ollama,
+            spec,
+            tree,
+            designContext,
+            stage3ModelPriority,
+            abortController,
+            write,
+            stage3Prompt,
+          };
 
-          let screenGenerated = false;
-          let streamErr: unknown = null;
-          let finalCode = "";
-
-          for (let i = 0; i < stage3ModelPriority.length; i++) {
-            const candidateModel = stage3ModelPriority[i];
-            try {
-              if (i > 0) {
-                finalCode = "";
-                await write({
-                  type: "screen_reset",
-                  screen: sourceFrame.screenName,
-                  frameId: regenerationFrameId,
-                  reason: `retry:${candidateModel}`,
-                });
-              }
-
-              logger.info(
-                `Frame regeneration Stage 3 '${sourceFrame.screenName}' via model: ${candidateModel}`,
-              );
-              const modelSignal = createModelAbortSignal(abortController);
-              const { usage: stage3Usage, textStream } = streamText({
-                model: ollama(candidateModel),
-                system: STAGE3_SYSTEM,
-                prompt: buildScreenPrompt(
-                  spec,
-                  tree,
-                  sourceFrame.screenName,
-                  stage3Prompt,
-                  designContext,
-                ),
-                temperature: 0.2,
-                abortSignal: modelSignal,
-              });
-
-              for await (const token of textStream) {
-                if (abortController.signal.aborted) break;
-                finalCode += token;
-                await write({
-                  type: "code_chunk",
-                  screen: sourceFrame.screenName,
-                  frameId: regenerationFrameId,
-                  token,
-                });
-              }
-              logger.info("Frame regeneration response stream complete", {
-                usage: stage3Usage,
-              });
-              screenGenerated = true;
-              break;
-            } catch (err) {
-              streamErr = err;
-              logger.warn(
-                `Frame regeneration model failed '${sourceFrame.screenName}': ${candidateModel}`,
-                err,
-              );
-              if ((err as Error)?.name === "AbortError") {
-                logger.info(
-                  "Frame regeneration aborted due to client disconnect",
-                );
-                throw new Error("Aborted by client disconnect");
-              }
-            }
-          }
-
-          if (!screenGenerated) {
-            persistedScreens[0] = {
-              id: regenerationFrameId,
-              state: "error",
-              x: sourceFrame.x,
-              y: sourceFrame.y,
-              w: sourceFrame.w,
-              h: sourceFrame.h,
-              screenName: sourceFrame.screenName,
-              content: sanitizeGeneratedCode(finalCode),
-              editedContent: null,
-              error: `All stage 3 models failed: ${String(streamErr)}`,
-            };
-
-            throw new Error(
-              `All stage 3 models failed for frame ${body.frameId}: ${String(streamErr)}`,
-            );
-          }
-
-          // Validate TSX for frame regeneration but remain lenient
-          const frameSyntaxValidation = validateGeneratedTSX(finalCode);
-          if (!frameSyntaxValidation.valid) {
-            logger.warn(
-              `Frame regeneration TSX issues for '${sourceFrame.screenName}': ${frameSyntaxValidation.issues.join("; ")}`,
-            );
-            await write({
-              type: "quality_warning",
-              screen: sourceFrame.screenName,
-              issues: frameSyntaxValidation.issues,
-              score: 0,
-            });
-          }
+          const frameResult = await runScreenGeneration(
+            framePipelineContext,
+            sourceFrame.screenName,
+            regenerationFrameId,
+            stage3Prompt,
+          );
 
           persistedScreens[0] = {
             id: regenerationFrameId,
-            state: finalCode.trim() ? "done" : "error",
+            state: frameResult.success ? "done" : "error",
             x: sourceFrame.x,
             y: sourceFrame.y,
             w: sourceFrame.w,
             h: sourceFrame.h,
             screenName: sourceFrame.screenName,
-            content: sanitizeGeneratedCode(finalCode),
+            content: frameResult.code,
             editedContent: null,
-            error: finalCode.trim()
-              ? frameSyntaxValidation.valid
-                ? null
-                : `TSX issues: ${frameSyntaxValidation.issues.join("; ")}`
-              : "Generation ended before this screen completed.",
+            error: frameResult.success ? null : frameResult.error,
           };
 
           await write({
@@ -931,169 +834,34 @@ export async function POST(req: NextRequest) {
           })),
         );
 
-        const MAX_CRITIQUE_ITERATIONS = 3;
-
-        const generateScreenWithRetry = async (
-          screen: string,
-          position: { x: number; y: number },
-          dimensions: { w: number; h: number },
-          frameId: string,
-          basePrompt: string,
-        ): Promise<{
-          success: boolean;
-          code: string;
-          error: string | null;
-          iterations: number;
-        }> => {
-          let currentCode = "";
-          let iterations = 0;
-          let lastError: string | null = null;
-          let pinnedModel: string | null = null;
-
-          for (
-            let iteration = 0;
-            iteration < MAX_CRITIQUE_ITERATIONS;
-            iteration++
-          ) {
-            iterations++;
-            let screenGenerated = false;
-            let streamErr: unknown = null;
-
-            // Pin the first model that streams successfully. Only fall back to
-            // other models when the pinned model itself errors (API failure).
-            const modelsToTry: string[] = pinnedModel
-              ? [
-                  pinnedModel,
-                  ...stage3ModelPriority.filter((m) => m !== pinnedModel),
-                ]
-              : stage3ModelPriority;
-
-            for (let modelIdx = 0; modelIdx < modelsToTry.length; modelIdx++) {
-              const candidateModel = modelsToTry[modelIdx];
-              try {
-                if (modelIdx > 0 || iteration > 0) {
-                  currentCode = "";
-                  await write({
-                    type: "screen_reset",
-                    screen,
-                    frameId,
-                    reason:
-                      iteration > 0
-                        ? `critique-retry:${iteration}`
-                        : `retry:${candidateModel}`,
-                  });
-                }
-
-                const promptWithFixes =
-                  iteration > 0 && lastError
-                    ? `${basePrompt}\n\nCRITICAL FIXES NEEDED:\n${lastError}`
-                    : basePrompt;
-
-                logger.info(
-                  `Stage 3 screen '${screen}' iteration ${iteration} via model: ${candidateModel}`,
-                );
-                const modelSignal = createModelAbortSignal(abortController);
-                const { usage: stage3Usage, textStream } = streamText({
-                  model: ollama(candidateModel),
-                  system: STAGE3_SYSTEM,
-                  prompt: buildScreenPrompt(
-                    spec,
-                    tree,
-                    screen,
-                    promptWithFixes,
-                    designContext,
-                  ),
-                  temperature: 0.2,
-                  abortSignal: modelSignal,
-                });
-
-                for await (const token of textStream) {
-                  if (abortController.signal.aborted) break;
-                  currentCode += token;
-                  await write({ type: "code_chunk", screen, frameId, token });
-                }
-                logger.info("Response stream complete for screen", {
-                  usage: stage3Usage,
-                });
-                screenGenerated = true;
-                if (!pinnedModel) pinnedModel = candidateModel;
-                break;
-              } catch (err) {
-                streamErr = err;
-                logger.warn(
-                  `Stage 3 model failed for '${screen}' iteration ${iteration}: ${candidateModel}`,
-                  err,
-                );
-                if ((err as Error)?.name === "AbortError") {
-                  logger.info("Generation aborted due to client disconnect");
-                  throw new Error("Aborted by client disconnect");
-                }
-              }
-            }
-
-            if (!screenGenerated) {
-              return {
-                success: false,
-                code: currentCode,
-                error: `All models failed: ${String(streamErr)}`,
-                iterations,
-              };
-            }
-
-            const syntaxValidation = validateGeneratedTSX(currentCode);
-            if (syntaxValidation.valid) {
-              return {
-                success: true,
-                code: sanitizeGeneratedCode(currentCode),
-                error: null,
-                iterations,
-              };
-            }
-
-            lastError = syntaxValidation.issues.join("; ");
-            logger.info(
-              `Screen '${screen}' TSX validation failed, retry ${iteration + 1}/${MAX_CRITIQUE_ITERATIONS}:`,
-              {
-                issues: lastError,
-              },
-            );
-
-            await write({
-              type: "quality_warning",
-              screen,
-              issues: syntaxValidation.issues,
-              score: 0,
-            });
-          }
-
-          const isValid = validateGeneratedTSX(currentCode).valid;
-          return {
-            success: isValid,
-            code: sanitizeGeneratedCode(currentCode),
-            error: isValid ? null : (lastError || "Max retries reached without valid TSX"),
-            iterations,
-          };
+        const pipelineContext: PipelineContext = {
+          ollama,
+          spec,
+          tree,
+          designContext,
+          stage3ModelPriority,
+          abortController,
+          write,
+          stage3Prompt,
         };
 
-        for (const [index, screen] of spec.screens.entries()) {
-          const assignment = frameAssignments[index];
-          await write({
-            type: "screen_start",
-            screen,
-            frameId: assignment.frameId,
-          });
+        const screenJobs = frameAssignments.map((a) => ({
+          screen: a.screen,
+          frameId: a.frameId,
+          position: { x: a.x, y: a.y },
+          dimensions: { w: a.w, h: a.h },
+        }));
 
-          const position = { x: assignment.x, y: assignment.y };
-          const dimensions = { w: assignment.w, h: assignment.h };
+        const screenResults = await runFullGeneration(
+          pipelineContext,
+          screenJobs,
+          stage3Prompt,
+        );
 
-          const finalResult: Awaited<ReturnType<typeof generateScreenWithRetry>> =
-            await generateScreenWithRetry(
-              screen,
-              position,
-              dimensions,
-              assignment.frameId,
-              stage3Prompt,
-            );
+        for (let i = 0; i < spec.screens.length; i++) {
+          const screen = spec.screens[i];
+          const assignment = frameAssignments[i];
+          const finalResult = screenResults[i];
 
           // Lenient quality check: warn only, never block persistence
           if (finalResult.success && finalResult.code) {
@@ -1116,7 +884,7 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          persistedScreens[index] = {
+          persistedScreens[i] = {
             id: assignment.frameId,
             state: finalResult.success ? "done" : "error",
             x: assignment.x,

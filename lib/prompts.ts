@@ -21,34 +21,8 @@ export function normalizeHexColor(hex: string): string {
   return hex;
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  issues: string[];
-}
-
-export function validateGeneratedTSX(code: string): ValidationResult {
-  const issues: string[] = [];
-
-  const braceCount = (code.match(/{/g) || []).length;
-  const closeBraceCount = (code.match(/}/g) || []).length;
-  if (braceCount !== closeBraceCount) {
-    issues.push("Unbalanced braces");
-  }
-
-  const openTags = (code.match(/<[A-Z][a-zA-Z]*[^/>]*>/g) || []).length +
-    (code.match(/<[a-z][a-z0-9-]*\b[^/>]*?(?<!\/)>/g) || []).length;
-  const closeTags = (code.match(/<\/[A-Z][a-zA-Z]*>/g) || []).length +
-    (code.match(/<\/[a-z][a-z0-9-]*>/g) || []).length;
-  if (openTags !== closeTags) {
-    issues.push("Unclosed JSX tags");
-  }
-
-  if (!code.includes("export default GeneratedScreen")) {
-    issues.push("Missing default export");
-  }
-
-  return { valid: issues.length === 0, issues };
-}
+export type { ValidationResult } from "./validation/engine";
+export { validateGeneratedTSX } from "./validation/engine";
 
 
 const IMPORT_ALLOWLIST = [

@@ -34,25 +34,6 @@ export function buildModelPriority(
   return [preferredModel, ...defaults];
 }
 
-export function createModelAbortSignal(
-  controller: AbortController,
-  timeoutMs = 120_000,
-): AbortSignal {
-  if (typeof AbortSignal.any === "function") {
-    return AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(timeoutMs),
-    ]);
-  }
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
-  controller.signal.addEventListener("abort", () => {
-    clearTimeout(timeoutId);
-    timeoutController.abort();
-  });
-  return timeoutController.signal;
-}
-
 export async function reserveGenerationWithIdempotency(
   tx: Prisma.TransactionClient,
   data: {

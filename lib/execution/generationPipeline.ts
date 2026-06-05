@@ -3,7 +3,7 @@ import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import { validateGeneratedTSX } from "@/lib/validation/engine";
 import { validateCompile } from "@/lib/validation/compileValidator";
 import logger from "@/lib/logger";
-import { PipelineContext, ScreenResult } from "./types";
+import { PipelineContext, ScreenResult, OnScreenComplete } from "./types";
 import { executeModel } from "./modelExecutor";
 
 const MAX_CONCURRENT_SCREENS = 2;
@@ -164,6 +164,7 @@ export async function runFullGeneration(
   context: PipelineContext,
   screens: ScreenJob[],
   basePrompt: string,
+  onScreenComplete?: OnScreenComplete,
 ): Promise<ScreenResult[]> {
   const { write } = context;
 
@@ -182,15 +183,16 @@ export async function runFullGeneration(
   for (let i = 0; i < screens.length; i += MAX_CONCURRENT_SCREENS) {
     const chunk = screens.slice(i, i + MAX_CONCURRENT_SCREENS);
 
-    const chunkResults = await Promise.all(
-      chunk.map((job) =>
-        runScreenGeneration(context, job.screen, job.frameId, basePrompt),
+    const promises = chunk.map((job, chunkIdx) =>
+      runScreenGeneration(context, job.screen, job.frameId, basePrompt).then(
+        (result) => {
+          results[i + chunkIdx] = result;
+          onScreenComplete?.(i + chunkIdx, result);
+        },
       ),
     );
 
-    for (let j = 0; j < chunk.length; j++) {
-      results[i + j] = chunkResults[j];
-    }
+    await Promise.all(promises);
   }
 
   return results;

@@ -47,3 +47,8 @@ export interface ModelExecutorOptions {
   modelTimeoutMs?: number;
   onToken?: (token: string) => void | Promise<void>;
 }
+
+export type OnScreenComplete = (
+  index: number,
+  result: ScreenResult,
+) => void | Promise<void>;

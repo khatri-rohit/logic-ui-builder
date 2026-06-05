@@ -852,16 +852,12 @@ export async function POST(req: NextRequest) {
           dimensions: { w: a.w, h: a.h },
         }));
 
-        const screenResults = await runFullGeneration(
-          pipelineContext,
-          screenJobs,
-          stage3Prompt,
-        );
-
-        for (let i = 0; i < spec.screens.length; i++) {
+        const onScreenComplete = async (
+          i: number,
+          finalResult: Awaited<ReturnType<typeof runScreenGeneration>>,
+        ) => {
           const screen = spec.screens[i];
           const assignment = frameAssignments[i];
-          const finalResult = screenResults[i];
 
           // Lenient quality check: warn only, never block persistence
           if (finalResult.success && finalResult.code) {
@@ -902,7 +898,25 @@ export async function POST(req: NextRequest) {
             screen,
             frameId: assignment.frameId,
           });
-        }
+
+          // Eager DB persistence: write completed screens immediately so a
+          // mid-generation disconnect doesn't lose already-finished frames.
+          if (generationId) {
+            await prisma.generation.update({
+              where: { id: generationId },
+              data: {
+                screens: persistedScreens as unknown as Prisma.InputJsonValue,
+              },
+            });
+          }
+        };
+
+        await runFullGeneration(
+          pipelineContext,
+          screenJobs,
+          stage3Prompt,
+          onScreenComplete,
+        );
 
         if (generationId) {
           await prisma.$transaction([

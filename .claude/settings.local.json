@@ -1,15 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:stitch.withgoogle.com)",
-      "mcp__plugin_context7_context7__resolve-library-id",
-      "mcp__plugin_context7_context7__query-docs",
-      "Bash(npx tsc *)",
-      "WebSearch",
-      "Bash(npm run *)"
+      "Bash(git log *)",
+      "Bash(npx prisma *)"
     ]
-  },
-  "enabledPlugins": {
-    "claude-md-management@claude-plugins-official": true
   }
 }

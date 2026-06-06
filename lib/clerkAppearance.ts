@@ -141,10 +141,6 @@ export const clerkUserButtonAppearance = {
       fontSize: "12px",
       lineHeight: 1,
       fontWeight: 700,
-      "&:empty::before": {
-        content: '"👑"',
-        display: "block",
-      },
     },
     userButtonPopoverFooter: {
       borderTop: "1px solid #232323",

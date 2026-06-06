@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { JetBrains_Mono } from "next/font/google";
 import { useRouter } from "next/navigation";
-import { Crown, Loader2, LucideIcon, CreditCard, Building2 } from "lucide-react";
+import { Loader2, LucideIcon } from "lucide-react";
 import {
   ArrowUp,
   Bolt,
@@ -22,15 +22,12 @@ import { toast } from "sonner";
 import { useSpeechRecognition } from "../../lib/hooks/useSpeechRecognition";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
-import {
-  clerkUserButtonAppearance,
-  clerkUserProfileAppearance,
-} from "@/lib/clerkAppearance";
 import SideBar from "./SideBar";
+import UserMenu from "./UserMenu";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
+import { useUsageQuery } from "@/lib/billing/queries";
 import { PricingModal } from "./PricingModal";
 
 const mono = JetBrains_Mono({
@@ -86,6 +83,7 @@ const Dashboard = () => {
 
   const shouldReduceMotion = useReducedMotion();
   const { data: org } = useOrgQuery();
+  const { data: usage } = useUsageQuery();
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -251,28 +249,7 @@ const Dashboard = () => {
           </span>
         )}
         <div className="flex items-center gap-2">
-          <UserButton
-            appearance={clerkUserButtonAppearance}
-            userProfileProps={{ appearance: clerkUserProfileAppearance }}
-          >
-            <UserButton.MenuItems>
-              <UserButton.Action
-                label="Manage Subscription"
-                labelIcon={<Crown size={14} strokeWidth={1.8} />}
-                onClick={() => setPricingModalOpen(true)}
-              />
-              <UserButton.Action
-                label="Billing"
-                labelIcon={<CreditCard size={14} strokeWidth={1.8} />}
-                onClick={() => router.push("/billing")}
-              />
-              <UserButton.Action
-                label="Organisations"
-                labelIcon={<Building2 size={14} strokeWidth={1.8} />}
-                onClick={() => router.push("/org")}
-              />
-            </UserButton.MenuItems>
-          </UserButton>
+          <UserMenu onOpenPricing={() => setPricingModalOpen(true)} />
 
           <Button
             ref={launcherButtonRef}

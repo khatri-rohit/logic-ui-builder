@@ -3,10 +3,110 @@ import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import { validateGeneratedTSX } from "@/lib/validation/engine";
 import { validateCompile } from "@/lib/validation/compileValidator";
 import logger from "@/lib/logger";
-import { PipelineContext, ScreenResult, OnScreenComplete } from "./types";
+import {
+  PipelineContext,
+  ScreenResult,
+  OnScreenComplete,
+  TelemetryPayload,
+} from "./types";
 import { executeModel } from "./modelExecutor";
+import { classifyScreen, ScreenClass, buildDynamicModelPriority } from "./modelRouter";
+import { buildRepairPrompt } from "./repairPrompt";
+import prisma from "@/lib/prisma";
 
 const MAX_CONCURRENT_SCREENS = 2;
+
+async function logTelemetry(payload: TelemetryPayload) {
+  try {
+    await prisma.generationTelemetry.create({
+      data: {
+        generationId: payload.generationId,
+        screenName: payload.screenName,
+        model: payload.model,
+        stage: payload.stage,
+        success: payload.success,
+        latencyMs: payload.latencyMs,
+        tokenCount: payload.tokenCount,
+        errorType: payload.errorType,
+        screenClass: payload.screenClass,
+      },
+    });
+  } catch (err) {
+    logger.warn("Failed to write generation telemetry", err);
+  }
+}
+
+async function attemptRepair(
+  context: PipelineContext,
+  screen: string,
+  frameId: string,
+  candidateModel: string,
+  brokenCode: string,
+  tsDiagnostics: ReturnType<typeof validateGeneratedTSX>["diagnostics"],
+  compileDiagnostics: Awaited<ReturnType<typeof validateCompile>>["diagnostics"],
+  eventPrefix: "screen" | "frame",
+): Promise<{ success: boolean; code: string } | null> {
+  const { ollama, abortController, write } = context;
+
+  if (abortController.signal.aborted) {
+    return null;
+  }
+
+  logger.info(
+    `Attempting repair for '${screen}' on ${candidateModel} before falling back`,
+  );
+
+  await write({
+    type: `${eventPrefix}_reset`,
+    screen,
+    frameId,
+    reason: `repair:${candidateModel}`,
+  });
+
+  const { system, prompt } = buildRepairPrompt(
+    brokenCode,
+    { tsDiagnostics, compileDiagnostics },
+    STAGE3_SYSTEM,
+    context.stage3Prompt,
+  );
+
+  const repairStart = Date.now();
+  const repairResult = await executeModel({
+    ollama,
+    model: candidateModel,
+    system,
+    prompt,
+    temperature: 0.1,
+    abortController,
+    async onToken(token) {
+      await write({ type: "code_chunk", screen, frameId, token });
+    },
+  });
+
+  if (!repairResult.success || abortController.signal.aborted) {
+    return null;
+  }
+
+  const repairedCode = sanitizeGeneratedCode(repairResult.code);
+  const tsValidation = validateGeneratedTSX(repairedCode);
+  if (!tsValidation.valid) {
+    logger.info(
+      `Repair attempt failed TSX validation on ${candidateModel}: ${tsValidation.issues.join("; ")}`,
+    );
+    return { success: false, code: repairedCode };
+  }
+
+  const compileValidation = await validateCompile(repairedCode);
+  if (!compileValidation.valid) {
+    logger.info(
+      `Repair attempt failed compile validation on ${candidateModel}: ${compileValidation.issues.join("; ")}`,
+    );
+    return { success: false, code: repairedCode };
+  }
+
+  logger.info(`Repair succeeded on ${candidateModel}`);
+  return { success: true, code: repairedCode };
+}
 
 export async function runScreenGeneration(
   context: PipelineContext,
@@ -23,13 +123,26 @@ export async function runScreenGeneration(
     stage3ModelPriority,
     abortController,
     write,
+    generationId,
   } = context;
+
+  const screenClass = classifyScreen(spec, screen, tree);
+
+  // Dynamic model routing: re-rank priority for this screen's complexity class
+  const dynamicPriority = await buildDynamicModelPriority(
+    stage3ModelPriority,
+    screenClass,
+    null, // preferredModel is already at the front of stage3ModelPriority
+  );
 
   let lastError: string | null = null;
   let iterations = 0;
   let currentCode = "";
 
-  for (const candidateModel of stage3ModelPriority) {
+  for (const candidateModel of dynamicPriority) {
+    const attemptStart = Date.now();
+    let errorType: string | null = null;
+
     if (abortController.signal.aborted) {
       return {
         success: false,
@@ -79,8 +192,28 @@ export async function runScreenGeneration(
       },
     });
 
+    const latencyMs = Date.now() - attemptStart;
+
     if (!result.success) {
+      errorType =
+        result.reason === "client_abort"
+          ? "client_abort"
+          : result.reason === "timeout"
+            ? "timeout"
+            : "model_error";
+
       if (result.reason === "client_abort") {
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "stage3",
+          success: false,
+          latencyMs,
+          tokenCount: null,
+          errorType,
+          screenClass,
+        });
         return {
           success: false,
           code: currentCode,
@@ -93,15 +226,27 @@ export async function runScreenGeneration(
         `Stage 3 model failed for '${screen}': ${candidateModel} (reason: ${result.reason})`,
         result.error,
       );
+
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: null,
+        errorType,
+        screenClass,
+      });
       continue;
     }
 
     currentCode = result.code;
-    // logger.info("Code : ", currentCode);
     // Layer 1: TS parser validation
     const tsValidation = validateGeneratedTSX(currentCode);
     if (!tsValidation.valid) {
       lastError = tsValidation.issues.join("; ");
+      errorType = "parse_error";
       logger.info(
         `${eventPrefix} '${screen}' TSX validation failed on ${candidateModel}: ${lastError}`,
       );
@@ -111,6 +256,76 @@ export async function runScreenGeneration(
         issues: tsValidation.issues,
         score: 0,
       });
+
+      // Attempt repair before falling back to next model
+      const repair = await attemptRepair(
+        context,
+        screen,
+        frameId,
+        candidateModel,
+        currentCode,
+        tsValidation.diagnostics,
+        [],
+        eventPrefix,
+      );
+
+      const repairLatency = Date.now() - attemptStart;
+
+      if (repair?.success) {
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "stage3",
+          success: false,
+          latencyMs,
+          tokenCount: result.usage?.totalTokens ?? null,
+          errorType,
+          screenClass,
+        });
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "repair",
+          success: true,
+          latencyMs: repairLatency,
+          tokenCount: null,
+          errorType: null,
+          screenClass,
+        });
+        return {
+          success: true,
+          code: repair.code,
+          error: null,
+          iterations,
+        };
+      }
+
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      if (repair) {
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "repair",
+          success: false,
+          latencyMs: repairLatency,
+          tokenCount: null,
+          errorType: "parse_error",
+          screenClass,
+        });
+      }
       continue;
     }
 
@@ -119,6 +334,7 @@ export async function runScreenGeneration(
     const compileValidation = await validateCompile(sanitized);
     if (!compileValidation.valid) {
       lastError = compileValidation.issues.join("; ");
+      errorType = "compile_error";
       logger.info(
         `${eventPrefix} '${screen}' compile validation failed on ${candidateModel}: ${lastError}`,
       );
@@ -128,10 +344,92 @@ export async function runScreenGeneration(
         issues: compileValidation.issues,
         score: 0,
       });
+
+      // Attempt repair before falling back to next model
+      const repair = await attemptRepair(
+        context,
+        screen,
+        frameId,
+        candidateModel,
+        sanitized,
+        [],
+        compileValidation.diagnostics,
+        eventPrefix,
+      );
+
+      const repairLatency = Date.now() - attemptStart;
+
+      if (repair?.success) {
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "stage3",
+          success: false,
+          latencyMs,
+          tokenCount: result.usage?.totalTokens ?? null,
+          errorType,
+          screenClass,
+        });
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "repair",
+          success: true,
+          latencyMs: repairLatency,
+          tokenCount: null,
+          errorType: null,
+          screenClass,
+        });
+        return {
+          success: true,
+          code: repair.code,
+          error: null,
+          iterations,
+        };
+      }
+
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      if (repair) {
+        void logTelemetry({
+          generationId: generationId ?? "",
+          screenName: screen,
+          model: candidateModel,
+          stage: "repair",
+          success: false,
+          latencyMs: repairLatency,
+          tokenCount: null,
+          errorType: "compile_error",
+          screenClass,
+        });
+      }
       continue;
     }
 
     // Both validations passed
+    void logTelemetry({
+      generationId: generationId ?? "",
+      screenName: screen,
+      model: candidateModel,
+      stage: "stage3",
+      success: true,
+      latencyMs,
+      tokenCount: result.usage?.totalTokens ?? null,
+      errorType: null,
+      screenClass,
+    });
+
     return {
       success: true,
       code: sanitized,

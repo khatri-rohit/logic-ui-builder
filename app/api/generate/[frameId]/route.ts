@@ -453,6 +453,7 @@ export async function POST(
           abortController,
           write,
           stage3Prompt: regeneratePrompt,
+          generationId,
         };
 
         const frameResult = await runScreenGeneration(

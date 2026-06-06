@@ -36,7 +36,22 @@ export async function executeModel(
       await options.onToken?.(token);
     }
 
-    return { success: true, code, usage };
+    let resolvedUsage: { promptTokens: number; completionTokens: number; totalTokens: number } | null = null;
+    try {
+      const u = await usage;
+      const pt = (u as { promptTokens?: number }).promptTokens ?? 0;
+      const ct = (u as { completionTokens?: number }).completionTokens ?? 0;
+      const tt = (u as { totalTokens?: number }).totalTokens ?? pt + ct;
+      resolvedUsage = {
+        promptTokens: pt,
+        completionTokens: ct,
+        totalTokens: tt,
+      };
+    } catch {
+      resolvedUsage = null;
+    }
+
+    return { success: true, code, usage: resolvedUsage };
   } catch (err) {
     const clientAborted = abortController.signal.aborted;
     const timeoutAborted =

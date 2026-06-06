@@ -1,10 +1,17 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "@/lib/types";
 import { initializeOllama } from "@/lib/ollama";
+import type { ScreenClass } from "./modelRouter";
+
+export interface ModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
 
 export interface ModelResult {
   success: true;
   code: string;
-  usage: unknown;
+  usage: ModelUsage | null;
 }
 
 export interface ModelFailure {
@@ -35,6 +42,26 @@ export interface PipelineContext {
   abortController: AbortController;
   write: WriteFunction;
   stage3Prompt: string;
+  screenClass?: ScreenClass;
+  generationId?: string | null;
+}
+
+export interface TelemetryPayload {
+  generationId: string;
+  screenName: string;
+  model: string;
+  stage: "stage3" | "repair" | "stage1" | "stage2";
+  success: boolean;
+  latencyMs: number;
+  tokenCount: number | null;
+  errorType: string | null;
+  screenClass: ScreenClass | null;
+}
+
+export interface RepairResult {
+  success: boolean;
+  code: string;
+  error: string | null;
 }
 
 export interface ModelExecutorOptions {

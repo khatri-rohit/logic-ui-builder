@@ -120,6 +120,23 @@ model Generation {
     @@map("Generation")
 }
 
+model GenerationTelemetry {
+    id           String   @id @default(cuid())
+    generationId String
+    screenName   String
+    model        String
+    stage        String // "stage3" | "repair" | "stage1" | "stage2"
+    success      Boolean
+    latencyMs    Int
+    tokenCount   Int?
+    errorType    String? // "parse_error" | "compile_error" | "timeout" | "client_abort" | "model_error"
+    screenClass  String? // e.g. "simple-static", "data-heavy"
+    createdAt    DateTime @default(now())
+
+    @@index([model, screenClass, createdAt])
+    @@index([generationId])
+}
+
 model Subscription {
     id     String             @id @default(cuid())
     userId String             @unique

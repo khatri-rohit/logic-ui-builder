@@ -690,6 +690,7 @@ export async function POST(req: NextRequest) {
             abortController,
             write,
             stage3Prompt,
+            generationId,
           };
 
           const frameResult = await runScreenGeneration(
@@ -843,6 +844,7 @@ export async function POST(req: NextRequest) {
           abortController,
           write,
           stage3Prompt,
+          generationId,
         };
 
         const screenJobs = frameAssignments.map((a) => ({

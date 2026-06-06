@@ -1,22 +1,32 @@
 import * as ts from "typescript";
 
+export interface ValidationDiagnostic {
+  message: string;
+  line?: number;
+  col?: number;
+}
+
 export interface ValidationResult {
   valid: boolean;
   issues: string[];
+  diagnostics: ValidationDiagnostic[];
 }
 
 export function validateGeneratedTSX(code: string): ValidationResult {
   const issues: string[] = [];
+  const diagnostics: ValidationDiagnostic[] = [];
 
   // Fast structural checks
   const openBraces = (code.match(/{/g) || []).length;
   const closeBraces = (code.match(/}/g) || []).length;
   if (openBraces !== closeBraces) {
     issues.push("Unbalanced braces");
+    diagnostics.push({ message: "Unbalanced braces" });
   }
 
   if (!code.includes("export default GeneratedScreen")) {
     issues.push("Missing default export");
+    diagnostics.push({ message: "Missing default export 'export default GeneratedScreen'" });
   }
 
   // TS parser check — only syntax errors, not semantic/type errors
@@ -35,12 +45,17 @@ export function validateGeneratedTSX(code: string): ValidationResult {
     ) ?? [];
 
   if (parseErrors.length > 0) {
-    issues.push(
-      ...parseErrors.map((d: ts.Diagnostic) =>
-        ts.flattenDiagnosticMessageText(d.messageText, "\n"),
-      ),
-    );
+    for (const d of parseErrors) {
+      const message = ts.flattenDiagnosticMessageText(d.messageText, "\n");
+      issues.push(message);
+      if (typeof d.start === "number") {
+        const { line, character } = ts.getLineAndCharacterOfPosition(sourceFile, d.start);
+        diagnostics.push({ message, line: line + 1, col: character + 1 });
+      } else {
+        diagnostics.push({ message });
+      }
+    }
   }
 
-  return { valid: issues.length === 0, issues };
+  return { valid: issues.length === 0, issues, diagnostics };
 }

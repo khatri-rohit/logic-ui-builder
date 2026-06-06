@@ -100,7 +100,7 @@ type GenerationEvent =
   | { type: "screen_start"; screen: string; frameId: string }
   | { type: "screen_reset"; screen: string; frameId: string; reason?: string }
   | { type: "code_chunk"; screen: string; frameId: string; token: string }
-  | { type: "screen_done"; screen: string; frameId: string }
+  | { type: "screen_done"; screen: string; frameId: string; content?: string; error?: string | null }
   | { type: "done" }
   | { type: "error"; message: string }
   | { type: "design_context"; designContext: unknown }
@@ -1179,12 +1179,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       const runtime = getStudioRuntime();
       const frameId = event.frameId;
 
-      const finalCode = runtime.screenBuffers[event.screen] ?? "";
+      // Watch stream provides content directly; live generation uses buffer
+      const finalCode = event.content ?? runtime.screenBuffers[event.screen] ?? "";
       const hasRenderableContent = finalCode.trim().length > 0;
-      const nextState: FrameState = hasRenderableContent ? "done" : "error";
-      const nextError = hasRenderableContent
-        ? null
-        : "Generation ended before this screen completed.";
+      const nextState: FrameState = hasRenderableContent
+        ? "done"
+        : (event.error ? "error" : "error");
+      const nextError = event.error ?? (
+        hasRenderableContent
+          ? null
+          : "Generation ended before this screen completed."
+      );
       const frame = framesRef.current.get(frameId);
       const generationId =
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
@@ -1314,6 +1319,143 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       updateProjectStatus({ id: projectId, status: "ACTIVE" });
       emitGenerationReviewLog("error");
       scheduleSnapshotPersist(resolvePersistGenerationId());
+    }
+  };
+
+  const connectWatchStream = async (runningGenerationId: string) => {
+    try {
+      const response = await fetch(
+        `/api/generate/watch/${runningGenerationId}`,
+        {
+          credentials: "include",
+        },
+      );
+
+      if (!response.ok || !response.body) {
+        logger.warn("Watch stream connection failed", {
+          status: response.status,
+        });
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = "";
+
+      const processLines = (lines: string[]) => {
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const raw = line.slice(5).trim();
+          if (!raw) continue;
+          if (raw === "[DONE]") return true;
+
+          try {
+            const event = JSON.parse(raw) as GenerationEvent;
+            if (event.type === "done" || event.type === "error") {
+              handleEvent(event, getStudioRuntime().generationToken);
+              return true;
+            }
+            handleEvent(event, getStudioRuntime().generationToken);
+          } catch {
+            logger.warn("Malformed watch SSE payload", raw.slice(0, 200));
+          }
+        }
+        return false;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split(/\r?\n/);
+          sseBuffer = lines.pop() ?? "";
+          if (processLines(lines)) {
+            stopChunkFlusher();
+            return;
+          }
+        }
+        if (done) {
+          sseBuffer += decoder.decode();
+          if (sseBuffer) {
+            processLines(sseBuffer.split(/\r?\n/));
+          }
+          break;
+        }
+      }
+    } catch (err) {
+      logger.warn("Watch stream error", err);
+    }
+  };
+
+  const reconnectToRunningGeneration = async () => {
+    if (!project) return;
+
+    const runningGeneration = project.generations.find(
+      (g) => g.status === "RUNNING",
+    );
+    if (!runningGeneration) return;
+
+    const generationId = runningGeneration.generationId;
+    if (!generationId) return;
+
+    setIsGenerating(true);
+
+    try {
+      const res = await fetch(`/api/generate/status/${generationId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setIsGenerating(false);
+        return;
+      }
+
+      const body = (await res.json()) as {
+        data?: {
+          status: string;
+          screens: Array<{
+            id: string;
+            screenName: string;
+            state: FrameState;
+            content: string;
+            error: string | null;
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+          }>;
+          pendingScreens: string[];
+        };
+      };
+      const data = body.data;
+      if (!data) {
+        setIsGenerating(false);
+        return;
+      }
+
+      // Hydrate already-done/error frames
+      for (const screen of data.screens) {
+        if (screen.state === "done" || screen.state === "error") {
+          handleEvent(
+            {
+              type: "screen_done",
+              screen: screen.screenName,
+              frameId: screen.id,
+              content: screen.content,
+              error: screen.error,
+            },
+            getStudioRuntime().generationToken,
+          );
+        }
+      }
+
+      if (data.status === "RUNNING" && data.pendingScreens.length > 0) {
+        // Connect to watch stream to observe remaining screens
+        await connectWatchStream(generationId);
+      }
+    } catch (err) {
+      logger.warn("Reconnect to running generation failed", err);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -2523,6 +2665,14 @@ npm run dev
       }
       setRuntimeHydrated(true);
       recoverStalledFrames();
+
+      // Reconnect to any running generation so mid-refresh users don't lose progress
+      const runningGeneration = project.generations.find(
+        (g) => g.status === "RUNNING",
+      );
+      if (runningGeneration && !isGenerating) {
+        void reconnectToRunningGeneration();
+      }
     }
 
     if (

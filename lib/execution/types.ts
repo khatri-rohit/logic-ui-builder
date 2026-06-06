@@ -58,12 +58,6 @@ export interface TelemetryPayload {
   screenClass: ScreenClass | null;
 }
 
-export interface RepairResult {
-  success: boolean;
-  code: string;
-  error: string | null;
-}
-
 export interface ModelExecutorOptions {
   ollama: ReturnType<typeof initializeOllama>;
   model: string;

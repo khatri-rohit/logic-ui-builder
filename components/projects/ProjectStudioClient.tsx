@@ -111,7 +111,7 @@ type FrameGenerationEvent =
   | { type: "frame_start"; frameId: string; screen: string }
   | { type: "frame_reset"; frameId: string; screen: string; reason?: string }
   | { type: "code_chunk"; frameId: string; token: string }
-  | { type: "frame_done"; frameId: string; screen: string }
+  | { type: "frame_done"; frameId: string; screen: string; content?: string; error?: string | null }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -2393,6 +2393,9 @@ npm run dev
 
               if (event.type === "frame_done") {
                 flushChunk();
+                if (event.content) {
+                  streamedContent = event.content;
+                }
                 continue;
               }
 

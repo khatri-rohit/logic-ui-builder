@@ -512,6 +512,8 @@ export async function POST(
           type: "frame_done",
           frameId: responseFrameId,
           screen: sourceFrame.screenName,
+          content: generatedCode,
+          error: frameResult.success ? null : frameResult.error,
         });
         await write({ type: "done" });
       } catch (error) {

@@ -717,6 +717,8 @@ export async function POST(req: NextRequest) {
             type: "screen_done",
             screen: sourceFrame.screenName,
             frameId: regenerationFrameId,
+            content: frameResult.code,
+            error: frameResult.success ? null : frameResult.error,
           });
 
           if (generationId) {
@@ -899,6 +901,8 @@ export async function POST(req: NextRequest) {
             type: "screen_done",
             screen,
             frameId: assignment.frameId,
+            content: finalResult.code,
+            error: finalResult.success ? null : finalResult.error,
           });
 
           // Eager DB persistence: write completed screens immediately so a

@@ -24,9 +24,9 @@ export function validateGeneratedTSX(code: string): ValidationResult {
     diagnostics.push({ message: "Unbalanced braces" });
   }
 
-  if (!code.includes("export default GeneratedScreen")) {
+  if (!/export\s+default\s+\w+/.test(code)) {
     issues.push("Missing default export");
-    diagnostics.push({ message: "Missing default export 'export default GeneratedScreen'" });
+    diagnostics.push({ message: "Missing default export" });
   }
 
   // TS parser check — only syntax errors, not semantic/type errors

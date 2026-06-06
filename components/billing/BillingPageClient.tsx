@@ -1,12 +1,23 @@
 "use client";
 import { useState } from "react";
-import { useUsageQuery } from "@/lib/billing/queries";
+import { useUsageQuery, useInvoicesQuery, type Invoice } from "@/lib/billing/queries";
 import { Button } from "@/components/ui/button";
 import { PricingModal } from "../dashboard/PricingModal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { formatDate, formatDateRange, formatCurrency } from "@/lib/format";
+import { Receipt, ExternalLink, Calendar, CreditCard } from "lucide-react";
 
 export function BillingPageClient() {
   const { data: usage, isLoading } = useUsageQuery();
+  const { data: invoices, isLoading: invoicesLoading } = useInvoicesQuery();
   const [showPricing, setShowPricing] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   if (isLoading) {
     return (
@@ -32,11 +43,7 @@ export function BillingPageClient() {
   }
 
   const periodEnd = usage?.periodEnd
-    ? new Date(usage.periodEnd).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+    ? formatDate(usage.periodEnd, { month: "long", year: true })
     : null;
 
   return (
@@ -88,6 +95,156 @@ export function BillingPageClient() {
         </div>
 
         <PricingModal open={showPricing} onOpenChange={setShowPricing} />
+
+        {/* Invoice History */}
+        <div className="mt-8">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <Receipt className="h-5 w-5 text-white/60" />
+            Invoice History
+          </h2>
+
+          {invoicesLoading ? (
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 animate-pulse rounded-lg bg-white/5"
+                />
+              ))}
+            </div>
+          ) : invoices && invoices.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {invoices.map((invoice) => {
+                const paidDate = formatDate(invoice.paidAt, {
+                  month: "short",
+                  year: true,
+                });
+                const amountText = formatCurrency(
+                  invoice.amount,
+                  invoice.currency || "INR",
+                );
+
+                return (
+                  <button
+                    key={invoice.id}
+                    onClick={() => setSelectedInvoice(invoice)}
+                    className="flex w-full items-center justify-between rounded-lg border border-white/8 bg-[#1a1a1a] px-4 py-3 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="h-4 w-4 text-white/40" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {invoice.receipt || invoice.invoiceNumber || `Invoice ${invoice.razorpayInvoiceId.slice(-6)}`}
+                        </p>
+                        <p className="text-xs text-white/40">
+                          {paidDate}
+                          {invoice.periodStart && invoice.periodEnd
+                            ? ` · ${formatDateRange(invoice.periodStart, invoice.periodEnd)}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{amountText}</p>
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                        {invoice.status}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-white/40">
+              No invoices yet. Invoices appear here after your subscription is charged.
+            </p>
+          )}
+        </div>
+
+        {/* Invoice Detail Modal */}
+        <Dialog
+          open={!!selectedInvoice}
+          onOpenChange={(open) => !open && setSelectedInvoice(null)}
+        >
+          <DialogContent className="border-white/8 bg-[#1a1a1a] text-white">
+            {selectedInvoice && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-white">
+                    <Receipt className="h-5 w-5 text-white/60" />
+                    Invoice Details
+                  </DialogTitle>
+                  <DialogDescription className="text-white/40">
+                    {selectedInvoice.razorpayInvoiceId}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="mt-4 space-y-4">
+                  <div className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Amount</span>
+                    <span className="text-lg font-bold">
+                      {formatCurrency(
+                        selectedInvoice.amount,
+                        selectedInvoice.currency || "INR",
+                      )}
+                    </span>
+                  </div>
+
+                  {selectedInvoice.description && (
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm text-white/60">Description</span>
+                      <span className="text-sm">{selectedInvoice.description}</span>
+                    </div>
+                  )}
+
+                  {selectedInvoice.periodStart && selectedInvoice.periodEnd && (
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm text-white/60">Billing Period</span>
+                      <span className="text-sm">
+                        {formatDateRange(
+                          selectedInvoice.periodStart,
+                          selectedInvoice.periodEnd,
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInvoice.paidAt && (
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm text-white/60">Paid On</span>
+                      <span className="flex items-center gap-1 text-sm">
+                        <Calendar className="h-3.5 w-3.5 text-white/40" />
+                        {formatDate(selectedInvoice.paidAt, {
+                          month: "long",
+                          year: true,
+                        })}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInvoice.receipt && (
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm text-white/60">Receipt Ref</span>
+                      <span className="text-sm">{selectedInvoice.receipt}</span>
+                    </div>
+                  )}
+
+                  {selectedInvoice.shortUrl && (
+                    <a
+                      href={selectedInvoice.shortUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      View on Razorpay
+                    </a>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

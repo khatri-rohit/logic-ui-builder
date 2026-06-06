@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyWebhookSignature } from "@/lib/razorpay";
+import { Prisma } from "@/app/generated/prisma/client";
+import { razorpay, verifyWebhookSignature } from "@/lib/razorpay";
 import logger from "@/lib/logger";
 import { SubscriptionStatus } from "@/app/generated/prisma/enums";
 import { Redis } from "@upstash/redis";
@@ -336,6 +337,76 @@ export async function POST(req: NextRequest) {
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
       }
+
+      // Fetch and store the invoice for this charge — fire-and-forget so the
+      // webhook ack isn't delayed by a downstream Razorpay API call.
+      void (async () => {
+        try {
+          const invoiceList = (await razorpay.invoices.all({
+            subscription_id: razorpaySubscriptionId,
+          })) as unknown as { items: Array<Record<string, unknown>> };
+
+          const invoices = invoiceList.items ?? [];
+          const paidInvoice = invoices.find(
+            (inv) =>
+              inv.status === "paid" &&
+              inv.billing_start === currentStart &&
+              inv.billing_end === currentEnd,
+          );
+
+          if (paidInvoice && dbSub?.userId) {
+            await prisma.invoice.upsert({
+              where: { razorpayInvoiceId: paidInvoice.id as string },
+              create: {
+                userId: dbSub.userId,
+                razorpayInvoiceId: paidInvoice.id as string,
+                razorpaySubscriptionId: razorpaySubscriptionId,
+                razorpayPaymentId: (paidInvoice.payment_id as string) ?? null,
+                amount: (paidInvoice.amount as number) ?? 0,
+                currency: (paidInvoice.currency as string) ?? "INR",
+                status: (paidInvoice.status as string) ?? "paid",
+                periodStart: paidInvoice.billing_start
+                  ? new Date((paidInvoice.billing_start as number) * 1000)
+                  : null,
+                periodEnd: paidInvoice.billing_end
+                  ? new Date((paidInvoice.billing_end as number) * 1000)
+                  : null,
+                paidAt: paidInvoice.paid_at
+                  ? new Date((paidInvoice.paid_at as number) * 1000)
+                  : null,
+                issuedAt: paidInvoice.issued_at
+                  ? new Date((paidInvoice.issued_at as number) * 1000)
+                  : null,
+                shortUrl: (paidInvoice.short_url as string) ?? null,
+                receipt: (paidInvoice.receipt as string) ?? null,
+                invoiceNumber: (paidInvoice.invoice_number as string) ?? null,
+                description: (paidInvoice.description as string) ?? null,
+                lineItems: (paidInvoice.line_items ?? Prisma.JsonNull) as any,
+                rawPayload: paidInvoice as any,
+              },
+              update: {
+                status: (paidInvoice.status as string) ?? "paid",
+                amount: (paidInvoice.amount as number) ?? 0,
+                paidAt: paidInvoice.paid_at
+                  ? new Date((paidInvoice.paid_at as number) * 1000)
+                  : null,
+                shortUrl: (paidInvoice.short_url as string) ?? null,
+                rawPayload: paidInvoice as any,
+              },
+            });
+
+            logger.info("Invoice stored from subscription.charged", {
+              razorpayInvoiceId: paidInvoice.id,
+              razorpaySubscriptionId,
+            });
+          }
+        } catch (invoiceErr) {
+          logger.warn("Failed to fetch/store invoice for subscription.charged", {
+            razorpaySubscriptionId,
+            error: invoiceErr,
+          });
+        }
+      })();
 
       logger.info("Subscription charged", {
         razorpaySubscriptionId,

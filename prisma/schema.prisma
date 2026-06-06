@@ -29,6 +29,7 @@ model User {
     orgMemberships      OrgMembership[] @relation("OrgMember") // all orgs this user belongs to
     orgInvitesSent      OrgInvitation[] @relation("OrgInvitations") // invites this user has sent
     orgInvitesAsInviter OrgMembership[] @relation("OrgInviter") // memberships this user triggered
+    invoices            Invoice[] // billing invoice history
 }
 
 model AppSession {
@@ -272,6 +273,34 @@ model OrgInvitation {
     @@index([tokenPrefix, status])
     @@index([email, status])
     @@index([invitedBy])
+}
+
+model Invoice {
+    id                   String   @id @default(cuid())
+    userId               String
+    razorpayInvoiceId    String   @unique
+    razorpaySubscriptionId String
+    razorpayPaymentId    String?
+    amount               Int // In paise
+    currency             String   @default("INR")
+    status               String // 'paid' | 'issued' | 'cancelled' | 'expired'
+    periodStart          DateTime?
+    periodEnd            DateTime?
+    paidAt               DateTime?
+    issuedAt             DateTime?
+    shortUrl             String? // Razorpay payment link
+    receipt              String? // Merchant reference string
+    invoiceNumber        String?
+    description          String?
+    lineItems            Json? // Array of line items
+    rawPayload           Json // Full invoice object for audit/debug
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, paidAt])
+    @@index([razorpaySubscriptionId])
 }
 
 enum OrgMemberRole {

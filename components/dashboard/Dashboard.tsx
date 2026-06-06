@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { JetBrains_Mono } from "next/font/google";
 import { useRouter } from "next/navigation";
-import { Crown, Loader2, LucideIcon } from "lucide-react";
+import { Crown, Loader2, LucideIcon, CreditCard, Building2 } from "lucide-react";
 import {
   ArrowUp,
   Bolt,
@@ -260,6 +260,16 @@ const Dashboard = () => {
                 label="Manage Subscription"
                 labelIcon={<Crown size={14} strokeWidth={1.8} />}
                 onClick={() => setPricingModalOpen(true)}
+              />
+              <UserButton.Action
+                label="Billing"
+                labelIcon={<CreditCard size={14} strokeWidth={1.8} />}
+                onClick={() => router.push("/billing")}
+              />
+              <UserButton.Action
+                label="Organisations"
+                labelIcon={<Building2 size={14} strokeWidth={1.8} />}
+                onClick={() => router.push("/org")}
               />
             </UserButton.MenuItems>
           </UserButton>

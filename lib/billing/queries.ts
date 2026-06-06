@@ -5,6 +5,26 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { requestApi } from "@/lib/api/http";
+import type { InvoiceModel } from "@/app/generated/prisma/models/Invoice";
+
+export type Invoice = Omit<
+  InvoiceModel,
+  | "periodStart"
+  | "periodEnd"
+  | "paidAt"
+  | "issuedAt"
+  | "createdAt"
+  | "updatedAt"
+  | "lineItems"
+  | "rawPayload"
+> & {
+  periodStart: string | null;
+  periodEnd: string | null;
+  paidAt: string | null;
+  issuedAt: string | null;
+  createdAt: string;
+  lineItems: unknown;
+};
 
 export interface UserUsage {
   planId: "FREE" | "STANDARD" | "PRO";
@@ -34,6 +54,7 @@ export const billingKeys = {
   all: ["billing"] as const,
   usage: () => [...billingKeys.all, "usage"] as const,
   details: () => [...billingKeys.all, "details"] as const,
+  invoices: () => [...billingKeys.all, "invoices"] as const,
 };
 
 export function useUsageQuery() {
@@ -158,4 +179,15 @@ export function getCurrentSubscription() {
     status: UserUsage["status"] | null;
     cancelAtPeriodEnd: boolean;
   }>("/api/billing");
+}
+
+export function useInvoicesQuery() {
+  return useQuery(
+    queryOptions({
+      queryKey: billingKeys.invoices(),
+      queryFn: () => requestApi<Invoice[]>("/api/billing/invoices"),
+      staleTime: 60 * 1000,
+      refetchOnWindowFocus: true,
+    }),
+  );
 }

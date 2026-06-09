@@ -10,6 +10,7 @@ import {
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
+  buildSystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -241,6 +242,23 @@ function parseJsonStrict<T>(raw: string): T {
   }
 
   throw new Error("No valid JSON object found in model output");
+}
+
+function isValidComponentTree(
+  tree: unknown,
+  expectedScreens: string[],
+): tree is ComponentTreeNode[] {
+  if (!Array.isArray(tree) || tree.length === 0) return false;
+  return tree.every(
+    (item) =>
+      item != null &&
+      typeof item === "object" &&
+      "screen" in item &&
+      typeof item.screen === "string" &&
+      expectedScreens.includes(item.screen) &&
+      "components" in item &&
+      Array.isArray(item.components),
+  );
 }
 
 async function generateTextWithFallback({
@@ -689,7 +707,7 @@ export async function POST(req: NextRequest) {
             stage3ModelPriority,
             abortController,
             write,
-            stage3Prompt,
+            systemPrompt: buildSystemPrompt(spec, designContext),
             generationId,
           };
 
@@ -788,7 +806,14 @@ export async function POST(req: NextRequest) {
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
             abortSignal: abortController.signal,
           });
-        const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
+        let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
+        if (!isValidComponentTree(tree, spec.screens)) {
+          logger.warn("Stage 2 produced invalid tree; constructing fallback from spec screens");
+          tree = spec.screens.map((screen) => ({
+            screen,
+            components: spec.components ?? [],
+          }));
+        }
         await write({ type: "tree", tree });
         logger.info("Stage 2 Component Planner complete", { usage: treeUsage });
         if (generationId) {
@@ -845,7 +870,7 @@ export async function POST(req: NextRequest) {
           stage3ModelPriority,
           abortController,
           write,
-          stage3Prompt,
+          systemPrompt: buildSystemPrompt(spec, designContext),
           generationId,
         };
 

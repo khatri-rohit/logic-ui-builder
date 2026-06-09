@@ -41,7 +41,7 @@ export interface PipelineContext {
   stage3ModelPriority: string[];
   abortController: AbortController;
   write: WriteFunction;
-  stage3Prompt: string;
+  systemPrompt?: string;
   screenClass?: ScreenClass;
   generationId?: string | null;
 }

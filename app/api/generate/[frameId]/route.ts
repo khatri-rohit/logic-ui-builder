@@ -28,6 +28,7 @@ import {
 } from "@/lib/generation";
 import { runScreenGeneration } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
+import { buildSystemPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 
@@ -452,7 +453,7 @@ export async function POST(
           stage3ModelPriority,
           abortController,
           write,
-          stage3Prompt: regeneratePrompt,
+          systemPrompt: buildSystemPrompt(spec, designContext),
           generationId,
         };
 

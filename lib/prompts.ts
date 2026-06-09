@@ -37,6 +37,155 @@ const IMPORT_ALLOWLIST = [
   "lodash",
 ].join(", ");
 
+const LUCIDE_REACT_SYMBOLS = [
+  "Activity",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "BarChart2",
+  "BarChart3",
+  "BarChart4",
+  "Bell",
+  "Bookmark",
+  "Calendar",
+  "Check",
+  "CheckCircle",
+  "ChevronDown",
+  "ChevronLeft",
+  "ChevronRight",
+  "ChevronUp",
+  "Clock",
+  "Copy",
+  "CreditCard",
+  "DollarSign",
+  "Download",
+  "Edit",
+  "Eye",
+  "EyeOff",
+  "File",
+  "FileText",
+  "Filter",
+  "Flag",
+  "Folder",
+  "Globe",
+  "Heart",
+  "HelpCircle",
+  "Home",
+  "Image",
+  "Inbox",
+  "Info",
+  "Layers",
+  "Layout",
+  "Link",
+  "List",
+  "Lock",
+  "LogIn",
+  "LogOut",
+  "Mail",
+  "Map",
+  "MapPin",
+  "Maximize",
+  "Menu",
+  "MessageCircle",
+  "MessageSquare",
+  "Minimize",
+  "Moon",
+  "MoreHorizontal",
+  "MoreVertical",
+  "Move",
+  "Music",
+  "Package",
+  "Paperclip",
+  "Phone",
+  "Play",
+  "Plus",
+  "Power",
+  "Printer",
+  "Radio",
+  "RefreshCw",
+  "RotateCcw",
+  "Save",
+  "Search",
+  "Settings",
+  "Share",
+  "Share2",
+  "Shield",
+  "ShoppingBag",
+  "ShoppingCart",
+  "Shuffle",
+  "Sidebar",
+  "Sliders",
+  "Smartphone",
+  "Star",
+  "Sun",
+  "Table",
+  "Tag",
+  "Target",
+  "Terminal",
+  "ThumbsUp",
+  "Trash",
+  "Trash2",
+  "TrendingDown",
+  "TrendingUp",
+  "Truck",
+  "Upload",
+  "User",
+  "UserCheck",
+  "UserPlus",
+  "Users",
+  "Video",
+  "Volume",
+  "Wallet",
+  "Wifi",
+  "X",
+  "XCircle",
+  "Zap",
+  "ZoomIn",
+  "ZoomOut",
+].join(", ");
+
+const RECHARTS_SYMBOLS = [
+  "Area",
+  "AreaChart",
+  "Bar",
+  "BarChart",
+  "Brush",
+  "CartesianGrid",
+  "Cell",
+  "ComposedChart",
+  "Curve",
+  "Dot",
+  "ErrorBar",
+  "Funnel",
+  "FunnelChart",
+  "Label",
+  "LabelList",
+  "Legend",
+  "Line",
+  "LineChart",
+  "Pie",
+  "PieChart",
+  "PolarAngleAxis",
+  "PolarGrid",
+  "PolarRadiusAxis",
+  "Radar",
+  "RadarChart",
+  "RadialBar",
+  "RadialBarChart",
+  "Rectangle",
+  "ReferenceLine",
+  "ResponsiveContainer",
+  "Sankey",
+  "Scatter",
+  "ScatterChart",
+  "Sector",
+  "Tooltip",
+  "Treemap",
+  "XAxis",
+  "YAxis",
+].join(", ");
+
 export const STAGE1_SYSTEM = `
 # Stage 1: Design Specification Extraction
 
@@ -450,6 +599,16 @@ Generate complete, production-quality React/TypeScript code for a single screen.
 - NO runtime features: no timers, effects, network calls, CSS keyframes, mount animations
 - Static interactive UI only - appearance of interactivity without behavior
 
+## IMPORT DISCIPLINE (CRITICAL - prevents runtime errors)
+You MUST separate imports by package. NEVER mix icons and chart components in the same import statement.
+- lucide-react exports ONLY these icon components: ${LUCIDE_REACT_SYMBOLS}. NEVER import chart components from lucide-react.
+- recharts exports ONLY these chart components: ${RECHARTS_SYMBOLS}. NEVER import icons from recharts.
+- Example CORRECT:
+  import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+  import { TrendingUp, Users, DollarSign, Activity, Calendar, Filter } from "lucide-react";
+- Example INCORRECT (will cause runtime error):
+  import { BarChart, Bar, TrendingUp, Users } from "recharts";  // TrendingUp, Users are NOT in recharts
+
 ${DESIGN_VOCABULARY_DIRECTIVE}
 
 ## Output Format (strict TSX)
@@ -686,25 +845,11 @@ AUTHORITATIVE DESIGN CONTEXT:
 `.trim();
 }
 
-export function buildScreenPrompt(
+export function buildSystemPrompt(
   spec: WebAppSpec,
-  tree: ComponentTreeNode[],
-  screen: string,
-  userPrompt: string,
   designContext?: DesignContext,
 ): string {
-  const node = tree.find((n) => n.screen === screen) as
-    | (ComponentTreeNode & {
-        layoutArchitecture?: Record<string, unknown>;
-        componentIntents?: unknown[];
-      })
-    | undefined;
-  const components = node?.components ?? spec.components ?? [];
-  const layoutArch = node?.layoutArchitecture;
-  const componentIntents = node?.componentIntents ?? [];
-
-  const isDark = spec.colorMode === "dark"; // Default to light surface colors if colorMode is not specified
-  const isMobile = spec.platform === "mobile";
+  const isDark = spec.colorMode === "dark";
 
   const tokenSystem = `
 DESIGN TOKENS (STRICTLY ENFORCED):
@@ -892,7 +1037,7 @@ Define these as inline CSS variables on the root element and use them semantical
 
 ### 1. BUTTON HIERARCHY DECISION:
 **Is this the MAIN action on the screen?**
-- YES (primary CTA like "Sign Up", "Buy Now", "Submit"): 
+- YES (primary CTA like "Sign Up", "Buy Now", "Submit"):
   → Use: className="bg-[var(--primary)] text-white"
 - Is it a secondary action (Cancel, Back, Skip)?
   → Use: className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)]"
@@ -928,6 +1073,63 @@ Define these as inline CSS variables on the root element and use them semantical
 - ACCENT: Badges, notifications, success indicators, secondary highlights
 - NEVER use primary for everything - reserve it for most important elements
 `.trim();
+
+  const antiPatterns = `
+ANTI-PATTERNS TO AVOID:
+- Equal-size KPI cards with identical visual weight. Vary emphasis and add trend context.
+- Generic three-card feature rows. Use asymmetric rhythm or a table/list when the content is comparable.
+- text-gray-500 for all secondary text. Use the token system.
+- Every button styled as primary. Use primary, secondary, and ghost hierarchy.
+- p-4 on every element. Follow the spacing contract.
+- Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
+- Dashboard content trapped in a narrow centered column. Use the available width.
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
+`.trim();
+
+  const generationContract = buildGenerationDesignContract(spec, designContext);
+  const designContextContract = buildDesignContextContract(designContext);
+
+  return `
+${tokenSystem}
+
+${componentStates}
+
+${designDecisionRules}
+
+${generationContract}
+
+${designContextContract}
+
+${antiPatterns}
+
+SYNTAX REQUIREMENTS:
+- Component name: GeneratedScreen.
+- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
+- Include realistic mock data with at least 4 items for every list, grid, chart, or table.
+- Close all JSX tags and balance all braces.
+- Final line: export default GeneratedScreen;
+- Output code only.
+`.trim();
+}
+
+export function buildScreenPrompt(
+  spec: WebAppSpec,
+  tree: ComponentTreeNode[],
+  screen: string,
+  userPrompt: string,
+  designContext?: DesignContext,
+): string {
+  const node = tree.find((n) => n.screen === screen) as
+    | (ComponentTreeNode & {
+        layoutArchitecture?: Record<string, unknown>;
+        componentIntents?: unknown[];
+      })
+    | undefined;
+  const components = node?.components ?? spec.components ?? [];
+  const layoutArch = node?.layoutArchitecture;
+  const componentIntents = node?.componentIntents ?? [];
+
+  const isMobile = spec.platform === "mobile";
 
   const layoutDirective = layoutArch
     ? `
@@ -976,20 +1178,6 @@ ${(
 `
       : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
-  const antiPatterns = `
-ANTI-PATTERNS TO AVOID:
-- Equal-size KPI cards with identical visual weight. Vary emphasis and add trend context.
-- Generic three-card feature rows. Use asymmetric rhythm or a table/list when the content is comparable.
-- text-gray-500 for all secondary text. Use the token system.
-- Every button styled as primary. Use primary, secondary, and ghost hierarchy.
-- p-4 on every element. Follow the spacing contract.
-- Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
-- Dashboard content trapped in a narrow centered column. Use the available width.
-- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
-`.trim();
-
-  const generationContract = buildGenerationDesignContract(spec, designContext);
-
   return `
 Generate a complete, production-quality React component for screen: "${screen}".
 
@@ -1000,27 +1188,12 @@ ${designBrief}
 
 ${buildSplitFlowDirective(spec, screen)}
 
-${generationContract}
-
-${buildDesignContextContract(designContext)}
-
-${tokenSystem}
-
-${componentStates}
-
-${designDecisionRules}
-
 ${layoutDirective}
 
 ${componentPlan}
 
-${antiPatterns}
-
-SYNTAX REQUIREMENTS:
+SYNTAX REMINDER:
 - Component name: GeneratedScreen.
-- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
-- Include realistic mock data with at least 4 items for every list, grid, chart, or table.
-- Close all JSX tags and balance all braces.
 - Final line: export default GeneratedScreen;
 - Output code only.
 `.trim();

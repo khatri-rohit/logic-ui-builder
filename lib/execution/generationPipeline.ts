@@ -108,7 +108,7 @@ export async function runScreenGeneration(
     const result = await executeModel({
       ollama,
       model: candidateModel,
-      system: STAGE3_SYSTEM,
+      system: context.systemPrompt || STAGE3_SYSTEM,
       prompt: buildScreenPrompt(
         spec,
         tree,
@@ -172,7 +172,10 @@ export async function runScreenGeneration(
       continue;
     }
 
-    currentCode = result.code;
+    currentCode = result.code
+      .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, "")
+      .replace(/^```$/gm, "")
+      .trim();
     // logger.info("Code: ", currentCode);
     // Layer 1: TS parser validation
     const tsValidation = validateGeneratedTSX(currentCode);

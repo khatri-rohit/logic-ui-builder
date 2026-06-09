@@ -345,10 +345,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       const chromeHeight =
         platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H + MOBILE_HOME_H;
 
-      const nextWidth =
-        platform === "web"
-          ? clamp(Math.ceil(reportedWidth), MIN_WEB_W, MAX_WEB_W)
-          : w;
+      const nextWidth = w; // preserve frame width for both platforms
 
       const nextHeight =
         platform === "web"
@@ -363,10 +360,9 @@ export const CanvasFrame = memo(function CanvasFrame({
               MAX_MOBILE_H,
             );
 
-      const widthDiff = Math.abs(nextWidth - w);
       const heightDiff = Math.abs(nextHeight - h);
 
-      if (widthDiff < 4 && heightDiff < 4) return;
+      if (heightDiff < 4) return;
 
       onResize(id, nextWidth, nextHeight);
     };

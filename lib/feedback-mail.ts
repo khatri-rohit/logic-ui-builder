@@ -19,15 +19,25 @@ const transporter: Transporter = nodemailer.createTransport({
 export async function sendFeedbackEmail({
   feedback,
   attachments,
+  fromEmail,
+  fromName,
+  type = "feedback",
 }: {
   feedback: string;
   attachments: FeedbackMailAttachment[];
+  fromEmail?: string;
+  fromName?: string;
+  type?: "feedback" | "support";
 }) {
+  const isSupport = type === "support";
+  const senderEmail = fromEmail || "unknown@logic.dev";
+  const senderName = fromName || "Anonymous User";
   await transporter.sendMail({
-    from: `"UI/UX Builder Feedback" <${process.env.EMAIL_USER}>`,
+    from: `"LOGIC ${isSupport ? "Support" : "Feedback"} <${process.env.EMAIL_USER}>`,
     to: process.env.FEEDBACK_RECEIVER_EMAIL,
-    subject: "New Feedback Received",
-    text: feedback,
+    replyTo: `"${senderName}" <${senderEmail}>`,
+    subject: `${isSupport ? "[Support]" : "[Feedback]"} from ${senderName} (${senderEmail})`,
+    text: `From: ${senderName} <${senderEmail}>\nType: ${isSupport ? "Support Request" : "Feedback"}\n\n${feedback}`,
     attachments: attachments.map((attachment) => ({
       filename: attachment.filename,
       content: attachment.content,

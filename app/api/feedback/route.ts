@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { feedback, attachments } = parsedBody.data;
+    const type = (formData.get("type") as string) || "feedback";
 
     const emailAttachments = await Promise.all(
       attachments.map(async (attachmentFile) => ({
@@ -139,6 +140,9 @@ export async function POST(request: NextRequest) {
     await sendFeedbackEmail({
       feedback,
       attachments: emailAttachments,
+      fromEmail: authContext.email,
+      fromName: authContext.name,
+      type: type === "support" ? "support" : "feedback",
     });
     logger.info("Feedback email sent to backend queue", {
       attachments: emailAttachments.length,

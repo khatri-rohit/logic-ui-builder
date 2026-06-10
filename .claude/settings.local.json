@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(git log *)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
     ]
   }
 }

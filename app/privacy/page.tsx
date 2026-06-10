@@ -203,10 +203,10 @@ export default function PrivacyPage() {
         <p className="mb-4 leading-relaxed">
           To exercise these rights, contact us at{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
           .
         </p>
@@ -231,10 +231,10 @@ export default function PrivacyPage() {
           If you have any questions about this Privacy Policy, please contact us
           at:{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
         </p>
       </section>

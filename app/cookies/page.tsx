@@ -136,10 +136,10 @@ export default function CookiesPage() {
           If you have any questions about our Cookie Policy, please contact us
           at:{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
         </p>
       </section>

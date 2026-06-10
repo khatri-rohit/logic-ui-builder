@@ -144,10 +144,10 @@ export default function TermsPage() {
         <p className="mb-4 leading-relaxed">
           You may terminate your account at any time by contacting us at{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
           . Upon termination, your right to use the Service will immediately
           cease.
@@ -194,10 +194,10 @@ export default function TermsPage() {
           Before initiating any legal proceedings, you agree to attempt to
           resolve the dispute informally by contacting us at{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
           .
         </p>
@@ -218,10 +218,10 @@ export default function TermsPage() {
         <p className="mb-4 leading-relaxed">
           For any questions about these Terms, please contact us at:{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
         </p>
       </section>

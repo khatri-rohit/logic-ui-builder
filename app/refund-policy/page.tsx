@@ -55,10 +55,10 @@ export default function RefundPolicyPage() {
           You can cancel your subscription at any time through the billing page
           in your account dashboard, or by contacting us at{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
           .
         </p>
@@ -112,10 +112,10 @@ export default function RefundPolicyPage() {
           For any questions about cancellations or billing, please contact us
           at:{" "}
           <a
-            href="mailto:support@logic.dev"
+            href="mailto:rohitkhatri.dev@gmail.com"
             className="text-(--logic-primary-fixed) underline"
           >
-            support@logic.dev
+            rohitkhatri.dev@gmail.com
           </a>
         </p>
       </section>

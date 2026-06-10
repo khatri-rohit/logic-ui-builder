@@ -1,6 +1,6 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "@/lib/types";
-import { initializeOllama } from "@/lib/ollama";
 import type { ScreenClass } from "./modelRouter";
+import { initializeOllama } from "../ollama";
 
 export interface ModelUsage {
   promptTokens: number;

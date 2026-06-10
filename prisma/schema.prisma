@@ -135,6 +135,7 @@ model GenerationTelemetry {
     createdAt    DateTime @default(now())
 
     @@index([model, screenClass, createdAt])
+    @@index([screenClass, stage, createdAt])
     @@index([generationId])
 }
 
@@ -276,26 +277,26 @@ model OrgInvitation {
 }
 
 model Invoice {
-    id                   String   @id @default(cuid())
-    userId               String
-    razorpayInvoiceId    String   @unique
+    id                     String    @id @default(cuid())
+    userId                 String
+    razorpayInvoiceId      String    @unique
     razorpaySubscriptionId String
-    razorpayPaymentId    String?
-    amount               Int // In paise
-    currency             String   @default("INR")
-    status               String // 'paid' | 'issued' | 'cancelled' | 'expired'
-    periodStart          DateTime?
-    periodEnd            DateTime?
-    paidAt               DateTime?
-    issuedAt             DateTime?
-    shortUrl             String? // Razorpay payment link
-    receipt              String? // Merchant reference string
-    invoiceNumber        String?
-    description          String?
-    lineItems            Json? // Array of line items
-    rawPayload           Json // Full invoice object for audit/debug
-    createdAt            DateTime @default(now())
-    updatedAt            DateTime @updatedAt
+    razorpayPaymentId      String?
+    amount                 Int // In paise
+    currency               String    @default("INR")
+    status                 String // 'paid' | 'issued' | 'cancelled' | 'expired'
+    periodStart            DateTime?
+    periodEnd              DateTime?
+    paidAt                 DateTime?
+    issuedAt               DateTime?
+    shortUrl               String? // Razorpay payment link
+    receipt                String? // Merchant reference string
+    invoiceNumber          String?
+    description            String?
+    lineItems              Json? // Array of line items
+    rawPayload             Json // Full invoice object for audit/debug
+    createdAt              DateTime  @default(now())
+    updatedAt              DateTime  @updatedAt
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

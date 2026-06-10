@@ -1,8 +1,0 @@
-{
-  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["next.config.ts", "app/**/*.ts", "app/**/*.tsx", "lib/**/*.ts"],
-  "ignorePatterns": ["**/*.test.ts", "**/*.spec.ts"],
-  "rules": {
-    // "unresolved-imports": "off"
-  }
-}

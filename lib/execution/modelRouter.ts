@@ -256,20 +256,25 @@ export async function buildDynamicModelPriority(
     return cached.priority;
   }
 
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // last 7 days
-
-  const rows = await prisma.generationTelemetry.findMany({
-    where: {
-      screenClass: screenClass,
-      stage: "stage3",
-      createdAt: { gte: since },
-    },
-    select: {
-      model: true,
-      success: true,
-      latencyMs: true,
-    },
-  });
+  let rows: { model: string; success: boolean; latencyMs: number }[];
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    rows = await prisma.generationTelemetry.findMany({
+      where: {
+        screenClass: screenClass,
+        stage: "stage3",
+        createdAt: { gte: since },
+      },
+      select: {
+        model: true,
+        success: true,
+        latencyMs: true,
+      },
+    });
+  } catch (err) {
+    console.error("Telemetry query failed, falling back to static priority:", err);
+    return buildModelPriority(preferredModel, staticPriority);
+  }
 
   // Compute per-model stats in JS
   const stats = new Map<

@@ -38,6 +38,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
+          aria-label="User menu"
           className={cn(
             "flex items-center justify-center rounded-[2px] border border-[#2a2a2a] bg-[#111111] p-[3px]",
             "transition-colors duration-100 ease-out",

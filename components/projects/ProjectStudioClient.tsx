@@ -1323,6 +1323,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   };
 
   const connectWatchStream = async (runningGenerationId: string) => {
+    const watchToken = getStudioRuntime().generationToken;
     try {
       const response = await fetch(
         `/api/generate/watch/${runningGenerationId}`,
@@ -1352,10 +1353,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           try {
             const event = JSON.parse(raw) as GenerationEvent;
             if (event.type === "done" || event.type === "error") {
-              handleEvent(event, getStudioRuntime().generationToken);
+              handleEvent(event, watchToken);
               return true;
             }
-            handleEvent(event, getStudioRuntime().generationToken);
+            handleEvent(event, watchToken);
           } catch {
             logger.warn("Malformed watch SSE payload", raw.slice(0, 200));
           }

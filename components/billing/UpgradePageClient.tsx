@@ -7,15 +7,15 @@ import { JetBrains_Mono } from "next/font/google";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Check, Crown, Loader2, Lock, X, Zap } from "lucide-react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+import { useRazorpayCheckout } from "./RazorpayCheckout";
 import {
   useCheckoutMutation,
   useUpgradeMutation,
   useUsageQuery,
 } from "@/lib/billing/queries";
-import { useRazorpayCheckout } from "./RazorpayCheckout";
-import { cn } from "@/lib/utils";
 import logger from "@/lib/logger";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "700"] });
@@ -59,7 +59,7 @@ function FeatureValue({ value }: { value: boolean | string }) {
   if (value === false)
     return (
       <div className="flex h-4 items-center justify-center">
-        <X className="size-3.5 text-white/20" />
+        <X className="size-3.5 text-muted-foreground" />
       </div>
     );
   if (value === true)
@@ -70,7 +70,7 @@ function FeatureValue({ value }: { value: boolean | string }) {
     );
   return (
     <div className="flex h-4 items-center justify-center">
-      <span className="text-xs text-white/60">{value}</span>
+      <span className="text-xs text-muted-foreground">{value}</span>
     </div>
   );
 }
@@ -78,12 +78,11 @@ function FeatureValue({ value }: { value: boolean | string }) {
 export function UpgradePageClient() {
   const router = useRouter();
   const { data: usage, isLoading: usageLoading } = useUsageQuery();
-  const { mutateAsync: subscribe, isPending: subscribing } =
-    useCheckoutMutation();
-  const { mutateAsync: upgrade, isPending: upgrading } = useUpgradeMutation();
+  const { mutateAsync: subscribe } = useCheckoutMutation();
+  const { mutateAsync: upgrade } = useUpgradeMutation();
 
   const { user } = useUser();
-  const { openCheckout, checkoutState, resetCheckout } = useRazorpayCheckout({
+  const { openCheckout, checkoutState } = useRazorpayCheckout({
     email: user?.primaryEmailAddress?.emailAddress,
     onClose: () => {
       /* handled by state */
@@ -160,10 +159,10 @@ export function UpgradePageClient() {
           name: "Free",
           price: "₹0",
           period: "",
-          accent: "border-white/[0.06]",
+          accent: "border-border",
           glow: "",
-          textAccent: "text-white/50",
-          badge: "bg-white/5 text-white/40",
+          textAccent: "text-muted-foreground",
+          badge: "bg-muted text-muted-foreground",
         },
         {
           id: "STANDARD" as PlanId,
@@ -314,33 +313,33 @@ export function UpgradePageClient() {
 
   if (usageLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white">
-        <header className="border-b border-white/6 px-6 py-4">
+      <div className="min-h-screen bg-background text-foreground">
+        <header className="border-b border-border px-6 py-4">
           <div className="mx-auto flex max-w-6xl items-center gap-3">
-            <div className="h-4 w-4 animate-pulse rounded bg-white/10" />
-            <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
+            <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-6 py-12">
-          <div className="h-8 w-56 animate-pulse rounded bg-white/10" />
-          <div className="mt-2 h-4 w-80 animate-pulse rounded bg-white/5" />
+          <div className="h-8 w-56 animate-pulse rounded bg-muted" />
+          <div className="mt-2 h-4 w-80 animate-pulse rounded bg-muted" />
           <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="rounded-xl border border-white/6 bg-[#0f0f0f] p-5"
+                className="rounded-xl border border-border bg-card p-5"
               >
-                <div className="h-5 w-20 animate-pulse rounded bg-white/10" />
-                <div className="mt-3 h-8 w-28 animate-pulse rounded bg-white/10" />
+                <div className="h-5 w-20 animate-pulse rounded bg-muted" />
+                <div className="mt-3 h-8 w-28 animate-pulse rounded bg-muted" />
                 <div className="mt-6 space-y-2">
                   {[0, 1, 2, 3, 4].map((j) => (
                     <div
                       key={j}
-                      className="h-3 w-full animate-pulse rounded bg-white/5"
+                      className="h-3 w-full animate-pulse rounded bg-muted"
                     />
                   ))}
                 </div>
-                <div className="mt-8 h-9 w-full animate-pulse rounded bg-white/10" />
+                <div className="mt-8 h-9 w-full animate-pulse rounded bg-muted" />
               </div>
             ))}
           </div>
@@ -357,14 +356,14 @@ export function UpgradePageClient() {
         : "You're on the Pro plan. You have access to every feature.";
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-amber-500/30">
+    <div className="min-h-screen bg-background text-foreground selection:bg-amber-500/30">
       {/* Header */}
-      <header className="border-b border-white/6 px-6 py-4">
+      <header className="border-b border-border px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <Link
             href="/"
             className={cn(
-              "group flex items-center gap-2 text-xs text-white/40 transition-colors hover:text-white/70",
+              "group flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground/70",
               mono.className,
             )}
           >
@@ -373,7 +372,7 @@ export function UpgradePageClient() {
           </Link>
           <span
             className={cn(
-              "text-[10px] uppercase tracking-[0.3em] text-white/20",
+              "text-[10px] uppercase tracking-[0.3em] text-muted-foreground",
               mono.className,
             )}
           >
@@ -395,20 +394,20 @@ export function UpgradePageClient() {
               ? "System at maximum capacity"
               : "Unlock more power"}
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/40">
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
             {contextMessage}
           </p>
 
           {/* Usage bar for current plan */}
           {usage && currentPlan !== "FREE" && usage.generationLimit > 0 && (
             <div className="mt-6 max-w-md">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/30">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
                 <span>Generations this period</span>
                 <span className={cn(mono.className)}>
                   {usage.generationsUsed}/{usage.generationLimit}
                 </span>
               </div>
-              <div className="mt-1.5 h-1 rounded-full bg-white/6">
+              <div className="mt-1.5 h-1 rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-blue-500 transition-all duration-700"
                   style={{
@@ -498,8 +497,8 @@ export function UpgradePageClient() {
               <div
                 key={plan.id}
                 className={cn(
-                  "relative flex flex-col rounded-xl border bg-[#0f0f0f] p-5 transition-colors",
-                  isCurrent ? plan.accent : "border-white/6",
+                  "relative flex flex-col rounded-xl border bg-card p-5 transition-colors",
+                  isCurrent ? plan.accent : "border-border",
                   isCurrent && plan.glow,
                 )}
               >
@@ -513,7 +512,7 @@ export function UpgradePageClient() {
                           ? "bg-amber-500/60"
                           : plan.id === "STANDARD"
                             ? "bg-blue-500/60"
-                            : "bg-white/20",
+                            : "bg-muted0",
                       )}
                     />
                   </div>
@@ -525,7 +524,7 @@ export function UpgradePageClient() {
                       <h3
                         className={cn(
                           "text-sm font-bold",
-                          isCurrent ? plan.textAccent : "text-white/70",
+                          isCurrent ? plan.textAccent : "text-foreground/70",
                         )}
                       >
                         {plan.name}
@@ -545,7 +544,7 @@ export function UpgradePageClient() {
                                 ? "bg-amber-400"
                                 : plan.id === "STANDARD"
                                   ? "bg-blue-400"
-                                  : "bg-white/50",
+                                  : "bg-muted0",
                             )}
                           />
                           Active
@@ -557,12 +556,12 @@ export function UpgradePageClient() {
                         className={cn(
                           "text-2xl font-bold tracking-tight",
                           mono.className,
-                          isCurrent ? "text-white" : "text-white/80",
+                          isCurrent ? "text-foreground" : "text-foreground/80",
                         )}
                       >
                         {plan.price}
                       </span>
-                      <span className="text-xs text-white/30">
+                      <span className="text-xs text-muted-foreground">
                         {plan.period}
                       </span>
                     </div>
@@ -572,7 +571,7 @@ export function UpgradePageClient() {
                     <Crown
                       className={cn(
                         "size-5",
-                        isCurrent ? "text-amber-400" : "text-white/10",
+                        isCurrent ? "text-amber-400" : "text-foreground/10",
                       )}
                     />
                   )}
@@ -580,7 +579,7 @@ export function UpgradePageClient() {
                     <Zap
                       className={cn(
                         "size-5",
-                        isCurrent ? "text-blue-400" : "text-white/10",
+                        isCurrent ? "text-blue-400" : "text-foreground/10",
                       )}
                     />
                   )}
@@ -588,7 +587,9 @@ export function UpgradePageClient() {
                     <Lock
                       className={cn(
                         "size-5",
-                        isCurrent ? "text-white/30" : "text-white/10",
+                        isCurrent
+                          ? "text-muted-foreground"
+                          : "text-foreground/10",
                       )}
                     />
                   )}
@@ -607,7 +608,7 @@ export function UpgradePageClient() {
                           ]
                         }
                       />
-                      <span className="text-[11px] text-white/40">
+                      <span className="text-[11px] text-muted-foreground">
                         {feature.label}
                       </span>
                     </div>
@@ -621,18 +622,18 @@ export function UpgradePageClient() {
                   className={cn(
                     "mt-5 h-9 w-full cursor-pointer text-xs font-semibold",
                     cta.variant === "current"
-                      ? "border border-white/8 bg-transparent text-white/25"
+                      ? "border border-border bg-transparent text-muted-foreground"
                       : cta.variant === "upgrade"
                         ? "bg-amber-500 text-black hover:bg-amber-400"
                         : cta.variant === "subscribe"
                           ? plan.id === "PRO"
                             ? "bg-amber-500 text-black hover:bg-amber-400"
-                            : "bg-blue-500 text-white hover:bg-blue-400"
+                            : "bg-blue-500 text-foreground hover:bg-blue-400"
                           : cta.variant === "cancel"
                             ? "border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10"
                             : cta.variant === "downgrade"
-                              ? "border border-white/8 bg-transparent text-white/50 hover:bg-white/5"
-                              : "border border-white/8 bg-transparent text-white/20",
+                              ? "border border-border bg-transparent text-muted-foreground hover:bg-muted"
+                              : "border border-border bg-transparent text-foreground/20",
                     mono.className,
                   )}
                 >
@@ -650,19 +651,19 @@ export function UpgradePageClient() {
         <div className="mt-16 sm:mt-20">
           <h2
             className={cn(
-              "text-[10px] uppercase tracking-[0.25em] text-white/25",
+              "text-[10px] uppercase tracking-[0.25em] text-muted-foreground",
               mono.className,
             )}
           >
             Capabilities Matrix
           </h2>
-          <div className="mt-5 overflow-hidden rounded-lg border border-white/6">
+          <div className="mt-5 overflow-hidden rounded-lg border border-border">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-white/6 bg-white/2">
+                <tr className="border-b border-border bg-muted">
                   <th
                     className={cn(
-                      "px-4 py-2.5 text-[10px] font-normal uppercase tracking-wider text-white/30",
+                      "px-4 py-2.5 text-[10px] font-normal uppercase tracking-wider text-muted-foreground",
                       mono.className,
                     )}
                   >
@@ -670,7 +671,7 @@ export function UpgradePageClient() {
                   </th>
                   <th
                     className={cn(
-                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-white/30",
+                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-muted-foreground",
                       mono.className,
                     )}
                   >
@@ -678,7 +679,7 @@ export function UpgradePageClient() {
                   </th>
                   <th
                     className={cn(
-                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-white/30",
+                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-muted-foreground",
                       mono.className,
                     )}
                   >
@@ -686,7 +687,7 @@ export function UpgradePageClient() {
                   </th>
                   <th
                     className={cn(
-                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-white/30",
+                      "px-4 py-2.5 text-center text-[10px] font-normal uppercase tracking-wider text-muted-foreground",
                       mono.className,
                     )}
                   >
@@ -699,11 +700,11 @@ export function UpgradePageClient() {
                   <tr
                     key={feature.label}
                     className={cn(
-                      "border-b border-white/4 transition-colors hover:bg-white/2",
+                      "border-b border-border transition-colors hover:bg-muted",
                       index === PLAN_FEATURES.length - 1 && "border-b-0",
                     )}
                   >
-                    <td className="px-4 py-2.5 text-xs text-white/50">
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
                       {feature.label}
                     </td>
                     <td className="px-4 py-2.5 text-center">

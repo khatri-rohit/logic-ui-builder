@@ -1,8 +1,3 @@
-import { STAGE3_SYSTEM, buildScreenPrompt } from "@/lib/prompts";
-import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
-import { validateGeneratedTSX } from "@/lib/validation/engine";
-import { validateCompile } from "@/lib/validation/compileValidator";
-import logger from "@/lib/logger";
 import {
   PipelineContext,
   ScreenResult,
@@ -10,16 +5,21 @@ import {
   TelemetryPayload,
 } from "./types";
 import { executeModel } from "./modelExecutor";
+import { classifyScreen, buildDynamicModelPriority } from "./modelRouter";
+import logger from "../logger";
+import prisma from "../prisma";
+import { sanitizeGeneratedCode } from "../generatedCodeSanitizer";
 import {
-  classifyScreen,
-  ScreenClass,
-  buildDynamicModelPriority,
-} from "./modelRouter";
-import prisma from "@/lib/prisma";
+  buildScreenPrompt,
+  STAGE3_SYSTEM,
+  validateGeneratedTSX,
+} from "../prompts";
+import { validateCompile } from "../validation/compileValidator";
 
 const MAX_CONCURRENT_SCREENS = 2;
 
 async function logTelemetry(payload: TelemetryPayload) {
+  if (!payload.generationId) return;
   try {
     await prisma.generationTelemetry.create({
       data: {

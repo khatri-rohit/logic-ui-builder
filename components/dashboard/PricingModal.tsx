@@ -147,7 +147,10 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       try {
         const data = await subscribe(targetPlan);
         logger.info("Subscription created, opening checkout", { data });
-        await openCheckout(data.subscriptionId, data.razorpayKeyId);
+        const opened = await openCheckout(data.subscriptionId, data.razorpayKeyId);
+        if (opened) {
+          onOpenChange(false);
+        }
       } catch (err) {
         const code = (err as { code?: string })?.code;
         if (code === "CHECKOUT_IN_PROGRESS") {

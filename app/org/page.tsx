@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import OrgPageClient from "./OrgPageClient";
 
 export const metadata: Metadata = {
-  title: "Organisation Settings | LOGIC",
+  title: "Organisation Settings",
   robots: {
     index: false,
     follow: false,

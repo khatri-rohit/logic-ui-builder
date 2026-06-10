@@ -170,7 +170,7 @@ export function useRazorpayCheckout({
   );
 
   const openCheckout = useCallback(
-    async (subscriptionId: string, razorpayKeyId: string) => {
+    async (subscriptionId: string, razorpayKeyId: string): Promise<boolean> => {
       // Reset state machine
       clearAllTimers();
       abortRef.current = false;
@@ -183,7 +183,7 @@ export function useRazorpayCheckout({
         toast.error(
           "Could not load payment module. Please check your connection.",
         );
-        return;
+        return false;
       }
 
       setCheckoutState("modal_open");
@@ -271,6 +271,7 @@ export function useRazorpayCheckout({
 
       instanceRef.current = rzp;
       rzp.open();
+      return true;
     },
     [email, onClose, clearAllTimers, pollForActivation],
   );

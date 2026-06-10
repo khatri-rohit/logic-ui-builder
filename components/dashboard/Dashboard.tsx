@@ -27,7 +27,6 @@ import UserMenu from "./UserMenu";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
-import { useUsageQuery } from "@/lib/billing/queries";
 import { PricingModal } from "./PricingModal";
 
 const mono = JetBrains_Mono({
@@ -83,7 +82,7 @@ const Dashboard = () => {
 
   const shouldReduceMotion = useReducedMotion();
   const { data: org } = useOrgQuery();
-  const { data: usage } = useUsageQuery();
+  // const { data: usage } = useUsageQuery();
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -232,12 +231,10 @@ const Dashboard = () => {
           </span>
         </div>
 
-        {isPricingModalOpen && (
-          <PricingModal
-            open={isPricingModalOpen}
-            onOpenChange={setPricingModalOpen}
-          />
-        )}
+        <PricingModal
+          open={isPricingModalOpen}
+          onOpenChange={setPricingModalOpen}
+        />
         {org && (
           <span
             className={cn(

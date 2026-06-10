@@ -189,7 +189,7 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
         <form className="grid gap-4 px-4 py-4" onSubmit={sendSupport}>
           <label
             htmlFor="support-message"
-            className="text-[15px] font-medium leading-none text-foreground"
+            className="text-sm font-medium leading-5 text-foreground"
           >
             Describe your issue{" "}
             <span className="text-muted-foreground">(required)</span>
@@ -198,7 +198,7 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
             id="support-message"
             rows={6}
             placeholder="Tell us what's going wrong or what you need help with..."
-            className="flex w-full rounded-md border border-border bg-card px-3 py-2 text-[15px] text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors"
+            className="flex w-full rounded-md border border-border bg-card px-3 py-2 text-sm leading-5 text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />

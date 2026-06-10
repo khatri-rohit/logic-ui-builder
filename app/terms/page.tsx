@@ -1,3 +1,5 @@
+/* eslint-disable react/no-unescaped-entities */
+import Link from "next/link";
 import LegalPageLayout from "@/components/legal/LegalPageLayout";
 
 export const metadata = {
@@ -30,22 +32,26 @@ export default function TermsPage() {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">3. Account Registration and Security</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          3. Account Registration and Security
+        </h2>
         <p className="mb-4 leading-relaxed">
           To use certain features of the Service, you must register for an
           account. You agree to provide accurate, current, and complete
           information during registration and to keep this information updated.
         </p>
         <p className="mb-4 leading-relaxed">
-          You are responsible for maintaining the confidentiality of your account
-          credentials and for all activities that occur under your account. You
-          agree to notify us immediately of any unauthorized use of your
-          account.
+          You are responsible for maintaining the confidentiality of your
+          account credentials and for all activities that occur under your
+          account. You agree to notify us immediately of any unauthorized use of
+          your account.
         </p>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">4. Subscription Plans and Billing</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          4. Subscription Plans and Billing
+        </h2>
         <p className="mb-4 leading-relaxed">
           The Service offers three subscription tiers: FREE, STANDARD, and PRO.
           Billing is processed through Razorpay, our payment partner. By
@@ -57,8 +63,7 @@ export default function TermsPage() {
             <strong>FREE:</strong> Up to 10 generations per billing period.
           </li>
           <li>
-            <strong>STANDARD:</strong> Up to 100 generations per billing
-            period.
+            <strong>STANDARD:</strong> Up to 100 generations per billing period.
           </li>
           <li>
             <strong>PRO:</strong> Unlimited generations with organization
@@ -67,28 +72,43 @@ export default function TermsPage() {
         </ul>
         <p className="mb-4 leading-relaxed">
           All fees are non-refundable except as expressly stated in our{" "}
-          <a
+          <Link
             href="/refund-policy"
             className="text-(--logic-primary-fixed) underline"
           >
             Refund Policy
-          </a>
+          </Link>
           . We reserve the right to change pricing with 30 days' advance notice.
         </p>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">5. Acceptable Use Policy</h2>
-        <p className="mb-4 leading-relaxed">You agree not to use the Service to:</p>
+        <h2 className="mb-4 text-2xl font-semibold">
+          5. Acceptable Use Policy
+        </h2>
+        <p className="mb-4 leading-relaxed">
+          You agree not to use the Service to:
+        </p>
         <ul className="mb-4 list-disc space-y-2 pl-6 leading-relaxed">
-          <li>Generate content that is illegal, harmful, threatening, abusive, or defamatory</li>
+          <li>
+            Generate content that is illegal, harmful, threatening, abusive, or
+            defamatory
+          </li>
           <li>Infringe on any intellectual property rights of third parties</li>
-          <li>Reverse engineer, decompile, or attempt to discover the source code of the Service</li>
+          <li>
+            Reverse engineer, decompile, or attempt to discover the source code
+            of the Service
+          </li>
           <li>Use the Service to build a competing product or service</li>
-          <li>Abuse the AI generation system through automated requests or prompt injection</li>
+          <li>
+            Abuse the AI generation system through automated requests or prompt
+            injection
+          </li>
           <li>Share your account credentials with unauthorized users</li>
           <li>Upload or transmit viruses, malware, or other harmful code</li>
-          <li>Engage in any activity that violates applicable laws or regulations</li>
+          <li>
+            Engage in any activity that violates applicable laws or regulations
+          </li>
         </ul>
         <p className="mb-4 leading-relaxed">
           We reserve the right to suspend or terminate your account for any
@@ -97,7 +117,9 @@ export default function TermsPage() {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">6. Intellectual Property</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          6. Intellectual Property
+        </h2>
         <h3 className="mb-2 text-lg font-medium">6.1 Your Content</h3>
         <p className="mb-4 leading-relaxed">
           You retain all ownership rights to the prompts you submit and the
@@ -117,18 +139,21 @@ export default function TermsPage() {
           All intellectual property rights in the Service itself, including but
           not limited to software, algorithms, designs, logos, and trademarks,
           are owned by LOGIC and its licensors. These Terms do not grant you any
-          rights to use our trademarks or branding without prior written consent.
+          rights to use our trademarks or branding without prior written
+          consent.
         </p>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">7. Service Availability and Disclaimers</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          7. Service Availability and Disclaimers
+        </h2>
         <p className="mb-4 leading-relaxed">
           The Service is provided on an "as is" and "as available" basis. We do
-          not guarantee that the Service will be uninterrupted, timely, secure, or
-          error-free. AI-generated code may contain errors or inaccuracies, and
-          you are solely responsible for reviewing and testing any generated code
-          before using it in production.
+          not guarantee that the Service will be uninterrupted, timely, secure,
+          or error-free. AI-generated code may contain errors or inaccuracies,
+          and you are solely responsible for reviewing and testing any generated
+          code before using it in production.
         </p>
         <p className="mb-4 leading-relaxed">
           We reserve the right to modify, suspend, or discontinue the Service
@@ -160,15 +185,17 @@ export default function TermsPage() {
         </p>
         <h3 className="mb-2 text-lg font-medium">8.3 Effect of Termination</h3>
         <p className="mb-4 leading-relaxed">
-          Upon termination, we will retain your data for 30 days (for billing and
-          audit purposes) before permanent deletion, unless longer retention is
-          required by law. You may request an export of your data before
+          Upon termination, we will retain your data for 30 days (for billing
+          and audit purposes) before permanent deletion, unless longer retention
+          is required by law. You may request an export of your data before
           termination.
         </p>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">9. Limitation of Liability</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          9. Limitation of Liability
+        </h2>
         <p className="mb-4 leading-relaxed">
           To the maximum extent permitted by applicable law, LOGIC and its
           affiliates, officers, employees, and agents shall not be liable for
@@ -184,7 +211,9 @@ export default function TermsPage() {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">10. Governing Law and Dispute Resolution</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          10. Governing Law and Dispute Resolution
+        </h2>
         <p className="mb-4 leading-relaxed">
           These Terms shall be governed by and construed in accordance with the
           laws of India. Any disputes arising under these Terms shall be subject
@@ -207,9 +236,9 @@ export default function TermsPage() {
         <h2 className="mb-4 text-2xl font-semibold">11. Changes to Terms</h2>
         <p className="mb-4 leading-relaxed">
           We may update these Terms from time to time. Material changes will be
-          notified via email or a prominent notice on the Service. Your continued
-          use of the Service after such changes constitutes acceptance of the
-          updated Terms.
+          notified via email or a prominent notice on the Service. Your
+          continued use of the Service after such changes constitutes acceptance
+          of the updated Terms.
         </p>
       </section>
 

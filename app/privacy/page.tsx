@@ -1,3 +1,5 @@
+/* eslint-disable react/no-unescaped-entities */
+import Link from "next/link";
 import LegalPageLayout from "@/components/legal/LegalPageLayout";
 
 export const metadata = {
@@ -12,10 +14,11 @@ export default function PrivacyPage() {
       <section className="mb-10">
         <h2 className="mb-4 text-2xl font-semibold">1. Introduction</h2>
         <p className="mb-4 leading-relaxed">
-          LOGIC Precision Instruments ("LOGIC," "we," "us," or "our") respects your
-          privacy and is committed to protecting your personal data. This Privacy
-          Policy explains how we collect, use, store, and share your information
-          when you use our AI-powered UI/UX builder platform (the "Service").
+          LOGIC Precision Instruments ("LOGIC," "we," "us," or "our") respects
+          your privacy and is committed to protecting your personal data. This
+          Privacy Policy explains how we collect, use, store, and share your
+          information when you use our AI-powered UI/UX builder platform (the
+          "Service").
         </p>
         <p className="mb-4 leading-relaxed">
           By using the Service, you consent to the practices described in this
@@ -24,7 +27,9 @@ export default function PrivacyPage() {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">2. Information We Collect</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          2. Information We Collect
+        </h2>
         <h3 className="mb-2 text-lg font-medium">2.1 Account Information</h3>
         <ul className="mb-4 list-disc space-y-1 pl-6 leading-relaxed">
           <li>Email address</li>
@@ -42,7 +47,9 @@ export default function PrivacyPage() {
           <li>Authentication audit events</li>
         </ul>
 
-        <h3 className="mb-2 text-lg font-medium">2.3 Project and Generation Data</h3>
+        <h3 className="mb-2 text-lg font-medium">
+          2.3 Project and Generation Data
+        </h3>
         <ul className="mb-4 list-disc space-y-1 pl-6 leading-relaxed">
           <li>Project titles and descriptions</li>
           <li>User prompts submitted for AI generation</li>
@@ -60,7 +67,9 @@ export default function PrivacyPage() {
           <li>Payment failure history</li>
         </ul>
 
-        <h3 className="mb-2 text-lg font-medium">2.5 Organisation Data (PRO Users)</h3>
+        <h3 className="mb-2 text-lg font-medium">
+          2.5 Organisation Data (PRO Users)
+        </h3>
         <ul className="mb-4 list-disc space-y-1 pl-6 leading-relaxed">
           <li>Organisation name and slug</li>
           <li>Member roles and invite statuses</li>
@@ -76,56 +85,65 @@ export default function PrivacyPage() {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">3. How We Use Your Information</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          3. How We Use Your Information
+        </h2>
         <ul className="mb-4 list-disc space-y-2 pl-6 leading-relaxed">
           <li>
-            <strong>Provide the Service:</strong> To authenticate you, process your
-            prompts, generate UI/UX designs, and store your projects.
+            <strong>Provide the Service:</strong> To authenticate you, process
+            your prompts, generate UI/UX designs, and store your projects.
           </li>
           <li>
-            <strong>Billing and Subscriptions:</strong> To manage your subscription
-            plan, process payments via Razorpay, and enforce usage limits.
+            <strong>Billing and Subscriptions:</strong> To manage your
+            subscription plan, process payments via Razorpay, and enforce usage
+            limits.
           </li>
           <li>
-            <strong>Analytics and Improvements:</strong> To analyze usage patterns,
-            improve generation quality, and optimize performance.
+            <strong>Analytics and Improvements:</strong> To analyze usage
+            patterns, improve generation quality, and optimize performance.
           </li>
           <li>
-            <strong>Security:</strong> To detect fraud, prevent abuse, and maintain
-            audit trails.
+            <strong>Security:</strong> To detect fraud, prevent abuse, and
+            maintain audit trails.
           </li>
           <li>
-            <strong>Support:</strong> To respond to your inquiries and troubleshoot
-            issues.
+            <strong>Support:</strong> To respond to your inquiries and
+            troubleshoot issues.
           </li>
         </ul>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">4. Legal Basis for Processing</h2>
-        <p className="mb-4 leading-relaxed">We process your data under the following legal bases:</p>
+        <h2 className="mb-4 text-2xl font-semibold">
+          4. Legal Basis for Processing
+        </h2>
+        <p className="mb-4 leading-relaxed">
+          We process your data under the following legal bases:
+        </p>
         <ul className="mb-4 list-disc space-y-2 pl-6 leading-relaxed">
           <li>
-            <strong>Contract Performance:</strong> Processing necessary to provide
-            the Service you signed up for.
+            <strong>Contract Performance:</strong> Processing necessary to
+            provide the Service you signed up for.
           </li>
           <li>
-            <strong>Legitimate Interests:</strong> Analytics, fraud prevention, and
-            service improvement.
+            <strong>Legitimate Interests:</strong> Analytics, fraud prevention,
+            and service improvement.
           </li>
           <li>
             <strong>Consent:</strong> Where required by law (e.g., marketing
             communications, non-essential cookies).
           </li>
           <li>
-            <strong>Legal Obligation:</strong> Compliance with tax, regulatory, and
-            law enforcement requests.
+            <strong>Legal Obligation:</strong> Compliance with tax, regulatory,
+            and law enforcement requests.
           </li>
         </ul>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">5. Third-Party Processors</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          5. Third-Party Processors
+        </h2>
         <p className="mb-4 leading-relaxed">
           We share data with the following service providers to operate the
           Service:
@@ -147,7 +165,9 @@ export default function PrivacyPage() {
             <tr className="border-b border-(--logic-border-soft)">
               <td className="py-2 pr-4">Razorpay</td>
               <td className="py-2 pr-4">Payment processing & billing</td>
-              <td className="py-2">Email, subscription data, payment history</td>
+              <td className="py-2">
+                Email, subscription data, payment history
+              </td>
             </tr>
             <tr className="border-b border-(--logic-border-soft)">
               <td className="py-2 pr-4">Supabase</td>
@@ -191,7 +211,9 @@ export default function PrivacyPage() {
 
       <section className="mb-10">
         <h2 className="mb-4 text-2xl font-semibold">7. Your Rights</h2>
-        <p className="mb-4 leading-relaxed">Depending on your jurisdiction, you may have the right to:</p>
+        <p className="mb-4 leading-relaxed">
+          Depending on your jurisdiction, you may have the right to:
+        </p>
         <ul className="mb-4 list-disc space-y-2 pl-6 leading-relaxed">
           <li>Access the personal data we hold about you</li>
           <li>Request correction of inaccurate data</li>
@@ -218,9 +240,12 @@ export default function PrivacyPage() {
           We use essential cookies for authentication and session management.
           Analytics cookies (Vercel Analytics) are currently disabled. For more
           details, see our{" "}
-          <a href="/cookies" className="text-(--logic-primary-fixed) underline">
+          <Link
+            href="/cookies"
+            className="text-(--logic-primary-fixed) underline"
+          >
             Cookie Policy
-          </a>
+          </Link>
           .
         </p>
       </section>

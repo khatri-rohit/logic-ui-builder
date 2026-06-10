@@ -3,18 +3,18 @@ import {
   ScreenResult,
   OnScreenComplete,
   TelemetryPayload,
-} from "./types";
-import { executeModel } from "./modelExecutor";
-import { classifyScreen, buildDynamicModelPriority } from "./modelRouter";
-import logger from "../logger";
-import prisma from "../prisma";
-import { sanitizeGeneratedCode } from "../generatedCodeSanitizer";
+} from "@/lib/execution/types";
+import { executeModel } from "@/lib/execution/modelExecutor";
+import { classifyScreen, buildDynamicModelPriority } from "@/lib/execution/modelRouter";
+import logger from "@/lib/logger";
+import prisma from "@/lib/prisma";
+import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import {
   buildScreenPrompt,
   STAGE3_SYSTEM,
   validateGeneratedTSX,
-} from "../prompts";
-import { validateCompile } from "../validation/compileValidator";
+} from "@/lib/prompts";
+import { validateCompile } from "@/lib/validation/compileValidator";
 
 const MAX_CONCURRENT_SCREENS = 2;
 

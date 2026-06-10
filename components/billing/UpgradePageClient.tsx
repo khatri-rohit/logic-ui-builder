@@ -512,7 +512,7 @@ export function UpgradePageClient() {
                           ? "bg-amber-500/60"
                           : plan.id === "STANDARD"
                             ? "bg-blue-500/60"
-                            : "bg-muted0",
+                            : "bg-muted",
                       )}
                     />
                   </div>
@@ -544,7 +544,7 @@ export function UpgradePageClient() {
                                 ? "bg-amber-400"
                                 : plan.id === "STANDARD"
                                   ? "bg-blue-400"
-                                  : "bg-muted0",
+                                  : "bg-muted",
                             )}
                           />
                           Active

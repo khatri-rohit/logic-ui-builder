@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
 
     const parsedBody = feedbackFormBodySchema.safeParse({
       feedback: formData.get("feedback"),
+      type: formData.get("type"),
       attachments: formData.getAll("attachments"),
     });
 
@@ -98,8 +99,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { feedback, attachments } = parsedBody.data;
-    const type = (formData.get("type") as string) || "feedback";
+    const { feedback, type, attachments } = parsedBody.data;
 
     const emailAttachments = await Promise.all(
       attachments.map(async (attachmentFile) => ({

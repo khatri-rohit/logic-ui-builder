@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { JetBrains_Mono } from "next/font/google";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { Crown, CreditCard, Building2, LogOut, Settings } from "lucide-react";
 import {
@@ -14,14 +13,25 @@ import { useOrgQuery } from "@/lib/org/queries";
 import { useUsageQuery } from "@/lib/billing/queries";
 import { cn } from "@/lib/utils";
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "700"],
-});
-
 interface UserMenuProps {
   onOpenPricing: () => void;
 }
+
+const planBadgeStyles: Record<string, string> = {
+  PRO: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  STANDARD: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  FREE: "bg-muted text-muted-foreground border-border",
+};
+
+const menuItemBase = cn(
+  "relative flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium",
+  "select-none outline-hidden transition-colors duration-100",
+  "focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring focus-visible:outline-offset-1",
+  "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-full before:content-['']",
+  "before:opacity-0 before:transition-opacity before:duration-150",
+  "hover:before:opacity-100 focus:before:opacity-100 data-[highlighted]:before:opacity-100",
+  "font-sans",
+);
 
 export default function UserMenu({ onOpenPricing }: UserMenuProps) {
   const { user } = useUser();
@@ -33,6 +43,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const name =
     user?.fullName || user?.firstName || email.split("@")[0] || "User";
+  const planId = usage?.planId as string | undefined;
 
   return (
     <DropdownMenu>
@@ -40,21 +51,21 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
         <button
           aria-label="User menu"
           className={cn(
-            "flex items-center justify-center rounded-[2px] border border-[#2a2a2a] bg-[#111111] p-[3px]",
-            "transition-colors duration-100 ease-out",
-            "hover:border-[#3a3a3a] hover:bg-[#1a1a1a]",
-            "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#7f7f7f] focus-visible:outline-offset-1",
-            "data-[state=open]:border-[#4a4a4a] data-[state=open]:bg-[#1a1a1a]",
+            "flex items-center justify-center rounded-lg border border-border bg-card p-[3px]",
+            "transition-all duration-150 ease-out",
+            "hover:border-border/80 hover:bg-accent",
+            "focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring focus-visible:outline-offset-1",
+            "data-[state=open]:border-border/80 data-[state=open]:bg-accent",
           )}
         >
           {user?.imageUrl ? (
             <img
               src={user.imageUrl}
               alt={name}
-              className="h-[30px] w-[30px] rounded-[2px] border border-[#313131] object-cover"
+              className="h-[30px] w-[30px] rounded-md border border-border object-cover"
             />
           ) : (
-            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-[2px] border border-[#313131] bg-[#1a1a1a] text-[11px] font-bold uppercase text-foreground">
+            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border bg-card text-[11px] font-bold uppercase text-foreground font-sans">
               {name[0]}
             </div>
           )}
@@ -63,10 +74,10 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
 
       <DropdownMenuContent
         align="end"
-        sideOffset={4}
+        sideOffset={6}
         className={cn(
-          "min-w-[236px] rounded-[2px] border border-[#272727] bg-[#111111] p-1",
-          "shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_16px_34px_-22px_rgba(0,0,0,0.95)]",
+          "min-w-[260px] rounded-xl border border-border bg-card p-1.5",
+          "shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_24px_48px_-16px_rgba(0,0,0,0.85)]",
         )}
       >
         {/* User header */}
@@ -75,55 +86,57 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
             <img
               src={user.imageUrl}
               alt={name}
-              className="h-9 w-9 rounded-full border border-[#313131] object-cover"
+              className="h-9 w-9 rounded-full border border-border object-cover"
             />
           ) : (
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#313131] bg-[#1a1a1a] text-sm font-bold uppercase text-foreground">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-sm font-bold uppercase text-foreground font-sans">
               {name[0]}
             </div>
           )}
           <div className="flex min-w-0 flex-col">
-            <span
-              className={cn(
-                "truncate text-sm font-medium text-white",
-                mono.className,
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium text-foreground font-sans">
+                {name}
+              </span>
+              {planId && (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider",
+                    planBadgeStyles[planId] ?? planBadgeStyles.FREE,
+                  )}
+                >
+                  {planId}
+                </span>
               )}
-            >
-              {name}
-            </span>
-            <span
-              className={cn(
-                "truncate text-xs text-muted-foreground",
-                mono.className,
-              )}
-            >
+            </div>
+            <span className="truncate text-xs text-muted-foreground font-mono">
               {email}
             </span>
           </div>
         </div>
 
-        <div className="my-1 h-px bg-[#232323]" />
+        <div className="my-1 h-px bg-border" />
 
         {/* Menu items */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           {/* Manage Account */}
           <DropdownMenuItem
             onClick={() => openUserProfile()}
             className={cn(
-              "relative flex cursor-pointer items-center gap-2 rounded-[2px] border border-[#3a3a3a] bg-[#1a1a1a] px-2 py-2 text-[#f2f2f2]",
-              "select-none outline-hidden",
-              "hover:border-[#4a4a4a] hover:bg-[#202020]",
-              "focus:border-[#4a4a4a] focus:bg-[#202020] focus:text-[#f2f2f2]",
-              "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#818181] focus-visible:outline-offset-1",
-              mono.className,
+              menuItemBase,
+              "text-foreground bg-muted/40",
+              "hover:bg-muted hover:text-foreground",
+              "focus:bg-muted focus:text-foreground",
+              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "before:bg-amber-500",
             )}
           >
             <Settings
-              size={14}
+              size={15}
               strokeWidth={1.8}
-              className="shrink-0 text-[#d9d9d9]"
+              className="shrink-0 text-muted-foreground"
             />
-            <span className="text-[11px] uppercase tracking-[0.14em]">
+            <span className="uppercase tracking-[0.12em] text-[11px] font-medium">
               Manage Account
             </span>
           </DropdownMenuItem>
@@ -132,20 +145,20 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
           <DropdownMenuItem
             onClick={onOpenPricing}
             className={cn(
-              "relative flex cursor-pointer items-center gap-2 rounded-[2px] border border-[#202020] bg-[#151515] px-2 py-2 text-[#f2f2f2]",
-              "select-none outline-hidden",
-              "hover:border-[#303030] hover:bg-[#202020]",
-              "focus:border-[#303030] focus:bg-[#202020] focus:text-[#f2f2f2]",
-              "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#818181] focus-visible:outline-offset-1",
-              mono.className,
+              menuItemBase,
+              "text-muted-foreground",
+              "hover:bg-muted hover:text-foreground",
+              "focus:bg-muted focus:text-foreground",
+              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "before:bg-amber-500",
             )}
           >
             <Crown
-              size={14}
+              size={15}
               strokeWidth={1.8}
-              className="shrink-0 text-[#d9d9d9]"
+              className="shrink-0 text-muted-foreground/60"
             />
-            <span className="text-[11px] uppercase tracking-[0.14em]">
+            <span className="uppercase tracking-[0.12em] text-[11px] font-medium">
               Manage Subscription
             </span>
           </DropdownMenuItem>
@@ -154,69 +167,69 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
           <DropdownMenuItem
             onClick={() => router.push("/billing")}
             className={cn(
-              "relative flex cursor-pointer items-center gap-2 rounded-[2px] border border-[#202020] bg-[#151515] px-2 py-2 text-[#f2f2f2]",
-              "select-none outline-hidden",
-              "hover:border-[#303030] hover:bg-[#202020]",
-              "focus:border-[#303030] focus:bg-[#202020] focus:text-[#f2f2f2]",
-              "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#818181] focus-visible:outline-offset-1",
-              mono.className,
+              menuItemBase,
+              "text-muted-foreground",
+              "hover:bg-muted hover:text-foreground",
+              "focus:bg-muted focus:text-foreground",
+              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "before:bg-amber-500",
             )}
           >
             <CreditCard
-              size={14}
+              size={15}
               strokeWidth={1.8}
-              className="shrink-0 text-[#d9d9d9]"
+              className="shrink-0 text-muted-foreground/60"
             />
-            <span className="text-[11px] uppercase tracking-[0.14em]">
+            <span className="uppercase tracking-[0.12em] text-[11px] font-medium">
               Billing
             </span>
           </DropdownMenuItem>
 
           {/* Organisations — conditional */}
-          {(org || usage?.planId === "PRO") && (
+          {(org || planId === "PRO") && (
             <DropdownMenuItem
               onClick={() => router.push("/org")}
               className={cn(
-                "relative flex cursor-pointer items-center gap-2 rounded-[2px] border border-[#202020] bg-[#151515] px-2 py-2 text-[#f2f2f2]",
-                "select-none outline-hidden",
-                "hover:border-[#303030] hover:bg-[#202020]",
-                "focus:border-[#303030] focus:bg-[#202020] focus:text-[#f2f2f2]",
-                "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#818181] focus-visible:outline-offset-1",
-                mono.className,
+                menuItemBase,
+                "text-muted-foreground",
+                "hover:bg-muted hover:text-foreground",
+                "focus:bg-muted focus:text-foreground",
+                "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+                "before:bg-amber-500",
               )}
             >
               <Building2
-                size={14}
+                size={15}
                 strokeWidth={1.8}
-                className="shrink-0 text-[#d9d9d9]"
+                className="shrink-0 text-muted-foreground/60"
               />
-              <span className="text-[11px] uppercase tracking-[0.14em]">
+              <span className="uppercase tracking-[0.12em] text-[11px] font-medium">
                 Organisations
               </span>
             </DropdownMenuItem>
           )}
         </div>
 
-        <div className="my-1 h-px bg-[#232323]" />
+        <div className="my-1 h-px bg-border" />
 
         {/* Sign Out */}
         <DropdownMenuItem
           onClick={() => signOut()}
           className={cn(
-            "relative flex cursor-pointer items-center gap-2 rounded-[2px] border border-[#202020] bg-[#151515] px-2 py-2 text-[#f2f2f2]",
-            "select-none outline-hidden",
-            "hover:border-[#303030] hover:bg-[#202020]",
-            "focus:border-[#303030] focus:bg-[#202020] focus:text-[#f2f2f2]",
-            "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#818181] focus-visible:outline-offset-1",
-            mono.className,
+            menuItemBase,
+            "text-muted-foreground",
+            "hover:bg-muted hover:text-red-400",
+            "focus:bg-muted focus:text-red-400",
+            "data-[highlighted]:bg-muted data-[highlighted]:text-red-400",
+            "before:bg-red-500",
           )}
         >
           <LogOut
-            size={14}
+            size={15}
             strokeWidth={1.8}
-            className="shrink-0 text-[#d9d9d9]"
+            className="shrink-0 text-muted-foreground/60"
           />
-          <span className="text-[11px] uppercase tracking-[0.14em]">
+          <span className="uppercase tracking-[0.12em] text-[11px] font-medium">
             Sign Out
           </span>
         </DropdownMenuItem>

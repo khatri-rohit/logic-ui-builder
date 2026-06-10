@@ -26,29 +26,29 @@ export default function LegalPageLayout({
 }: LegalPageLayoutProps) {
   return (
     <div
-      className={`${displayFont.variable} ${bodyFont.variable} min-h-screen bg-(--logic-bg) text-(--logic-on-surface)`}
+      className={`${displayFont.variable} ${bodyFont.variable} min-h-screen bg-background text-foreground`}
     >
-      <header className="w-full border-b border-(--logic-border-soft) bg-(--logic-bg)">
+      <header className="w-full border-b border-border bg-background">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-6">
           <Link
             href="/"
-            className="text-xl font-black tracking-tighter text-(--logic-on-surface) transition-opacity hover:opacity-80"
+            className="text-xl font-black tracking-tighter text-foreground transition-opacity hover:opacity-80"
           >
             LOGIC
           </Link>
-          <nav className="flex gap-6 text-sm text-(--logic-secondary)">
-            <Link href="/privacy" className="hover:text-(--logic-on-surface)">
+          <nav className="flex gap-6 text-sm text-muted-foreground">
+            <Link href="/privacy" className="hover:text-foreground">
               Privacy
             </Link>
-            <Link href="/terms" className="hover:text-(--logic-on-surface)">
+            <Link href="/terms" className="hover:text-foreground">
               Terms
             </Link>
-            <Link href="/cookies" className="hover:text-(--logic-on-surface)">
+            <Link href="/cookies" className="hover:text-foreground">
               Cookies
             </Link>
             <Link
               href="/refund-policy"
-              className="hover:text-(--logic-on-surface)"
+              className="hover:text-foreground"
             >
               Refunds
             </Link>
@@ -61,39 +61,39 @@ export default function LegalPageLayout({
           <h1 className="logic-body mb-3 text-4xl font-bold tracking-tight">
             {title}
           </h1>
-          <p className="logic-body text-sm text-(--logic-secondary)">
+          <p className="logic-body text-sm text-muted-foreground">
             Last updated: {lastUpdated}
           </p>
         </div>
 
-        <article className="logic-body prose prose-lg max-w-none text-(--logic-on-surface)">
+        <article className="logic-body prose prose-lg max-w-none text-foreground">
           {children}
         </article>
       </main>
 
-      <footer className="w-full border-t border-(--logic-border-soft) bg-(--logic-bg) py-8">
+      <footer className="w-full border-t border-border bg-background py-8">
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 px-6 md:flex-row">
-          <div className="text-lg font-black uppercase tracking-tight text-(--logic-on-surface)">
+          <div className="text-lg font-black uppercase tracking-tight text-foreground">
             LOGIC
           </div>
-          <div className="flex gap-6 text-sm text-(--logic-secondary)">
-            <Link href="/privacy" className="hover:text-(--logic-on-surface)">
+          <div className="flex gap-6 text-sm text-muted-foreground">
+            <Link href="/privacy" className="hover:text-foreground">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="hover:text-(--logic-on-surface)">
+            <Link href="/terms" className="hover:text-foreground">
               Terms of Service
             </Link>
-            <Link href="/cookies" className="hover:text-(--logic-on-surface)">
+            <Link href="/cookies" className="hover:text-foreground">
               Cookie Policy
             </Link>
             <Link
               href="/refund-policy"
-              className="hover:text-(--logic-on-surface)"
+              className="hover:text-foreground"
             >
               Refund Policy
             </Link>
           </div>
-          <div className="mono text-xs uppercase tracking-widest text-(--logic-muted)">
+          <div className="mono text-xs uppercase tracking-widest text-muted-foreground/60">
             &copy; 2026 LOGIC. All rights reserved.
           </div>
         </div>

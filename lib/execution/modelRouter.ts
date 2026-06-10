@@ -1,5 +1,6 @@
 import { WebAppSpec, ComponentTreeNode } from "@/lib/types";
 import prisma from "@/lib/prisma";
+import logger from "@/lib/logger";
 
 export type ScreenClass =
   | "simple-static"
@@ -272,7 +273,7 @@ export async function buildDynamicModelPriority(
       },
     });
   } catch (err) {
-    console.error("Telemetry query failed, falling back to static priority:", err);
+    logger.error("Telemetry query failed, falling back to static priority", { err });
     return buildModelPriority(preferredModel, staticPriority);
   }
 

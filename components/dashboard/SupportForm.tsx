@@ -175,12 +175,12 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="dark bg-[#181818] border-l border-white/10 shadow-2xl rounded-none w-full sm:max-w-md h-full mt-0">
+      <DrawerContent className="dark bg-background border-l border-border shadow-2xl rounded-none w-full sm:max-w-md h-full mt-0">
         <DrawerHeader className="text-left">
-          <DrawerTitle className="text-white text-xl">
+          <DrawerTitle className="text-foreground text-xl">
             Support & Help
           </DrawerTitle>
-          <DrawerDescription className="text-white/60 mt-2">
+          <DrawerDescription className="text-muted-foreground mt-2">
             Need help with something? Describe your issue below and we'll get
             back to you as soon as possible. Screenshots and screen recordings
             are especially helpful.
@@ -189,22 +189,22 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
         <form className="grid gap-4 px-4 py-4" onSubmit={sendSupport}>
           <label
             htmlFor="support-message"
-            className="text-[15px] font-medium leading-none text-white/90"
+            className="text-[15px] font-medium leading-none text-foreground"
           >
             Describe your issue{" "}
-            <span className="text-white/50">(required)</span>
+            <span className="text-muted-foreground">(required)</span>
           </label>
           <Textarea
             id="support-message"
             rows={6}
             placeholder="Tell us what's going wrong or what you need help with..."
-            className="flex w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-[15px] text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50 transition-colors"
+            className="flex w-full rounded-md border border-border bg-card px-3 py-2 text-[15px] text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
 
           <Field className="pt-4">
-            <FieldLabel htmlFor="support-attachments" className="text-white/90">
+            <FieldLabel htmlFor="support-attachments" className="text-foreground">
               Attachments
             </FieldLabel>
             <Input
@@ -214,16 +214,16 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
               multiple
               accept={FEEDBACK_ATTACHMENT_ACCEPT}
               onChange={handleAttachmentChange}
-              className="border-white/20 bg-white/5 text-white file:text-white"
+              className="border-border bg-card text-foreground file:text-foreground"
             />
-            <FieldDescription className="text-white/50">
+            <FieldDescription className="text-muted-foreground">
               Upload up to {FEEDBACK_MAX_ATTACHMENTS} files. Each file can be up
               to {formatBytes(FEEDBACK_MAX_FILE_SIZE_BYTES)} and total
               attachments can be up to
               {" " + formatBytes(FEEDBACK_MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.
             </FieldDescription>
             {attachments.length > 0 ? (
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-muted-foreground">
                 {attachments.length} file(s) selected (
                 {formatBytes(selectedTotalBytes)})
               </p>
@@ -232,7 +232,7 @@ const SupportForm = ({ open, onOpenChange }: SupportFormProps) => {
           <DrawerFooter className="pt-2 px-0">
             <Button
               type="submit"
-              className="bg-white text-black hover:bg-white/90 font-medium shadow-none h-11 w-full"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 font-medium shadow-none h-11 w-full"
               disabled={isSubmitting}
             >
               {isSubmitting ? "Submitting..." : "Submit Support Request"}

@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import {
   ModelExecutionResult,
   ModelExecutorOptions,
-} from "./types";
+} from "@/lib/execution/types";
 
 const DEFAULT_MODEL_TIMEOUT_MS = 300_000;
 

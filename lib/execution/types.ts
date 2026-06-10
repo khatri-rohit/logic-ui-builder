@@ -43,7 +43,7 @@ export interface PipelineContext {
   write: WriteFunction;
   systemPrompt?: string;
   screenClass?: ScreenClass;
-  generationId?: string | null;
+  generationId?: string;
 }
 
 export interface TelemetryPayload {

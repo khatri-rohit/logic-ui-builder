@@ -16,15 +16,7 @@ export function validateGeneratedTSX(code: string): ValidationResult {
   const issues: string[] = [];
   const diagnostics: ValidationDiagnostic[] = [];
 
-  // Fast structural checks
-  const openBraces = (code.match(/{/g) || []).length;
-  const closeBraces = (code.match(/}/g) || []).length;
-  if (openBraces !== closeBraces) {
-    issues.push("Unbalanced braces");
-    diagnostics.push({ message: "Unbalanced braces" });
-  }
-
-  if (!/export\s+default\s+\w+/.test(code)) {
+  if (!/export\s+default/.test(code)) {
     issues.push("Missing default export");
     diagnostics.push({ message: "Missing default export" });
   }

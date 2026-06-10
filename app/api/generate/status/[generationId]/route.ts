@@ -74,10 +74,14 @@ export async function GET(
       specScreens = [];
     }
 
-    const doneScreenNames = new Set(
-      screens.filter((s) => s.state === "done").map((s) => s.screenName),
+    const terminalScreenNames = new Set(
+      screens
+        .filter((s) => s.state === "done" || s.state === "error")
+        .map((s) => s.screenName),
     );
-    const pendingScreens = specScreens.filter((s) => !doneScreenNames.has(s));
+    const pendingScreens = specScreens.filter(
+      (s) => !terminalScreenNames.has(s),
+    );
 
     return NextResponse.json({
       error: false,

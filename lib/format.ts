@@ -18,7 +18,7 @@ export function formatDateRange(
   start: string | Date | null,
   end: string | Date | null,
 ): string {
-  if (!start || !end) return "";
+  if (!start || !end) return "—";
   const s = typeof start === "string" ? new Date(start) : start;
   const e = typeof end === "string" ? new Date(end) : end;
   const startStr = s.toLocaleDateString(LOCALE, {

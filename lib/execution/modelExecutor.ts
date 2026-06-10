@@ -36,6 +36,14 @@ export async function executeModel(
       await options.onToken?.(token);
     }
 
+    if (abortController.signal.aborted) {
+      return {
+        success: false,
+        reason: "client_abort",
+        error: new Error("Generation aborted by client disconnect"),
+      };
+    }
+
     let resolvedUsage: { promptTokens: number; completionTokens: number; totalTokens: number } | null = null;
     try {
       const u = await usage;

@@ -57,6 +57,8 @@ export async function runScreenGeneration(
     generationId,
   } = context;
 
+  const MAX_STAGE3_ATTEMPTS = 3;
+
   const screenClass = classifyScreen(spec, screen, tree);
 
   // Dynamic model routing: re-rank priority for this screen's complexity class
@@ -84,6 +86,19 @@ export async function runScreenGeneration(
     }
 
     iterations++;
+
+    if (iterations > MAX_STAGE3_ATTEMPTS) {
+      logger.warn(
+        `Stage 3 ${eventPrefix} '${screen}' exceeded max attempts (${MAX_STAGE3_ATTEMPTS}). Returning fallback.`,
+      );
+      return {
+        success: false,
+        code: sanitizeGeneratedCode(currentCode),
+        error:
+          lastError || `Exceeded max ${MAX_STAGE3_ATTEMPTS} stage-3 attempts`,
+        iterations,
+      };
+    }
 
     if (iterations > 1) {
       currentCode = "";
@@ -300,9 +315,9 @@ export async function runFullGeneration(
 
     const promises = chunk.map((job, chunkIdx) =>
       runScreenGeneration(context, job.screen, job.frameId, basePrompt).then(
-        (result) => {
+        async (result) => {
           results[i + chunkIdx] = result;
-          onScreenComplete?.(i + chunkIdx, result);
+          await onScreenComplete?.(i + chunkIdx, result);
         },
       ),
     );

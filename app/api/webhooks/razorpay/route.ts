@@ -355,6 +355,12 @@ export async function POST(req: NextRequest) {
           );
 
           if (paidInvoice && dbSub?.userId) {
+            if (!paidInvoice.id) {
+              logger.warn("Skipping invoice upsert: missing invoice id", {
+                razorpaySubscriptionId,
+              });
+              return;
+            }
             await prisma.invoice.upsert({
               where: { razorpayInvoiceId: paidInvoice.id as string },
               create: {

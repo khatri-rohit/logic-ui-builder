@@ -495,7 +495,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const canGenerate = !!prompt.trim() && !isGenerating;
   const canRegenerate = usage?.frameRegenerationEnabled ?? false;
-  const canEditCode = usage?.planId !== "FREE";
+  const canEditCode = usage?.planId != null && usage.planId !== "FREE";
 
   useEffect(() => {
     handleGenerateRef.current = handleGenerate;

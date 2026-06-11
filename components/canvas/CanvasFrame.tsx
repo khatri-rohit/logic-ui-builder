@@ -116,7 +116,6 @@ export const CanvasFrame = memo(function CanvasFrame({
     };
   }, [onMove, onResize, platform, scale]);
 
-  const safeScale = Math.max(scale, 0.001);
   const activeContent = editedContent ?? content;
 
   useFrameLifecycle({
@@ -392,6 +391,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       window.removeEventListener("pointermove", currentHandle);
       interactionRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;

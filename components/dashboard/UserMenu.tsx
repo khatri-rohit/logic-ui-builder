@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -51,10 +52,10 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
         <button
           aria-label="User menu"
           className={cn(
-            "flex items-center justify-center rounded-lg border border-border bg-card p-[3px]",
+            "flex items-center justify-center rounded-lg border border-border bg-card p-0.75",
             "transition-all duration-150 ease-out",
             "hover:border-border/80 hover:bg-accent",
-            "focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring focus-visible:outline-offset-1",
+            "focus-visible:outline-1 focus-visible:outline-ring focus-visible:outline-offset-1",
             "data-[state=open]:border-border/80 data-[state=open]:bg-accent",
           )}
         >
@@ -62,10 +63,10 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
             <img
               src={user.imageUrl}
               alt={name}
-              className="h-[30px] w-[30px] rounded-md border border-border object-cover"
+              className="h-7.5 w-7.5 rounded-md border border-border object-cover"
             />
           ) : (
-            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border bg-card text-[11px] font-bold uppercase text-foreground font-sans">
+            <div className="flex h-7.5 w-7.5 items-center justify-center rounded-md border border-border bg-card text-[11px] font-bold uppercase text-foreground font-sans">
               {name[0]}
             </div>
           )}
@@ -76,7 +77,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
         align="end"
         sideOffset={6}
         className={cn(
-          "min-w-[260px] rounded-xl border border-border bg-card p-1.5",
+          "min-w-65 rounded-xl border border-border bg-card p-1.5",
           "shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_24px_48px_-16px_rgba(0,0,0,0.85)]",
         )}
       >
@@ -127,7 +128,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
               "text-foreground bg-muted/40",
               "hover:bg-muted hover:text-foreground",
               "focus:bg-muted focus:text-foreground",
-              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "data-highlighted:bg-muted data-highlighted:text-foreground",
               "before:bg-amber-500",
             )}
           >
@@ -149,7 +150,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
               "text-muted-foreground",
               "hover:bg-muted hover:text-foreground",
               "focus:bg-muted focus:text-foreground",
-              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "data-highlighted:bg-muted data-highlighted:text-foreground",
               "before:bg-amber-500",
             )}
           >
@@ -171,7 +172,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
               "text-muted-foreground",
               "hover:bg-muted hover:text-foreground",
               "focus:bg-muted focus:text-foreground",
-              "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+              "data-highlighted:bg-muted data-highlighted:text-foreground",
               "before:bg-amber-500",
             )}
           >
@@ -194,7 +195,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
                 "text-muted-foreground",
                 "hover:bg-muted hover:text-foreground",
                 "focus:bg-muted focus:text-foreground",
-                "data-[highlighted]:bg-muted data-[highlighted]:text-foreground",
+                "data-highlighted:bg-muted data-highlighted:text-foreground",
                 "before:bg-amber-500",
               )}
             >
@@ -220,7 +221,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
             "text-muted-foreground",
             "hover:bg-muted hover:text-red-400",
             "focus:bg-muted focus:text-red-400",
-            "data-[highlighted]:bg-muted data-[highlighted]:text-red-400",
+            "data-highlighted:bg-muted data-highlighted:text-red-400",
             "before:bg-red-500",
           )}
         >

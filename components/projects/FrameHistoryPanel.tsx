@@ -9,10 +9,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
-import {
-  useFrameHistoryQuery,
-  FrameVersionItem,
-} from "@/lib/projects/queries";
+import { useFrameHistoryQuery, FrameVersionItem } from "@/lib/projects/queries";
 import { Clock, RotateCcw, X, History } from "lucide-react";
 
 interface FrameHistoryPanelProps {
@@ -50,7 +47,7 @@ function VersionCard({
     <div className="rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent/30">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-5 min-w-[1.5rem] items-center justify-center rounded bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">
+          <span className="inline-flex h-5 min-w-6 items-center justify-center rounded bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">
             v{version.versionNumber}
           </span>
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -92,10 +89,7 @@ export function FrameHistoryPanel({
   isRestoring,
   onRestore,
 }: FrameHistoryPanelProps) {
-  const { data, isLoading } = useFrameHistoryQuery(
-    projectId,
-    frameId,
-  );
+  const { data, isLoading } = useFrameHistoryQuery(projectId, frameId);
 
   const versions = data?.versions ?? [];
 

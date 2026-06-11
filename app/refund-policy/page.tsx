@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unescaped-entities */
 import LegalPageLayout from "@/components/legal/LegalPageLayout";
 
 export const metadata = {
@@ -35,16 +36,20 @@ export default function RefundPolicyPage() {
           limitation:
         </p>
         <ul className="mb-4 list-disc space-y-2 pl-6 leading-relaxed">
-          <li>Partial usage or non-use of the Service during a billing period</li>
+          <li>
+            Partial usage or non-use of the Service during a billing period
+          </li>
           <li>Dissatisfaction with generated outputs or code quality</li>
           <li>Change of mind after purchase</li>
           <li>Failure to cancel before the next billing cycle</li>
           <li>Technical issues caused by third-party services</li>
-          <li>Account suspension or termination due to Terms of Service violations</li>
+          <li>
+            Account suspension or termination due to Terms of Service violations
+          </li>
         </ul>
         <p className="mb-4 leading-relaxed">
-          We encourage you to make use of our FREE plan to evaluate the
-          Service before upgrading to a paid subscription.
+          We encourage you to make use of our FREE plan to evaluate the Service
+          before upgrading to a paid subscription.
         </p>
       </section>
 
@@ -87,16 +92,18 @@ export default function RefundPolicyPage() {
         <p className="mb-4 leading-relaxed">
           If a recurring payment fails, Razorpay will automatically retry the
           charge according to their retry schedule. After multiple failed
-          attempts, your subscription may be moved to a "halted" status, and
-          you will lose access to paid features. You can reactivate your
+          attempts, your subscription may be moved to a "halted" status, and you
+          will lose access to paid features. You can reactivate your
           subscription by updating your payment method in the billing dashboard.
-          No refunds will be issued for any period of service interruption due to
-          failed payments.
+          No refunds will be issued for any period of service interruption due
+          to failed payments.
         </p>
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-2xl font-semibold">5. Data Retention After Cancellation</h2>
+        <h2 className="mb-4 text-2xl font-semibold">
+          5. Data Retention After Cancellation
+        </h2>
         <p className="mb-4 leading-relaxed">
           After cancellation or downgrade, your projects and data remain
           accessible under the FREE plan limits. If your data exceeds FREE plan

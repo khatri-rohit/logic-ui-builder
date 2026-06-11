@@ -61,7 +61,6 @@ export function PricingSection() {
         "Frame regeneration",
         "Canvas export",
         "Up to 5 team seats",
-        "50 generation rollover",
         "Priority support",
       ],
       cta: "Get Pro",

@@ -114,11 +114,29 @@ model Generation {
     updatedAt      DateTime           @updatedAt
 
     project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    frameVersions FrameVersion[]
 
     @@index([projectId, createdAt])
     @@index([projectId, status])
     @@index([status, createdAt])
     @@map("Generation")
+}
+
+model FrameVersion {
+    id            String   @id @default(cuid())
+    projectId     String
+    generationId  String
+    frameId       String
+    versionNumber Int
+    content       String
+    editedContent String?
+    prompt        String?
+    createdAt     DateTime @default(now())
+
+    generation Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+    @@unique([projectId, frameId, versionNumber])
+    @@index([projectId, frameId, createdAt])
 }
 
 model GenerationTelemetry {
@@ -193,6 +211,11 @@ model UsagePeriod {
     generationsUsed Int @default(0)
     framesRegenUsed Int @default(0)
     projectsCreated Int @default(0)
+    rolloverGenerations Int @default(0)
+
+    // Limits at period creation time (for accurate rollover calculation)
+    periodGenerationLimit Int?
+    periodProjectLimit     Int?
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

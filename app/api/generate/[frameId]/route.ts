@@ -445,6 +445,54 @@ export async function POST(
         );
         await incrementFrameRegenUsage(usage.usagePeriodId);
 
+        if (
+          sourceFrame &&
+          sourceGeneration &&
+          sourceFrame.state === "done" &&
+          sourceFrame.content
+        ) {
+          await prisma.$transaction(async (tx) => {
+            const maxVersion = await tx.frameVersion.aggregate({
+              where: { projectId: project.id, frameId: sourceFrame.id },
+              _max: { versionNumber: true },
+            });
+            const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
+
+            await tx.frameVersion.create({
+              data: {
+                projectId: project.id,
+                generationId: sourceGeneration.id,
+                frameId: sourceFrame.id,
+                versionNumber: nextVersion,
+                content: sourceFrame.content,
+                editedContent: sourceFrame.editedContent ?? null,
+                prompt: sourceGeneration.prompt,
+              },
+            });
+
+            const count = await tx.frameVersion.count({
+              where: { projectId: project.id, frameId: sourceFrame.id },
+            });
+
+            if (count > 50) {
+              const toDelete = await tx.frameVersion.findMany({
+                where: { projectId: project.id, frameId: sourceFrame.id },
+                orderBy: { versionNumber: "asc" },
+                select: { id: true },
+                skip: 50,
+              });
+
+              if (toDelete.length > 0) {
+                await tx.frameVersion.deleteMany({
+                  where: {
+                    id: { in: toDelete.map((v) => v.id) },
+                  },
+                });
+              }
+            }
+          });
+        }
+
         const framePipelineContext: PipelineContext = {
           ollama,
           spec,

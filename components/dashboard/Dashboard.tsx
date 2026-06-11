@@ -231,10 +231,6 @@ const Dashboard = () => {
           </span>
         </div>
 
-        <PricingModal
-          open={isPricingModalOpen}
-          onOpenChange={setPricingModalOpen}
-        />
         {org && (
           <span
             className={cn(
@@ -530,6 +526,10 @@ const Dashboard = () => {
           </motion.section>
         </main>
       </div>
+      <PricingModal
+        open={isPricingModalOpen}
+        onOpenChange={setPricingModalOpen}
+      />
     </div>
   );
 };

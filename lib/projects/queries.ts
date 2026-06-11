@@ -546,3 +546,94 @@ export function sharedProjectQueryOptions(token: string) {
 export function useSharedProjectQuery(token: string) {
   return useQuery(sharedProjectQueryOptions(token));
 }
+
+// -- Frame history
+export type FrameVersionItem = {
+  versionNumber: number;
+  content: string;
+  editedContent: string | null;
+  prompt: string | null;
+  createdAt: string;
+};
+
+type FrameHistoryResponse = {
+  versions: FrameVersionItem[];
+};
+
+async function getFrameHistory(
+  projectId: string,
+  frameId: string,
+): Promise<FrameHistoryResponse> {
+  return requestApi<FrameHistoryResponse>(
+    `/api/projects/${projectId}/frames/${frameId}/history`,
+  );
+}
+
+export function useFrameHistoryQuery(
+  projectId: string,
+  frameId: string | null,
+) {
+  return useQuery({
+    queryKey: ["projects", projectId, "frames", frameId, "history"],
+    queryFn: () => getFrameHistory(projectId, frameId!),
+    enabled: !!projectId && !!frameId,
+    refetchOnWindowFocus: false,
+  });
+}
+
+// -- Frame restore
+type RestoreFrameInput = {
+  projectId: string;
+  frameId: string;
+  versionNumber: number;
+};
+
+type RestoreFrameResponse = {
+  generation: ProjectGeneration;
+};
+
+async function restoreFrameVersion({
+  projectId,
+  frameId,
+  versionNumber,
+}: RestoreFrameInput): Promise<RestoreFrameResponse> {
+  return requestApi<RestoreFrameResponse>(
+    `/api/projects/${projectId}/frames/${frameId}/restore`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ versionNumber }),
+    },
+  );
+}
+
+export function useRestoreFrameVersionMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: restoreFrameVersion,
+    onSuccess: (data, { projectId }) => {
+      queryClient.setQueryData<ProjectDetail>(
+        ["projects", projectId],
+        (prev) => {
+          if (!prev) return prev;
+
+          const generations = prev.generations.map((gen) => {
+            if (gen.generationId === data.generation.generationId) {
+              return data.generation;
+            }
+            return gen;
+          });
+
+          const frames = flattenGenerationFrames(generations);
+
+          return {
+            ...prev,
+            generations,
+            frames,
+          };
+        },
+      );
+    },
+  });
+}

@@ -67,13 +67,15 @@ export function StudioPromptBar({
       <GlassPanel
         variant="elevated"
         blur="xl"
-        className="pointer-events-auto w-full max-w-[900px]"
+        className="pointer-events-auto w-full max-w-225"
       >
         <div className="p-3">
           {/* Error banner */}
-          {(generationErrorMessage || generationRecoveryPrompt) && (
-            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-[var(--studio-error)]/20 bg-[var(--studio-error)]/10 px-3 py-2">
-              <span className="line-clamp-2 text-xs text-[var(--studio-error)]">
+          {(generationErrorMessage ||
+            generationRecoveryPrompt ||
+            !isGenerating) && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-(--studio-error)/20 bg-(--studio-error)/10 px-3 py-2">
+              <span className="line-clamp-2 text-xs text-(--studio-error)">
                 {generationErrorMessage ||
                   "Generation was interrupted before it finished."}
               </span>
@@ -105,9 +107,9 @@ export function StudioPromptBar({
                   : "Enter a prompt to generate a new layout, or leave blank to reuse the original prompt."
               }
               className={cn(
-                "flex-1 resize-none rounded-lg border border-[var(--studio-border)] bg-[var(--studio-surface)] px-4 py-2.5 text-sm text-[var(--studio-text-primary)] outline-none transition-all duration-200",
-                "placeholder:text-[var(--studio-text-muted)]",
-                "focus:border-[var(--studio-accent)] focus:shadow-[0_0_0_3px_var(--studio-accent-glow)]",
+                "flex-1 resize-none rounded-lg border border-(--studio-border) bg-(--studio-surface) px-4 py-2.5 text-sm text-(--studio-text-primary) outline-none transition-all duration-200",
+                "placeholder:text-(--studio-text-muted)",
+                "focus:border-(--studio-accent) focus:shadow-[0_0_0_3px_var(--studio-accent-glow)]",
                 isGenerating && "cursor-not-allowed opacity-70",
                 monoClassName,
               )}
@@ -124,7 +126,7 @@ export function StudioPromptBar({
                 disabled={!canGenerate || isGenerating}
                 className={cn(
                   "h-10 rounded-lg px-4 text-sm font-medium transition-all duration-200",
-                  "bg-[var(--studio-accent)] text-white hover:bg-[var(--studio-accent)]/90 hover:scale-[1.02] active:scale-[0.98]",
+                  "bg-(--studio-accent) text-white hover:bg-(--studio-accent)/90 hover:scale-[1.02] active:scale-[0.98]",
                   "disabled:opacity-50 disabled:hover:scale-100",
                 )}
               >
@@ -151,8 +153,8 @@ export function StudioPromptBar({
                   onClick={onToggleGenerationMode}
                   disabled={isGenerating}
                   className={cn(
-                    "h-10 rounded-lg border-[var(--studio-border)] bg-[var(--studio-surface)] text-[var(--studio-text-secondary)] text-xs font-semibold",
-                    "hover:bg-[var(--studio-surface-hover)] hover:text-[var(--studio-text-primary)]",
+                    "h-10 rounded-lg border-(--studio-border) bg-(--studio-surface) text-(--studio-text-secondary) text-xs font-semibold",
+                    "hover:bg-(--studio-surface-hover) hover:text-(--studio-text-primary)",
                   )}
                   title={
                     generationMode === "generate"

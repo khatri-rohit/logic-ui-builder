@@ -57,6 +57,7 @@ interface CanvasFrameProps extends CanvasFrameData {
   handleFrame: (id: string) => void;
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
+  onOpenHistory?: (id: string) => void;
   canRegenerate?: boolean;
   canEditCode?: boolean;
   onLockedAction?: (featureName: string) => void;
@@ -88,6 +89,7 @@ export const CanvasFrame = memo(function CanvasFrame({
   handleFrame,
   handleDelete,
   handleEditCode,
+  onOpenHistory,
   canRegenerate = true,
   canEditCode = true,
   onLockedAction,
@@ -586,6 +588,11 @@ export const CanvasFrame = memo(function CanvasFrame({
             <ContextMenuItem onSelect={() => onLockedAction?.("Regenerate")}>
               <span className="opacity-50">Regenerate</span>
               <Lock className="ml-auto size-3 text-amber-400" />
+            </ContextMenuItem>
+          )}
+          {canRegenerate && onOpenHistory && (
+            <ContextMenuItem onSelect={() => onOpenHistory(id)}>
+              History
             </ContextMenuItem>
           )}
           <ContextMenuItem onSelect={() => handleDelete(id)}>

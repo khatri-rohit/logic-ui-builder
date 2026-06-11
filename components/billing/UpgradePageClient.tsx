@@ -46,12 +46,6 @@ const PLAN_FEATURES: PlanFeature[] = [
   },
   { label: "Canvas export", free: false, standard: true, pro: true },
   { label: "Team seats", free: false, standard: false, pro: "Up to 5" },
-  {
-    label: "Generation rollover",
-    free: false,
-    standard: false,
-    pro: "Up to 50",
-  },
   { label: "Support", free: "Community", standard: "Email", pro: "Priority" },
 ];
 

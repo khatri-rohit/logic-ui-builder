@@ -33,8 +33,10 @@ import {
   useProjectShareToggleMutation,
   useProjectStatusUpdateMutation,
   useProjectThumbnailUpdateMutation,
+  useRestoreFrameVersionMutation,
 } from "@/lib/projects/queries";
 import { useUsageQuery } from "@/lib/billing/queries";
+import { FrameHistoryPanel } from "@/components/projects/FrameHistoryPanel";
 import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
@@ -434,6 +436,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     useProjectShareToggleMutation();
   const [codeEditorOpen, setCodeEditorOpen] = useState(false);
   const [codeEditorValue, setCodeEditorValue] = useState("");
+  const [historyPanelFrameId, setHistoryPanelFrameId] = useState<string | null>(
+    null,
+  );
+  const { mutate: restoreFrameVersion, isPending: isRestoring } =
+    useRestoreFrameVersionMutation();
   const [generationRecoveryPrompt, setGenerationRecoveryPrompt] = useState<
     string | null
   >(null);
@@ -2062,6 +2069,10 @@ npm run dev
     [openEditor, setSelectedFrameId],
   );
 
+  const handleOpenHistory = useCallback((frameId: string) => {
+    setHistoryPanelFrameId(frameId);
+  }, []);
+
   const handleLockedAction = useCallback(
     (feature: string) => {
       toast.error(`${feature} is a premium feature`, {
@@ -2886,6 +2897,7 @@ npm run dev
                   handleFrame={handleFrame}
                   handleDelete={handleDelete}
                   handleEditCode={handleOpenCodeEditor}
+                  onOpenHistory={handleOpenHistory}
                   canRegenerate={canRegenerate}
                   canEditCode={canEditCode}
                   onLockedAction={handleLockedAction}
@@ -3146,6 +3158,53 @@ npm run dev
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <FrameHistoryPanel
+        projectId={projectId}
+        frameId={historyPanelFrameId}
+        open={!!historyPanelFrameId}
+        onOpenChange={(open) => {
+          if (!open) setHistoryPanelFrameId(null);
+        }}
+        isRestoring={isRestoring}
+        onRestore={(versionNumber) => {
+          if (!historyPanelFrameId) return;
+          restoreFrameVersion(
+            {
+              projectId,
+              frameId: historyPanelFrameId,
+              versionNumber,
+            },
+            {
+              onSuccess: (data) => {
+                const restoredScreen = data.generation.screens.find(
+                  (s) => s.id === historyPanelFrameId,
+                );
+                if (!restoredScreen) return;
+
+                applyFrames((current) => {
+                  const next = new Map(current);
+                  const frame = next.get(historyPanelFrameId!);
+                  if (!frame) return next;
+                  next.set(historyPanelFrameId!, {
+                    ...frame,
+                    generationId: data.generation.generationId,
+                    content: restoredScreen.content,
+                    editedContent: restoredScreen.editedContent,
+                    state: restoredScreen.state,
+                    error: restoredScreen.error,
+                  });
+                  return next;
+                });
+
+                scheduleSnapshotPersist(data.generation.generationId);
+                toast.success(`Frame restored to version ${versionNumber}`);
+                setHistoryPanelFrameId(null);
+              },
+            },
+          );
+        }}
+      />
 
       <StudioPromptBar
         prompt={prompt}

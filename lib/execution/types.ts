@@ -44,6 +44,7 @@ export interface PipelineContext {
   systemPrompt?: string;
   screenClass?: ScreenClass;
   generationId?: string;
+  referenceScreenCode?: string;
 }
 
 export interface TelemetryPayload {

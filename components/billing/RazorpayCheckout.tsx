@@ -205,8 +205,20 @@ export function useRazorpayCheckout({
           ondismiss: () => {
             // Webhooks often arrive within 200-800ms after modal close.
             // Wait 500ms before declaring "cancelled" so polling can catch it.
-            dismissWaitRef.current = setTimeout(() => {
+            dismissWaitRef.current = setTimeout(async () => {
               if (abortRef.current) return;
+              try {
+                await fetch("/api/billing/abandon-checkout", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ subscriptionId }),
+                });
+                await queryClient.invalidateQueries({
+                  queryKey: billingKeys.all,
+                });
+              } catch (err) {
+                logger.warn("Failed to abandon checkout", err);
+              }
               setCheckoutState("cancelled");
               toast(
                 "Payment cancelled. You can resume anytime from your account.",

@@ -27,6 +27,7 @@ interface InfiniteCanvasProps {
   children?: React.ReactNode;
   frames?: FrameRect[];
   activeFrameId: string | null;
+  selectedFrameId?: string | null;
   onFrameExit: () => void;
   className?: string;
   onTransformChange?: (transform: Transform) => void;
@@ -40,6 +41,7 @@ export const InfiniteCanvas = forwardRef<
     children,
     frames = [],
     activeFrameId,
+    selectedFrameId,
     onFrameExit,
     className,
     onTransformChange,
@@ -75,6 +77,17 @@ export const InfiniteCanvas = forwardRef<
     },
     [onFrameExit],
   );
+
+  const selectedFrameRect = useMemo(() => {
+    if (!selectedFrameId) return null;
+    return frames.find((f) => (f as FrameRect & { id?: string }).id === selectedFrameId) ?? null;
+  }, [frames, selectedFrameId]);
+
+  const handleFitSelected = useCallback(() => {
+    if (selectedFrameRect) {
+      transformApi.zoomToRect(selectedFrameRect, 40);
+    }
+  }, [selectedFrameRect, transformApi]);
 
   useImperativeHandle(
     ref,
@@ -113,6 +126,8 @@ export const InfiniteCanvas = forwardRef<
         onZoomIn={transformApi.zoomIn}
         onZoomOut={transformApi.zoomOut}
         onFit={() => transformApi.zoomToFit(frames)}
+        onFitSelected={handleFitSelected}
+        hasSelectedFrame={!!selectedFrameId}
       />
     </div>
   );

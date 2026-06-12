@@ -43,7 +43,10 @@ import {
   reserveGenerationWithIdempotency,
 } from "@/lib/generation";
 import { releaseGenerationSlot } from "@/lib/usage";
-import { runFullGeneration, runScreenGeneration } from "@/lib/execution/generationPipeline";
+import {
+  runFullGeneration,
+  runScreenGeneration,
+} from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
 
 export const runtime = "nodejs";
@@ -494,7 +497,11 @@ export async function POST(req: NextRequest) {
     const { usage } = guardResult;
     if (!usage) {
       return NextResponse.json(
-        { error: true, code: "USAGE_UNAVAILABLE", message: "Usage context missing." },
+        {
+          error: true,
+          code: "USAGE_UNAVAILABLE",
+          message: "Usage context missing.",
+        },
         { status: 503 },
       );
     }
@@ -549,8 +556,8 @@ export async function POST(req: NextRequest) {
 
     const requestedModelForPersistence =
       isFrameRegeneration && sourceGeneration
-        ? preferredModel ?? sourceGeneration.model
-        : preferredModel ?? stage3ModelPriority[0];
+        ? (preferredModel ?? sourceGeneration.model)
+        : (preferredModel ?? stage3ModelPriority[0]);
 
     let generationId: string | null = null;
 
@@ -785,11 +792,28 @@ export async function POST(req: NextRequest) {
           coerceSpec(rawParsedSpec, requestedPlatform),
           prompt,
         );
+
+        // Override generic default colors with design-context palette to avoid monochrome/generic designs
+        if (designContext.palette) {
+          if (
+            spec.primaryColor === "#2563eb" &&
+            designContext.palette.primaryHex
+          ) {
+            spec.primaryColor = designContext.palette.primaryHex;
+          }
+          if (
+            spec.accentColor === "#f59e0b" &&
+            designContext.palette.accentHex
+          ) {
+            spec.accentColor = designContext.palette.accentHex;
+          }
+        }
+
         logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
 
         await prisma.generation.update({
           where: { id: generationId },
-          data: { spec: (spec as unknown as Prisma.InputJsonValue) },
+          data: { spec: spec as unknown as Prisma.InputJsonValue },
         });
 
         await write({ type: "generation_id", generationId });
@@ -808,7 +832,9 @@ export async function POST(req: NextRequest) {
           });
         let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         if (!isValidComponentTree(tree, spec.screens)) {
-          logger.warn("Stage 2 produced invalid tree; constructing fallback from spec screens");
+          logger.warn(
+            "Stage 2 produced invalid tree; constructing fallback from spec screens",
+          );
           tree = spec.screens.map((screen) => ({
             screen,
             components: spec.components ?? [],

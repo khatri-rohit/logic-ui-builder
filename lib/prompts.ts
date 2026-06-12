@@ -997,6 +997,30 @@ Define these as inline CSS variables on the root element and use them semantical
 - ALWAYS add complete hover/active/focus/disabled states to interactive elements
 `.trim();
 
+  const colorEnforcement = `
+## MANDATORY COLOR ENFORCEMENT (CRITICAL — NEVER VIOLATE):
+
+### Visible Brand Color Quota Per Screen:
+- PRIMARY color (${spec.primaryColor}) MUST appear on at least 3 distinct, visible elements: main CTA button, active nav item or link, key icon, at least one heading, card border, or prominent background band.
+- ACCENT color (${spec.accentColor}) MUST appear on at least 2 distinct, visible elements: badge, status indicator, highlight pill, decorative dot, secondary CTA, chart series, or illustration detail.
+- It is NOT sufficient to assign primary to a single button and call it done. Spread it deliberately across the layout.
+
+### Background Policy:
+- Page/container backgrounds MUST NOT be pure white (#ffffff) or pure black (#000000). Use the token --surface which carries a subtle tint toward the brand palette.
+- Card and section backgrounds MUST NOT be 100% neutral gray. Tint them slightly toward --primary-muted or --accent-muted to reinforce brand identity.
+- Exception: Only text fields and data-dense tables may use near-neutral backgrounds IF the user explicitly requested a minimalist look.
+
+### Monochrome Ban:
+- A screen that uses ONLY shades of gray/black/white is INVALID. Reject monochrome-only designs.
+- If the user prompt implies a grayscale aesthetic, still inject at least one primary-colored focal element and one accent-colored micro-detail.
+
+### Token Translation Examples (COPY THESE EXACT PATTERNS):
+- Hero band behind headline: bg-[var(--primary)]/10 with text-[var(--primary)] heading
+- Featured card: border-l-4 border-[var(--primary)] bg-[var(--surface-elevated)]
+- KPI highlight: text-[var(--accent)] font-bold with a bg-[var(--accent)]/10 badge
+- Nav active state: bg-[var(--primary)] text-white OR text-[var(--primary)] border-b-2 border-[var(--primary)]
+`.trim();
+
   const componentStates = `
 ## COMPONENT STATES (REQUIRED FOR ALL INTERACTIVE ELEMENTS)
 
@@ -1092,6 +1116,8 @@ ANTI-PATTERNS TO AVOID:
   return `
 ${tokenSystem}
 
+${colorEnforcement}
+
 ${componentStates}
 
 ${designDecisionRules}
@@ -1118,6 +1144,7 @@ export function buildScreenPrompt(
   screen: string,
   userPrompt: string,
   designContext?: DesignContext,
+  referenceScreenCode?: string,
 ): string {
   const node = tree.find((n) => n.screen === screen) as
     | (ComponentTreeNode & {
@@ -1178,6 +1205,25 @@ ${(
 `
       : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
+  const crossScreenConsistency = referenceScreenCode
+    ? `
+CROSS-SCREEN CONSISTENCY REFERENCE:
+The following code is the first screen already generated for this project. Your screen MUST match its visual language exactly — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy:
+
+\`\`\`tsx
+${referenceScreenCode.slice(0, 600)}
+\`\`\`
+
+RULES:
+- Preserve the exact primary/accent color usage patterns seen above.
+- Match the card elevation style (shadow-sm/shadow-md/shadow-lg usage).
+- Match the border radius scale (rounded-md/rounded-lg/rounded-xl choices).
+- Match the spacing rhythm (gap sizes, padding sizes).
+- Match the typography hierarchy (heading sizes, body sizes, weight patterns).
+- Do NOT introduce new colors, new spacing scales, or new component styles.
+`.trim()
+    : "";
+
   return `
 Generate a complete, production-quality React component for screen: "${screen}".
 
@@ -1191,6 +1237,8 @@ ${buildSplitFlowDirective(spec, screen)}
 ${layoutDirective}
 
 ${componentPlan}
+
+${crossScreenConsistency}
 
 SYNTAX REMINDER:
 - Component name: GeneratedScreen.

@@ -130,6 +130,7 @@ export async function runScreenGeneration(
         screen,
         promptWithFixes,
         designContext,
+        context.referenceScreenCode,
       ),
       temperature: 0.2,
       abortController,
@@ -309,8 +310,26 @@ export async function runFullGeneration(
 
   const results: ScreenResult[] = new Array(screens.length);
 
-  // Process screens in chunks of MAX_CONCURRENT_SCREENS
-  for (let i = 0; i < screens.length; i += MAX_CONCURRENT_SCREENS) {
+  // Run the first screen alone to establish the design language.
+  // Its generated code becomes the cross-screen consistency reference.
+  if (screens.length > 0) {
+    const firstJob = screens[0];
+    const firstResult = await runScreenGeneration(
+      context,
+      firstJob.screen,
+      firstJob.frameId,
+      basePrompt,
+    );
+    results[0] = firstResult;
+    await onScreenComplete?.(0, firstResult);
+
+    if (firstResult.success && firstResult.code) {
+      context.referenceScreenCode = firstResult.code;
+    }
+  }
+
+  // Process remaining screens in chunks of MAX_CONCURRENT_SCREENS
+  for (let i = 1; i < screens.length; i += MAX_CONCURRENT_SCREENS) {
     const chunk = screens.slice(i, i + MAX_CONCURRENT_SCREENS);
 
     const promises = chunk.map((job, chunkIdx) =>

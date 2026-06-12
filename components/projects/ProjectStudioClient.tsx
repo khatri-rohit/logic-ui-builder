@@ -1478,6 +1478,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         ? project.initialPrompt
         : prompt.trim() || project.initialPrompt;
 
+    // In-place frame regeneration: delegate to handleFrame instead of cloning
+    if (generationMode === "regenerate" && activeFrameId) {
+      await handleFrame(activeFrameId, true);
+      return;
+    }
+
     const generationToken = beginGenerationRun(crypto.randomUUID());
     const isStaleGeneration = () =>
       generationToken !== getStudioRuntime().generationToken;
@@ -1493,7 +1499,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
     let terminalEventReceived = false;
     let streamFailed = false;
-    let regenerationTargetFrameId: string | null = null;
     let sourceFrame: CanvasFrameData | null = null;
 
     try {
@@ -1510,43 +1515,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         }
       }
 
-      const isFrameRegeneration =
-        generationMode === "regenerate" && !!activeFrameId && !!sourceFrame;
-
-      if (generationMode === "regenerate" && activeFrameId && !sourceFrame) {
-        throw new Error("Unable to find source frame for regeneration.");
-      }
-
-      if (isFrameRegeneration && sourceFrame) {
-        const regenerationSourceFrame = sourceFrame;
-        regenerationTargetFrameId = crypto.randomUUID();
-        regenFrameIdRef.current = regenerationTargetFrameId;
-
-        const clonedFrame = cloneFrameForRegeneration(
-          regenerationSourceFrame,
-          regenerationTargetFrameId,
-          [...framesRef.current.values()],
-        );
-
-        applyFrames((current) => {
-          const next = new Map(current);
-          next.set(regenerationTargetFrameId!, clonedFrame);
-          return next;
-        });
-
-        updateStudioRuntime((runtime) => ({
-          ...runtime,
-          frameIdsByScreen: {
-            ...runtime.frameIdsByScreen,
-            [regenerationSourceFrame.screenName]: [regenerationTargetFrameId!],
-          },
-          activeFrameIdsByScreen: {
-            ...runtime.activeFrameIdsByScreen,
-            [regenerationSourceFrame.screenName]: regenerationTargetFrameId!,
-          },
-        }));
-      }
-
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
@@ -1558,12 +1526,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           // model,
           prompt: generationPrompt,
           platform,
-          ...(isFrameRegeneration && {
-            generationId: generationId ?? "",
-            frameId:
-              isFrameRegeneration && sourceFrame ? sourceFrame.id : undefined,
-            targetFrameId: regenerationTargetFrameId ?? undefined,
-          }),
         }),
         signal: abortController.signal,
       });
@@ -1671,20 +1633,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         error instanceof Error
           ? error.message
           : "Generation failed unexpectedly.";
-      if (regenerationTargetFrameId) {
-        applyFrames((current) => {
-          const frame = current.get(regenerationTargetFrameId!);
-          if (!frame) return current;
-
-          const next = new Map(current);
-          next.set(regenerationTargetFrameId!, {
-            ...frame,
-            state: "error",
-            error: message,
-          });
-          return next;
-        });
-      }
 
       setGenerationErrorMessage(message);
       if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -1720,7 +1668,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       stopChunkFlusher();
       setActiveStreamingScreen(null);
       setIsGenerating(false);
-      regenerationTargetFrameId = null;
     }
   };
 
@@ -2162,13 +2109,13 @@ npm run dev
   }
 
   const handleFrame = useCallback(
-    async (id: string) => {
+    async (id: string, bypassBusyCheck = false) => {
       if (!project) {
         logger.error("Project not found");
         return;
       }
 
-      if (isGenerating) {
+      if (!bypassBusyCheck && isGenerating) {
         logger.warn(
           "Frame regenerate blocked while full generation is active",
           {
@@ -2861,6 +2808,7 @@ npm run dev
               ref={canvasRef}
               frames={frameRects}
               activeFrameId={activeFrameId}
+              selectedFrameId={selectedFrameId}
               onFrameExit={exitFrame}
               onTransformChange={handleTransformChange}
             >

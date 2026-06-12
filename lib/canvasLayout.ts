@@ -20,10 +20,11 @@ export function getGenerationLayout(
   existingFrames: ExistingFrameBounds[],
   screens: Array<{ name: string; w: number; h: number }>, // pass dims in
 ): { x: number; y: number }[] {
-  const startY =
+  const lowestEdge =
     existingFrames.length === 0
       ? 0
-      : Math.min(...existingFrames.map((frame) => frame.y));
+      : Math.max(...existingFrames.map((frame) => frame.y + frame.h));
+  const startY = lowestEdge + (existingFrames.length > 0 ? H_GAP : 0);
 
   // Position each screen with its actual width
   let currentX = 0;

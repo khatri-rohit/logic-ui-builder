@@ -877,7 +877,20 @@ export async function POST(req: NextRequest) {
           name: screenName,
           ...getInitialDimensionsForPlatform(screenName, requestedPlatform),
         }));
-        const positions = getGenerationLayout([], screensWithDims);
+
+        const existingGenerations = await prisma.generation.findMany({
+          where: { projectId: project.id },
+          select: { screens: true },
+        });
+        const existingFrameBounds: Array<{ x: number; y: number; w: number; h: number }> = [];
+        for (const gen of existingGenerations) {
+          const screens = parseGenerationScreens(gen.screens);
+          for (const s of screens) {
+            existingFrameBounds.push({ x: s.x, y: s.y, w: s.w, h: s.h });
+          }
+        }
+
+        const positions = getGenerationLayout(existingFrameBounds, screensWithDims);
 
         const frameAssignments = screensWithDims.map((screen, index) => ({
           screen: screen.name,

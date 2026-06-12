@@ -11,6 +11,7 @@ import {
 
 import { CanvasGrid } from "@/components/canvas/CanvasGrid";
 import { StudioToolbar } from "@/components/canvas/StudioToolbar";
+import { CanvasFrameData } from "@/components/canvas/types";
 import {
   CanvasTransformHandle,
   FrameRect,
@@ -26,6 +27,7 @@ export interface InfiniteCanvasHandle extends CanvasTransformHandle {
 interface InfiniteCanvasProps {
   children?: React.ReactNode;
   frames?: FrameRect[];
+  frameData?: CanvasFrameData[];
   activeFrameId: string | null;
   selectedFrameId?: string | null;
   onFrameExit: () => void;
@@ -40,6 +42,7 @@ export const InfiniteCanvas = forwardRef<
   {
     children,
     frames = [],
+    frameData,
     activeFrameId,
     selectedFrameId,
     onFrameExit,
@@ -79,9 +82,11 @@ export const InfiniteCanvas = forwardRef<
   );
 
   const selectedFrameRect = useMemo(() => {
-    if (!selectedFrameId) return null;
-    return frames.find((f) => (f as FrameRect & { id?: string }).id === selectedFrameId) ?? null;
-  }, [frames, selectedFrameId]);
+    if (!selectedFrameId || !frameData) return null;
+    const found = frameData.find((f) => f.id === selectedFrameId);
+    if (!found) return null;
+    return { x: found.x, y: found.y, w: found.w, h: found.h };
+  }, [frameData, selectedFrameId]);
 
   const handleFitSelected = useCallback(() => {
     if (selectedFrameRect) {

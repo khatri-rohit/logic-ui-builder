@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   AlertCircle,
   Loader2,
+  Lock,
   MousePointerClick,
   Plus,
   RotateCcw,
@@ -28,6 +29,8 @@ interface StudioPromptBarProps {
   commandInputRef: React.RefObject<HTMLTextAreaElement | null>;
   monoClassName?: string;
   onEscape: () => void;
+  onLockedAction?: (feature: string) => void;
+  canRegenerate?: boolean;
 }
 
 const MAX_PROMPT_HEIGHT = 220;
@@ -47,6 +50,8 @@ export function StudioPromptBar({
   commandInputRef,
   monoClassName,
   onEscape,
+  onLockedAction,
+  canRegenerate = true,
 }: StudioPromptBarProps) {
   // Auto-resize textarea
   React.useEffect(() => {
@@ -103,25 +108,40 @@ export function StudioPromptBar({
                   <Plus className="size-3" />
                   Generate
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (generationMode !== "regenerate")
-                      onToggleGenerationMode();
-                  }}
-                  disabled={isGenerating}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-all",
-                    generationMode === "regenerate"
-                      ? "bg-(--studio-accent) text-white shadow-sm"
-                      : "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
-                    isGenerating && "opacity-50 cursor-not-allowed",
-                  )}
-                  title="Regenerate the selected frame (R)"
-                >
-                  <RotateCcw className="size-3" />
-                  Regenerate
-                </button>
+                {canRegenerate ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (generationMode !== "regenerate")
+                        onToggleGenerationMode();
+                    }}
+                    disabled={isGenerating}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+                      generationMode === "regenerate"
+                        ? "bg-(--studio-accent) text-white shadow-sm"
+                        : "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
+                      isGenerating && "opacity-50 cursor-not-allowed",
+                    )}
+                    title="Regenerate the selected frame (R)"
+                  >
+                    <RotateCcw className="size-3" />
+                    Regenerate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onLockedAction?.("Regenerate")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+                      "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
+                    )}
+                    title="Regeneration is a premium feature"
+                  >
+                    <Lock className="size-3 text-amber-400" />
+                    <span className="opacity-50">Regenerate</span>
+                  </button>
+                )}
               </div>
             )}
 

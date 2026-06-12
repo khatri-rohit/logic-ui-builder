@@ -1507,12 +1507,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         sourceFrame = framesRef.current.get(activeFrameId) ?? null;
       }
 
-      let generationId = "";
-      if (activeFrameId) {
-        generationId = sourceFrame?.generationId ?? "";
-        if (!generationId) {
-          throw new Error("Unable to find generation ID for active frame.");
-        }
+      const isFrameContext = !!activeFrameId && !!sourceFrame;
+      const generationId = isFrameContext ? sourceFrame?.generationId ?? "" : "";
+
+      if (isFrameContext && !generationId) {
+        throw new Error("Unable to find generation ID for active frame.");
       }
 
       const response = await fetch("/api/generate", {
@@ -1526,6 +1525,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           // model,
           prompt: generationPrompt,
           platform,
+          ...(isFrameContext && {
+            generationId,
+            frameId: sourceFrame.id,
+          }),
         }),
         signal: abortController.signal,
       });
@@ -2807,6 +2810,7 @@ npm run dev
             <InfiniteCanvas
               ref={canvasRef}
               frames={frameRects}
+              frameData={frameList}
               activeFrameId={activeFrameId}
               selectedFrameId={selectedFrameId}
               onFrameExit={exitFrame}
@@ -3181,6 +3185,8 @@ npm run dev
           setPrompt("");
           setSelectedFrameId(null);
         }}
+        onLockedAction={handleLockedAction}
+        canRegenerate={canRegenerate}
       />
     </StudioShell>
   );

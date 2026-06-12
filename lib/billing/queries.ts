@@ -32,6 +32,9 @@ export interface UserUsage {
   generationsUsed: number;
   generationLimit: number; // -1 = unlimited
   generationsRemaining: number; // -1 = unlimited
+  projectsCreated: number;
+  projectLimit: number; // -1 = unlimited
+  projectsRemaining: number; // -1 = unlimited
   frameRegenerationEnabled: boolean;
   periodStart: string;
   periodEnd: string;

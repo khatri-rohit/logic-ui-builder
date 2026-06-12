@@ -27,6 +27,7 @@ import UserMenu from "./UserMenu";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
+import type { UserUsage } from "@/lib/billing/queries";
 import { PricingModal } from "./PricingModal";
 
 const mono = JetBrains_Mono({
@@ -148,6 +149,37 @@ const Dashboard = () => {
     }
 
     setError(null);
+
+    try {
+      const usageRes = await fetch("/api/usage", { cache: "no-store" });
+      const usageJson = await usageRes.json();
+      const usage = usageJson.data as UserUsage | undefined;
+
+      if (usage) {
+        const projectBlocked =
+          usage.projectLimit !== -1 && usage.projectsRemaining <= 0;
+        const generationBlocked =
+          usage.generationLimit !== -1 && usage.generationsRemaining <= 0;
+
+        if (projectBlocked) {
+          setError(
+            `You have reached the ${usage.projectLimit}-project limit on the ${usage.planDisplayName} plan.`,
+          );
+          setPricingModalOpen(true);
+          return;
+        }
+
+        if (generationBlocked) {
+          setError(
+            `You have used all ${usage.generationLimit} generations this month on the ${usage.planDisplayName} plan.`,
+          );
+          setPricingModalOpen(true);
+          return;
+        }
+      }
+    } catch {
+      // Usage fetch failed — fall through, server guard will handle it
+    }
 
     try {
       const createdProject = await createProject({

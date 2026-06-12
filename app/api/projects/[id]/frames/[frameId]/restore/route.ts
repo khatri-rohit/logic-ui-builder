@@ -147,6 +147,28 @@ export async function POST(
       );
     }
 
+    const currentScreen = targetScreens.find((s) => s.id === frameId);
+
+    if (currentScreen) {
+      const maxVersion = await prisma.frameVersion.aggregate({
+        where: { projectId: id, frameId },
+        _max: { versionNumber: true },
+      });
+      const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
+
+      await prisma.frameVersion.create({
+        data: {
+          projectId: id,
+          generationId: targetGeneration.id,
+          frameId,
+          versionNumber: nextVersion,
+          content: currentScreen.content,
+          editedContent: currentScreen.editedContent ?? null,
+          prompt: null,
+        },
+      });
+    }
+
     const updatedScreens = targetScreens.map((screen) =>
       screen.id === frameId
         ? {
@@ -166,6 +188,7 @@ export async function POST(
         status: "COMPLETED",
         terminalAt: new Date(),
         errorMessage: null,
+        errorMeta: Prisma.JsonNull,
       },
       select: {
         id: true,

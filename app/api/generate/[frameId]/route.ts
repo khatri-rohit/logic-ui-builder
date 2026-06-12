@@ -475,11 +475,12 @@ export async function POST(
             });
 
             if (count > 50) {
+              const removeCount = count - 50;
               const toDelete = await tx.frameVersion.findMany({
                 where: { projectId: project.id, frameId: sourceFrame.id },
                 orderBy: { versionNumber: "asc" },
                 select: { id: true },
-                skip: 50,
+                take: removeCount,
               });
 
               if (toDelete.length > 0) {

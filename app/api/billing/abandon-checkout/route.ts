@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
         status: "ACTIVE",
         razorpaySubscriptionId: null,
         razorpayPlanId: null,
+        generationLimit: null,
+        projectLimit: null,
         scheduledPlanId: null,
         scheduledChangeAt: null,
       },

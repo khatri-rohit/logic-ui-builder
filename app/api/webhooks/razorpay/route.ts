@@ -159,8 +159,9 @@ export async function POST(req: NextRequest) {
         billingAnchorDay: currentStart
           ? new Date(currentStart * 1000).getDate()
           : undefined,
-        generationLimit:
-          planFromRazorpayPlanId(razorpayPlanId) === "FREE"
+        generationLimit: isCancelled
+          ? undefined
+          : planFromRazorpayPlanId(razorpayPlanId) === "FREE"
             ? 10
             : planFromRazorpayPlanId(razorpayPlanId) === "STANDARD"
               ? 100

@@ -1507,10 +1507,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         sourceFrame = framesRef.current.get(activeFrameId) ?? null;
       }
 
-      const isFrameContext = !!activeFrameId && !!sourceFrame;
-      const generationId = isFrameContext ? sourceFrame?.generationId ?? "" : "";
+      // G mode + selected frame: use frame context to create NEW frame with new prompt
+      // R mode + selected frame: handled above via handleFrame (in-place)
+      const useFrameContext = !!activeFrameId && !!sourceFrame;
+      const generationId = useFrameContext ? sourceFrame?.generationId ?? "" : "";
 
-      if (isFrameContext && !generationId) {
+      if (useFrameContext && !generationId) {
         throw new Error("Unable to find generation ID for active frame.");
       }
 
@@ -1525,9 +1527,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           // model,
           prompt: generationPrompt,
           platform,
-          ...(isFrameContext && {
+          ...(useFrameContext && {
             generationId,
-            frameId: sourceFrame.id,
+            frameId: sourceFrame!.id,
+            createNewFrame: true,
           }),
         }),
         signal: abortController.signal,

@@ -171,6 +171,7 @@ export const generationRequestBodySchema = z.object({
   frameId: z.string().optional(),
   generationId: z.string().cuid().optional(),
   targetFrameId: z.string().optional(),
+  createNewFrame: z.boolean().optional(),
 });
 
 export const frameRegenerateRequestBodySchema = z.object({

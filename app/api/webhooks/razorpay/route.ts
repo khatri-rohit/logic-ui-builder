@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const eventType = event.event;
-    logger.info("Processing Razorpay webhook", { ...event });
+    logger.info("Processing Razorpay webhook", { ...event.payload });
     logger.info("Received Razorpay webhook", { eventType, eventId });
 
     // ── subscription.activated | updated | cancelled ──────────────────────
@@ -252,8 +252,7 @@ export async function POST(req: NextRequest) {
           const qstash = new Client({
             token: process.env.QSTASH_TOKEN,
           });
-          const queueBaseUrl =
-            process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
+          const queueBaseUrl = process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
           if (queueBaseUrl) {
             qstash
               .publishJSON({

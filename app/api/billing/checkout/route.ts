@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
         {
           error: true,
           code: "CHECKOUT_IN_PROGRESS",
-          message: "A checkout is already in progress. Please complete or cancel it first.",
+          message:
+            "A checkout is already in progress. Please complete or cancel it first.",
         },
         { status: 429 },
       );
@@ -71,6 +72,11 @@ export async function POST(req: NextRequest) {
         existingSubscription.status,
       )
     ) {
+      try {
+        await redis.del(`checkout:lock:${authContext.appUserId}`);
+      } catch {
+        // ignore redis errors
+      }
       return NextResponse.json(
         {
           error: true,
@@ -84,12 +90,30 @@ export async function POST(req: NextRequest) {
 
     let customerId = existingSubscription?.razorpayCustomerId;
     if (!customerId) {
-      const customer = await razorpay.customers.create({
-        email: authContext.email,
-        name: authContext.name || authContext.email.split("@")[0],
-        fail_existing: 0, // return existing customer if email matches
-      });
-      customerId = customer.id;
+      logger.info("Creating new Razorpay customer", { authContext });
+      try {
+        const customer = await razorpay.customers.create({
+          email: authContext.email,
+          name: authContext.name || authContext.email.split("@")[0],
+          fail_existing: 0,
+        });
+        customerId = customer.id;
+      } catch (error) {
+        if (
+          isRazorpayError(error) &&
+          error.error?.description?.includes("Customer already exists")
+        ) {
+          logger.warn("Customer already exists, fetching by email", {
+            authContext,
+          });
+          const { items } = await razorpay.customers.all({ count: 100 });
+          const existing = items.find((c) => c.email === authContext.email);
+          if (!existing) throw error;
+          customerId = existing.id;
+        } else {
+          throw error;
+        }
+      }
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },
         data: { razorpayCustomerId: customerId },
@@ -165,7 +189,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: true,
-        message: (error instanceof Error ? error.message : undefined) ?? "Failed to create subscription.",
+        message:
+          (error instanceof Error ? error.message : undefined) ??
+          "Failed to create subscription.",
       },
       { status: 500 },
     );

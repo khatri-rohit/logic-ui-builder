@@ -149,59 +149,79 @@ export async function POST(
 
     const currentScreen = targetScreens.find((s) => s.id === frameId);
 
-    if (currentScreen) {
-      const maxVersion = await prisma.frameVersion.aggregate({
-        where: { projectId: id, frameId },
-        _max: { versionNumber: true },
-      });
-      const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
+    const updatedGeneration = await prisma.$transaction(async (tx) => {
+      if (currentScreen) {
+        const maxVersion = await tx.frameVersion.aggregate({
+          where: { projectId: id, frameId },
+          _max: { versionNumber: true },
+        });
+        const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
 
-      await prisma.frameVersion.create({
+        await tx.frameVersion.create({
+          data: {
+            projectId: id,
+            generationId: targetGeneration.id,
+            frameId,
+            versionNumber: nextVersion,
+            content: currentScreen.content,
+            editedContent: currentScreen.editedContent ?? null,
+            prompt: null,
+          },
+        });
+
+        const count = await tx.frameVersion.count({
+          where: { projectId: id, frameId },
+        });
+        if (count > 50) {
+          const removeCount = count - 50;
+          const toDelete = await tx.frameVersion.findMany({
+            where: { projectId: id, frameId },
+            orderBy: { versionNumber: "asc" },
+            select: { id: true },
+            take: removeCount,
+          });
+          if (toDelete.length > 0) {
+            await tx.frameVersion.deleteMany({
+              where: { id: { in: toDelete.map((v) => v.id) } },
+            });
+          }
+        }
+      }
+
+      const updatedScreens = targetScreens.map((screen) =>
+        screen.id === frameId
+          ? {
+              ...screen,
+              content: frameVersion.content,
+              editedContent: frameVersion.editedContent ?? null,
+              state: "done" as const,
+              error: null as string | null,
+            }
+          : screen,
+      );
+
+      return tx.generation.update({
+        where: { id: targetGeneration.id },
         data: {
-          projectId: id,
-          generationId: targetGeneration.id,
-          frameId,
-          versionNumber: nextVersion,
-          content: currentScreen.content,
-          editedContent: currentScreen.editedContent ?? null,
-          prompt: null,
+          screens: updatedScreens as unknown as Prisma.InputJsonValue,
+          status: "COMPLETED",
+          terminalAt: new Date(),
+          errorMessage: null,
+          errorMeta: Prisma.JsonNull,
+        },
+        select: {
+          id: true,
+          model: true,
+          platform: true,
+          spec: true,
+          screens: true,
+          status: true,
+          terminalAt: true,
+          errorMessage: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
-    }
-
-    const updatedScreens = targetScreens.map((screen) =>
-      screen.id === frameId
-        ? {
-            ...screen,
-            content: frameVersion.content,
-            editedContent: frameVersion.editedContent ?? null,
-            state: "done" as const,
-            error: null as string | null,
-          }
-        : screen,
-    );
-
-    const updatedGeneration = await prisma.generation.update({
-      where: { id: targetGeneration.id },
-      data: {
-        screens: updatedScreens as unknown as Prisma.InputJsonValue,
-        status: "COMPLETED",
-        terminalAt: new Date(),
-        errorMessage: null,
-        errorMeta: Prisma.JsonNull,
-      },
-      select: {
-        id: true,
-        model: true,
-        platform: true,
-        spec: true,
-        screens: true,
-        status: true,
-        terminalAt: true,
-        errorMessage: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
 
     const parsedSpec = webAppSpecSchema.safeParse(updatedGeneration.spec);

@@ -50,8 +50,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    await prisma.subscription.update({
-      where: { userId: authContext.appUserId },
+    const { count } = await prisma.subscription.updateMany({
+      where: {
+        id: subscription.id,
+        userId: authContext.appUserId,
+        status: { in: ["CREATED", "PENDING"] },
+      },
       data: {
         status: "ACTIVE",
         razorpaySubscriptionId: null,
@@ -62,6 +66,14 @@ export async function POST(req: NextRequest) {
         scheduledChangeAt: null,
       },
     });
+
+    if (count === 0) {
+      return NextResponse.json({
+        error: false,
+        message: "Subscription is not in a pending state.",
+        data: { changed: false },
+      });
+    }
 
     try {
       await redis.del(`checkout:lock:${authContext.appUserId}`);

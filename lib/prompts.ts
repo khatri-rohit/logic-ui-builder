@@ -1138,6 +1138,47 @@ SYNTAX REQUIREMENTS:
 `.trim();
 }
 
+function sanitizeReferenceScreenCode(code: string): string {
+  const maxLen = 600;
+  let safe = code
+    .replace(/```/g, "")
+    .replace(/\$\{/g, "")
+    .replace(/`/g, "");
+  safe = safe.replace(/^import\s+.*?(?:from\s+['"][^'"]*['"]\s*;?)?$/gm, "");
+  safe = safe.replace(/\/\/.*$/gm, "");
+  safe = safe.replace(/\/\*[\s\S]*?\*\//g, "");
+  safe = safe.replace(/>[^<>]*?</g, "><");
+
+  const classTokens: string[] = [];
+  const classRe = /className=["']([^"']*)["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = classRe.exec(safe)) !== null) {
+    for (const cls of m[1].split(/\s+/)) {
+      if (/^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(cls)) {
+        classTokens.push(cls);
+      }
+    }
+  }
+
+  const styleTokens: string[] = [];
+  const styleRe = /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
+  while ((m = styleRe.exec(safe)) !== null) {
+    styleTokens.push(`${m[1]}: ${m[2].trim()}`);
+  }
+
+  const parts: string[] = [];
+  const uniqueClasses = [...new Set(classTokens)].sort();
+  if (uniqueClasses.length) {
+    parts.push(`Design token classes: ${uniqueClasses.join(", ")}`);
+  }
+  const uniqueStyles = [...new Set(styleTokens)];
+  if (uniqueStyles.length) {
+    parts.push(`Inline styles: ${uniqueStyles.join(" | ")}`);
+  }
+  const result = parts.join("\n");
+  return result ? result.slice(0, maxLen) : "[compact reference]";
+}
+
 export function buildScreenPrompt(
   spec: WebAppSpec,
   tree: ComponentTreeNode[],
@@ -1208,14 +1249,12 @@ ${(
   const crossScreenConsistency = referenceScreenCode
     ? `
 CROSS-SCREEN CONSISTENCY REFERENCE:
-The following code is the first screen already generated for this project. Your screen MUST match its visual language exactly — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy:
+Your screen MUST match the first screen's visual language — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy.
 
-\`\`\`tsx
-${referenceScreenCode.slice(0, 600)}
-\`\`\`
+${sanitizeReferenceScreenCode(referenceScreenCode)}
 
 RULES:
-- Preserve the exact primary/accent color usage patterns seen above.
+- Preserve the exact primary/accent color usage patterns seen in the reference.
 - Match the card elevation style (shadow-sm/shadow-md/shadow-lg usage).
 - Match the border radius scale (rounded-md/rounded-lg/rounded-xl choices).
 - Match the spacing rhythm (gap sizes, padding sizes).

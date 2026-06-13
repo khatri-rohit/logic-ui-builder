@@ -89,7 +89,10 @@ export function FrameHistoryPanel({
   isRestoring,
   onRestore,
 }: FrameHistoryPanelProps) {
-  const { data, isLoading } = useFrameHistoryQuery(projectId, frameId);
+  const { data, isLoading, isError, error, refetch } = useFrameHistoryQuery(
+    projectId,
+    frameId,
+  );
 
   const versions = data?.versions ?? [];
 
@@ -107,13 +110,30 @@ export function FrameHistoryPanel({
         </DrawerHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+          {isError && (
+            <div className="rounded-md border border-border bg-card p-3 text-sm text-muted-foreground">
+              Failed to load frame history
+              {error instanceof Error && (
+                <span className="block mt-1 text-xs">{error.message}</span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="mt-2"
+                onClick={() => void refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
           {isLoading && (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               Loading history...
             </div>
           )}
 
-          {!isLoading && versions.length === 0 && (
+          {!isLoading && !isError && versions.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-muted-foreground">
               <History className="mb-2 size-6 opacity-40" />
               <p>No history yet.</p>

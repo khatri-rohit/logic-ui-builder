@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { leaveOrganisation, isOrgError } from "@/lib/org";
+import { guardOrgAccess } from "@/lib/plan-guard";
 import { orgRatelimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -21,6 +22,9 @@ export async function POST(req: NextRequest) {
         { status: 429 },
       );
     }
+
+    const guardResult = guardOrgAccess(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     if (!authContext.orgId) {
       return NextResponse.json(

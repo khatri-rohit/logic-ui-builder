@@ -67,7 +67,7 @@ export function projectsListQueryOptions() {
     queryKey: projectKeys.list(),
     queryFn: listProjects,
     refetchOnWindowFocus: false,
-    staleTime: Infinity, // ← Data never becomes stale
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 }
 
@@ -177,7 +177,7 @@ export function projectDetailQueryOptions(id: string) {
     queryFn: () => getProject(id),
     enabled: !!id,
     refetchOnWindowFocus: false,
-    staleTime: Infinity, // ← Data never becomes stale
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 }
 
@@ -316,19 +316,17 @@ export function useProjectMetadataUpdateMutation() {
       // Update Zustand cache
       const currentCache = useProjectsCacheStore.getState().projects;
       if (currentCache) {
-        useProjectsCacheStore
-          .getState()
-          .setProjects(
-            currentCache.map((project) =>
-              project.id === id
-                ? {
-                    ...project,
-                    title: data.project.title,
-                    description: data.project.description,
-                  }
-                : project,
-            ),
-          );
+        useProjectsCacheStore.getState().setProjects(
+          currentCache.map((project) =>
+            project.id === id
+              ? {
+                  ...project,
+                  title: data.project.title,
+                  description: data.project.description,
+                }
+              : project,
+          ),
+        );
       }
     },
   });

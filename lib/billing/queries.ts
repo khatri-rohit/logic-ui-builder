@@ -67,7 +67,7 @@ export function useUsageQuery() {
       queryKey: billingKeys.usage(),
       queryFn: () => requestApi<UserUsage>("/api/usage"),
       staleTime: 60 * 1000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     }),
   );
 }
@@ -172,7 +172,7 @@ export function useGetSubscriptionDetailsQuery() {
       queryKey: billingKeys.details(),
       queryFn: () => getCurrentSubscription(),
       staleTime: 60 * 1000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     }),
   );
 }
@@ -191,7 +191,7 @@ export function useInvoicesQuery() {
       queryKey: billingKeys.invoices(),
       queryFn: () => requestApi<Invoice[]>("/api/billing/invoices"),
       staleTime: 60 * 1000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     }),
   );
 }

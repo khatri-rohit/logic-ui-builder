@@ -10,7 +10,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useOrgQuery } from "@/lib/org/queries";
 import { useUsageQuery } from "@/lib/billing/queries";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +37,6 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
   const { user } = useUser();
   const { openUserProfile, signOut } = useClerk();
   const router = useRouter();
-  const { data: org } = useOrgQuery();
   const { data: usage } = useUsageQuery();
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -102,7 +100,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
               {planId && (
                 <span
                   className={cn(
-                    "shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider",
+                    "shrink-0 rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider",
                     planBadgeStyles[planId] ?? planBadgeStyles.FREE,
                   )}
                 >
@@ -187,7 +185,7 @@ export default function UserMenu({ onOpenPricing }: UserMenuProps) {
           </DropdownMenuItem>
 
           {/* Organisations — conditional */}
-          {(org || planId === "PRO") && (
+          {planId === "PRO" && (
             <DropdownMenuItem
               onClick={() => router.push("/org")}
               className={cn(

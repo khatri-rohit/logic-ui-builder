@@ -27,7 +27,7 @@ import UserMenu from "./UserMenu";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
-import type { UserUsage } from "@/lib/billing/queries";
+import { useUsageQuery, type UserUsage } from "@/lib/billing/queries";
 import { PricingModal } from "./PricingModal";
 
 const mono = JetBrains_Mono({
@@ -83,7 +83,9 @@ const Dashboard = () => {
 
   const shouldReduceMotion = useReducedMotion();
   const { data: org } = useOrgQuery();
-  // const { data: usage } = useUsageQuery();
+  const { data: usage } = useUsageQuery();
+  const { planId } = usage || {};
+
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -263,7 +265,7 @@ const Dashboard = () => {
           </span>
         </div>
 
-        {org && (
+        {planId === "PRO" && org && (
           <span
             className={cn(
               "hidden md:block text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-300/70",

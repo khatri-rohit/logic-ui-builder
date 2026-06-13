@@ -6,6 +6,7 @@ import { razorpay, verifyWebhookSignature } from "@/lib/razorpay";
 import logger from "@/lib/logger";
 import { SubscriptionStatus } from "@/app/generated/prisma/enums";
 import { Redis } from "@upstash/redis";
+import { Client } from "@upstash/qstash";
 
 export const runtime = "nodejs";
 
@@ -237,6 +238,31 @@ export async function POST(req: NextRequest) {
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
         await invalidateUserAuthCaches(dbSub.userId);
+
+        const orgOwner = await prisma.organisation.findUnique({
+          where: { ownerId: dbSub.userId },
+          select: { id: true },
+        });
+        if (orgOwner) {
+          const qstash = new Client({
+            token: process.env.QSTASH_TOKEN,
+          });
+          const queueBaseUrl =
+            process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
+          if (queueBaseUrl) {
+            qstash
+              .publishJSON({
+                url: `${queueBaseUrl}/api/background-jobs/org-cleanup`,
+                body: { ownerId: dbSub.userId },
+              })
+              .catch((err: unknown) =>
+                logger.warn("Failed to enqueue org cleanup", {
+                  userId: dbSub.userId,
+                  error: String(err),
+                }),
+              );
+          }
+        }
       }
 
       logger.info(`Razorpay ${eventType} handled — access restricted`, {

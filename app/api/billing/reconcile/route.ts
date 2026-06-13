@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { Client } from "@upstash/qstash";
 import { razorpay } from "@/lib/razorpay";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
@@ -118,6 +119,34 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
           });
           await invalidateSubscriptionCache(dbSub.userId);
           synced++;
+
+          // Trigger org cleanup if grace expired and user owns an org
+          if (graceExpired && dbSub.userId) {
+            const orgOwner = await prisma.organisation.findUnique({
+              where: { ownerId: dbSub.userId },
+              select: { id: true },
+            });
+            if (orgOwner) {
+              const qstash = new Client({
+                token: process.env.QSTASH_TOKEN,
+              });
+              const queueBaseUrl =
+                process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
+              if (queueBaseUrl) {
+                qstash
+                  .publishJSON({
+                    url: `${queueBaseUrl}/api/background-jobs/org-cleanup`,
+                    body: { ownerId: dbSub.userId },
+                  })
+                  .catch((err: unknown) =>
+                    logger.warn("Failed to enqueue org cleanup", {
+                      userId: dbSub.userId,
+                      error: String(err),
+                    }),
+                  );
+              }
+            }
+          }
 
           logger.info("Reconciliation synced subscription", {
             userId: dbSub.userId,

@@ -206,6 +206,27 @@ export async function guardOrgCreation(
   return { allowed: true, usage: null };
 }
 
+export function guardOrgAccess(
+  authContext: AppAuthContext,
+): PlanGuardResult {
+  if (authContext.effectivePlanId !== "PRO") {
+    return {
+      allowed: false,
+      response: NextResponse.json(
+        {
+          error: true,
+          code: "PRO_REQUIRED",
+          message:
+            "Organisation features require a Pro subscription.",
+          data: { upgradeUrl: "/billing/upgrade" },
+        },
+        { status: 402 },
+      ),
+    };
+  }
+  return { allowed: true, usage: null };
+}
+
 /**
  * Guard for POST /api/org/invite — can this user invite a new member?
  * Checks both org ownership/admin role and available seat count.

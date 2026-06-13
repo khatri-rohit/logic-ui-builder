@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const eventType = event.event;
+    logger.info("Processing Razorpay webhook", { ...event });
     logger.info("Received Razorpay webhook", { eventType, eventId });
 
     // ── subscription.activated | updated | cancelled ──────────────────────
@@ -408,10 +409,13 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (invoiceErr) {
-          logger.warn("Failed to fetch/store invoice for subscription.charged", {
-            razorpaySubscriptionId,
-            error: invoiceErr,
-          });
+          logger.warn(
+            "Failed to fetch/store invoice for subscription.charged",
+            {
+              razorpaySubscriptionId,
+              error: invoiceErr,
+            },
+          );
         }
       })();
 

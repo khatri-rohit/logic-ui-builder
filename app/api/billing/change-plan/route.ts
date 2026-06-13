@@ -121,7 +121,29 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      await razorpay.subscriptions.cancel(subscriptionId, true); // cancel_at_cycle_end = true
+      const hasValidPeriodEnd = !!(
+        subscription.currentPeriodEnd &&
+        new Date(subscription.currentPeriodEnd) > new Date()
+      );
+
+      try {
+        await razorpay.subscriptions.cancel(subscriptionId, hasValidPeriodEnd);
+      } catch (razorpayError: any) {
+        logger.error("Razorpay subscription cancellation for downgrade failed", {
+          razorpayError,
+        });
+        const rzpError = razorpayError?.error;
+        return NextResponse.json(
+          {
+            error: true,
+            message:
+              rzpError?.description ||
+              "Failed to cancel subscription with payment provider.",
+            code: rzpError?.code || "RAZORPAY_ERROR",
+          },
+          { status: razorpayError?.statusCode || 502 },
+        );
+      }
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },

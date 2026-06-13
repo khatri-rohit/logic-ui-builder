@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { JetBrains_Mono } from "next/font/google";
@@ -78,6 +78,7 @@ function FeatureValue({ value }: { value: boolean | string }) {
 }
 
 export function PricingModal({ open, onOpenChange }: PricingModalProps) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const { data: usage, isLoading: usageLoading } = useUsageQuery();
   const { mutateAsync: subscribe, isPending: subscribing } =
     useCheckoutMutation();
@@ -100,6 +101,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   const handleOpenChange = (value: boolean) => {
     if (!value) {
       resetCheckout();
+      setConfirmingCancel(false);
     }
     onOpenChange(value);
   };
@@ -192,11 +194,10 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   };
 
   const handleCancelRenewal = async () => {
-    const confirmed = window.confirm(
-      `You won't be charged again. Your ${currentPlan} access continues until ${periodEnd ?? "the end of your billing period"}, then you'll switch to Free. This cannot be undone — to resubscribe later, you'll need to complete checkout again.`,
-    );
-    if (!confirmed) return;
+    setConfirmingCancel(true);
+  };
 
+  const confirmCancelSubscription = async () => {
     try {
       const result = await cancel();
       if (result.changed) {
@@ -204,6 +205,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       }
     } catch {
       toast.error("Failed to cancel subscription. Please try again.");
+    } finally {
+      setConfirmingCancel(false);
     }
   };
 
@@ -593,37 +596,75 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   </div>
                 )}
 
-                <Button
-                  onClick={() => executeCta(plan.id, plan.cta.variant)}
-                  disabled={plan.cta.disabled || anyLoading}
-                  size="sm"
-                  className={cn(
-                    "mt-5 min-h-9 h-auto w-full py-2 text-[10px] font-semibold leading-snug cursor-pointer whitespace-normal",
-                    plan.cta.variant === "current"
-                      ? "border border-white/8 bg-transparent text-white/30 cursor-default"
-                      : plan.cta.variant === "upgrade"
-                        ? "bg-amber-500 text-black hover:bg-amber-400"
-                        : plan.cta.variant === "subscribe"
-                          ? plan.id === "PRO"
-                            ? "bg-amber-500 text-black hover:bg-amber-400"
-                            : "bg-blue-500 text-white hover:bg-blue-400"
-                          : plan.cta.variant === "cancel_renewal"
-                            ? "border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10"
-                            : plan.cta.variant === "schedule_downgrade"
-                              ? "border border-white/8 bg-transparent text-white/60 hover:bg-white/5"
-                              : plan.cta.variant === "undo_downgrade"
-                                ? "border border-emerald-500/30 bg-transparent text-emerald-400 hover:bg-emerald-500/10"
-                                : plan.cta.variant === "expired"
-                                  ? "border border-amber-500/20 bg-transparent text-amber-300/70 hover:bg-amber-500/5"
-                                  : "border border-white/8 bg-transparent text-white/30",
-                    mono.className,
-                  )}
-                >
-                  {anyLoading && !plan.cta.disabled ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : null}
-                  {plan.cta.label}
-                </Button>
+                {confirmingCancel && plan.id === "FREE" ? (
+                  <div className="mt-5 flex flex-col gap-2">
+                    <p className="text-[10px] text-white/50 text-center leading-relaxed">
+                      Your {currentPlan} access continues until{" "}
+                      {periodEnd ?? "period end"}, then you&apos;ll switch to
+                      Free.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={confirmCancelSubscription}
+                        disabled={cancelling}
+                        size="sm"
+                        className={cn(
+                          "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 cursor-pointer",
+                          mono.className,
+                        )}
+                      >
+                        {cancelling ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          "Yes, cancel"
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => setConfirmingCancel(false)}
+                        disabled={cancelling}
+                        size="sm"
+                        className={cn(
+                          "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-white/8 bg-transparent text-white/50 hover:bg-white/5 cursor-pointer",
+                          mono.className,
+                        )}
+                      >
+                        Keep plan
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => executeCta(plan.id, plan.cta.variant)}
+                    disabled={plan.cta.disabled || anyLoading}
+                    size="sm"
+                    className={cn(
+                      "mt-5 min-h-9 h-auto w-full py-2 text-[10px] font-semibold leading-snug cursor-pointer whitespace-normal",
+                      plan.cta.variant === "current"
+                        ? "border border-white/8 bg-transparent text-white/30 cursor-default"
+                        : plan.cta.variant === "upgrade"
+                          ? "bg-amber-500 text-black hover:bg-amber-400"
+                          : plan.cta.variant === "subscribe"
+                            ? plan.id === "PRO"
+                              ? "bg-amber-500 text-black hover:bg-amber-400"
+                              : "bg-blue-500 text-white hover:bg-blue-400"
+                            : plan.cta.variant === "cancel_renewal"
+                              ? "border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10"
+                              : plan.cta.variant === "schedule_downgrade"
+                                ? "border border-white/8 bg-transparent text-white/60 hover:bg-white/5"
+                                : plan.cta.variant === "undo_downgrade"
+                                  ? "border border-emerald-500/30 bg-transparent text-emerald-400 hover:bg-emerald-500/10"
+                                  : plan.cta.variant === "expired"
+                                    ? "border border-amber-500/20 bg-transparent text-amber-300/70 hover:bg-amber-500/5"
+                                    : "border border-white/8 bg-transparent text-white/30",
+                      mono.className,
+                    )}
+                  >
+                    {anyLoading && !plan.cta.disabled ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
+                    {plan.cta.label}
+                  </Button>
+                )}
               </div>
             ))}
           </div>

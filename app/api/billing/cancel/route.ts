@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
 import prisma from "@/lib/prisma";
@@ -62,19 +63,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const hasValidPeriodEnd = !!(
+      subscription.currentPeriodEnd &&
+      new Date(subscription.currentPeriodEnd) > new Date()
+    );
+
     try {
       await razorpay.subscriptions.cancel(
         subscription.razorpaySubscriptionId,
-        true, // cancel_at_cycle_end = true
+        hasValidPeriodEnd,
       );
-    } catch (error) {
+    } catch (error: any) {
       logger.error("Error canceling Razorpay subscription: ", { error });
+      const rzpError = error?.error;
       return NextResponse.json(
         {
           error: true,
-          message: "Failed to cancel subscription.",
+          message: rzpError?.description || "Failed to cancel subscription.",
+          code: rzpError?.code || "RAZORPAY_ERROR",
         },
-        { status: 500 },
+        { status: error?.statusCode || 500 },
       );
     }
 
@@ -98,8 +106,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       error: false,
-      message:
-        `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${periodEndValid ? subscription.currentPeriodEnd!.toLocaleDateString("en-IN") : "the end of your billing period"}.`,
+      message: `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${periodEndValid ? subscription.currentPeriodEnd!.toLocaleDateString("en-IN") : "the end of your billing period"}.`,
       data: { planId: subscription.planId, changed: true },
     });
   } catch (error) {

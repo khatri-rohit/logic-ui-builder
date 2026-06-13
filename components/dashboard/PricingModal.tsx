@@ -78,7 +78,10 @@ function FeatureValue({ value }: { value: boolean | string }) {
 }
 
 export function PricingModal({ open, onOpenChange }: PricingModalProps) {
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [confirmingAction, setConfirmingAction] = useState<{
+    type: "cancel" | "schedule_downgrade" | "undo_downgrade";
+    targetPlan?: "STANDARD" | "PRO";
+  } | null>(null);
   const { data: usage, isLoading: usageLoading } = useUsageQuery();
   const { mutateAsync: subscribe, isPending: subscribing } =
     useCheckoutMutation();
@@ -101,7 +104,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
   const handleOpenChange = (value: boolean) => {
     if (!value) {
       resetCheckout();
-      setConfirmingCancel(false);
+      setConfirmingAction(null);
     }
     onOpenChange(value);
   };
@@ -119,6 +122,11 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     undoing ||
     cancelling ||
     checkoutBusy;
+  const confirmLoading =
+    (confirmingAction?.type === "cancel" && cancelling) ||
+    (confirmingAction?.type === "schedule_downgrade" && scheduling) ||
+    (confirmingAction?.type === "undo_downgrade" && undoing) ||
+    false;
   const currentPlan = usage?.planId ?? "FREE";
   const scheduledPlan = usage?.scheduledPlanId;
   const periodEnd = usage?.periodEnd
@@ -168,42 +176,50 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     }
   };
 
-  const handleScheduleDowngrade = async (targetPlan: "STANDARD" | "PRO") => {
-    try {
-      const result = await scheduleDowngrade(targetPlan);
-      if (result.changed) {
-        toast.success(result.message ?? "Downgrade scheduled.");
-      }
-    } catch {
-      toast.error("Failed to schedule downgrade. Please try again.");
-    }
+  const handleScheduleDowngrade = (targetPlan: "STANDARD" | "PRO") => {
+    setConfirmingAction({ type: "schedule_downgrade", targetPlan });
   };
 
-  const handleUndoDowngrade = async () => {
-    try {
-      const result = await undoDowngrade();
-      if (result.changed) {
-        toast.success(result.message ?? "Downgrade cancelled.");
-      }
-    } catch {
-      toast.error("Failed to undo downgrade. Please try again.");
-    }
+  const handleUndoDowngrade = () => {
+    setConfirmingAction({ type: "undo_downgrade" });
   };
 
-  const handleCancelRenewal = async () => {
-    setConfirmingCancel(true);
+  const handleCancelRenewal = () => {
+    setConfirmingAction({ type: "cancel" });
   };
 
-  const confirmCancelSubscription = async () => {
+  const confirmAction = async () => {
+    if (!confirmingAction) return;
     try {
-      const result = await cancel();
-      if (result.changed) {
-        toast.success(result.message ?? "Subscription cancelled.");
+      let result:
+        | { changed: boolean; message?: string }
+        | undefined;
+      if (confirmingAction.type === "cancel") {
+        result = await cancel();
+      } else if (confirmingAction.type === "schedule_downgrade" && confirmingAction.targetPlan) {
+        result = await scheduleDowngrade(confirmingAction.targetPlan);
+      } else if (confirmingAction.type === "undo_downgrade") {
+        result = await undoDowngrade();
+      }
+      if (result?.changed) {
+        const defaultMsg =
+          confirmingAction.type === "cancel"
+            ? "Subscription cancelled."
+            : confirmingAction.type === "schedule_downgrade"
+              ? "Downgrade scheduled."
+              : "Downgrade cancelled.";
+        toast.success(result.message ?? defaultMsg);
       }
     } catch {
-      toast.error("Failed to cancel subscription. Please try again.");
+      const errorMsg =
+        confirmingAction.type === "cancel"
+          ? "Failed to cancel subscription. Please try again."
+          : confirmingAction.type === "schedule_downgrade"
+            ? "Failed to schedule downgrade. Please try again."
+            : "Failed to undo downgrade. Please try again.";
+      toast.error(errorMsg);
     } finally {
-      setConfirmingCancel(false);
+      setConfirmingAction(null);
     }
   };
 
@@ -311,7 +327,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       return;
     }
     if (variant === "undo_downgrade") {
-      await handleUndoDowngrade();
+      handleUndoDowngrade();
       return;
     }
     if (variant === "expired") {
@@ -329,7 +345,7 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     }
     if (variant === "schedule_downgrade") {
       if (planId === "FREE") return;
-      await handleScheduleDowngrade(planId);
+      handleScheduleDowngrade(planId);
       return;
     }
   }
@@ -445,18 +461,56 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
 
           {/* Scheduled change banner */}
           {scheduledPlan && (
-            <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-              <p className="text-sm text-amber-300/80">
-                Your plan will change to {scheduledPlan} on{" "}
-                {periodEnd ?? "your next billing date"}.{" "}
-                <button
-                  onClick={handleUndoDowngrade}
-                  disabled={undoing}
-                  className="underline underline-offset-2 hover:text-amber-200"
-                >
-                  {undoing ? "Undoing..." : "Undo"}
-                </button>
-              </p>
+            <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+              {confirmingAction?.type === "undo_downgrade" ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-amber-300/80">
+                    This will cancel your scheduled downgrade to{" "}
+                    {scheduledPlan}.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={confirmAction}
+                      disabled={undoing}
+                      size="sm"
+                      className={cn(
+                        "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 cursor-pointer",
+                        mono.className,
+                      )}
+                    >
+                      {undoing ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        "Yes, undo"
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => setConfirmingAction(null)}
+                      disabled={undoing}
+                      size="sm"
+                      className={cn(
+                        "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-white/8 bg-transparent text-white/50 hover:bg-white/5 cursor-pointer",
+                        mono.className,
+                      )}
+                    >
+                      Keep plan
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-sm text-amber-300/80">
+                    Your plan will change to {scheduledPlan} on{" "}
+                    {periodEnd ?? "your next billing date"}.{" "}
+                    <button
+                      onClick={handleUndoDowngrade}
+                      className="underline underline-offset-2 hover:text-amber-200"
+                    >
+                      Undo
+                    </button>
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -589,32 +643,42 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
                   </div>
                 )}
 
-                {confirmingCancel && plan.id === "FREE" ? (
+                {(confirmingAction?.type === "cancel" && plan.id === "FREE") ||
+                (confirmingAction?.type === "schedule_downgrade" &&
+                  plan.id === "STANDARD") ||
+                (confirmingAction?.type === "undo_downgrade" &&
+                  plan.id === "STANDARD") ? (
                   <div className="mt-5 flex flex-col gap-2">
                     <p className="text-[10px] text-white/50 text-center leading-relaxed">
-                      Your {currentPlan} access continues until{" "}
-                      {periodEnd ?? "period end"}, then you&apos;ll switch to
-                      Free.
+                      {confirmingAction.type === "cancel"
+                        ? `Your ${currentPlan} access continues until ${periodEnd ?? "period end"}, then you'll switch to Free.`
+                        : confirmingAction.type === "schedule_downgrade"
+                          ? `Your Pro access continues until ${periodEnd ?? "period end"}, then you'll downgrade to Standard.`
+                          : `This will cancel your scheduled downgrade to ${scheduledPlan ?? "Standard"}.`}
                     </p>
                     <div className="flex gap-2">
                       <Button
-                        onClick={confirmCancelSubscription}
-                        disabled={cancelling}
+                        onClick={confirmAction}
+                        disabled={confirmLoading}
                         size="sm"
                         className={cn(
                           "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 cursor-pointer",
                           mono.className,
                         )}
                       >
-                        {cancelling ? (
+                        {confirmLoading ? (
                           <Loader2 className="size-3 animate-spin" />
-                        ) : (
+                        ) : confirmingAction.type === "cancel" ? (
                           "Yes, cancel"
+                        ) : confirmingAction.type === "schedule_downgrade" ? (
+                          "Yes, downgrade"
+                        ) : (
+                          "Yes, undo"
                         )}
                       </Button>
                       <Button
-                        onClick={() => setConfirmingCancel(false)}
-                        disabled={cancelling}
+                        onClick={() => setConfirmingAction(null)}
+                        disabled={confirmLoading}
                         size="sm"
                         className={cn(
                           "flex-1 min-h-8 h-auto py-1.5 text-[10px] font-semibold border border-white/8 bg-transparent text-white/50 hover:bg-white/5 cursor-pointer",

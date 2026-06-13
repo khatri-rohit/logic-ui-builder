@@ -11,6 +11,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "../ui/context-menu";
+import { Lock } from "lucide-react";
 
 const WEB_CHROME_H = 36;
 const MOBILE_STATUS_H = 44;
@@ -56,6 +57,10 @@ interface CanvasFrameProps extends CanvasFrameData {
   handleFrame: (id: string) => void;
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
+  onOpenHistory?: (id: string) => void;
+  canRegenerate?: boolean;
+  canEditCode?: boolean;
+  onLockedAction?: (featureName: string) => void;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -84,14 +89,33 @@ export const CanvasFrame = memo(function CanvasFrame({
   handleFrame,
   handleDelete,
   handleEditCode,
+  onOpenHistory,
+  canRegenerate = true,
+  canEditCode = true,
+  onLockedAction,
 }: CanvasFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const interactionRef = useRef<InteractionState | null>(null);
   const contextMenuOpenRef = useRef(false);
   const isSpacePressedRef = useRef(false);
+  const didDragRef = useRef(false);
+  const moveCallbacksRef = useRef({
+    onMove,
+    onResize,
+    platform,
+    safeScale: Math.max(scale, 0.001),
+  });
 
-  const safeScale = Math.max(scale, 0.001);
+  useEffect(() => {
+    moveCallbacksRef.current = {
+      onMove,
+      onResize,
+      platform,
+      safeScale: Math.max(scale, 0.001),
+    };
+  }, [onMove, onResize, platform, scale]);
+
   const activeContent = editedContent ?? content;
 
   useFrameLifecycle({
@@ -136,6 +160,9 @@ export const CanvasFrame = memo(function CanvasFrame({
       const interaction = interactionRef.current;
       if (!interaction) return;
 
+      const { onMove, onResize, platform, safeScale } =
+        moveCallbacksRef.current;
+
       const deltaX = (event.clientX - interaction.startClientX) / safeScale;
       const deltaY = (event.clientY - interaction.startClientY) / safeScale;
 
@@ -155,6 +182,7 @@ export const CanvasFrame = memo(function CanvasFrame({
           };
         }
 
+        didDragRef.current = true;
         onMove(id, interaction.startX + deltaX, interaction.startY + deltaY);
         return;
       }
@@ -168,7 +196,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       const nextH = clamp(Math.round(interaction.startH + deltaY), minH, maxH);
       onResize(id, nextW, nextH);
     },
-    [id, onMove, onResize, platform, safeScale],
+    [id],
   );
 
   const stopInteraction = useCallback(() => {
@@ -212,6 +240,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       event.preventDefault();
       event.stopPropagation();
       onSelect(id);
+      didDragRef.current = false;
 
       interactionRef.current = {
         kind: "drag",
@@ -228,7 +257,16 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, id, isActive, onSelect, readOnly, stopInteraction, x, y],
+    [
+      handleWindowPointerMove,
+      id,
+      isActive,
+      onSelect,
+      readOnly,
+      stopInteraction,
+      x,
+      y,
+    ],
   );
 
   const startResize = useCallback(
@@ -254,7 +292,16 @@ export const CanvasFrame = memo(function CanvasFrame({
         once: true,
       });
     },
-    [handleWindowPointerMove, h, id, isActive, onSelect, readOnly, stopInteraction, w],
+    [
+      handleWindowPointerMove,
+      h,
+      id,
+      isActive,
+      onSelect,
+      readOnly,
+      stopInteraction,
+      w,
+    ],
   );
 
   useEffect(() => {
@@ -299,10 +346,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       const chromeHeight =
         platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H + MOBILE_HOME_H;
 
-      const nextWidth =
-        platform === "web"
-          ? clamp(Math.ceil(reportedWidth), MIN_WEB_W, MAX_WEB_W)
-          : w;
+      const nextWidth = w; // preserve frame width for both platforms
 
       const nextHeight =
         platform === "web"
@@ -317,10 +361,9 @@ export const CanvasFrame = memo(function CanvasFrame({
               MAX_MOBILE_H,
             );
 
-      const widthDiff = Math.abs(nextWidth - w);
       const heightDiff = Math.abs(nextHeight - h);
 
-      if (widthDiff < 4 && heightDiff < 4) return;
+      if (heightDiff < 4) return;
 
       onResize(id, nextWidth, nextHeight);
     };
@@ -341,9 +384,15 @@ export const CanvasFrame = memo(function CanvasFrame({
     w,
   ]);
 
+  // Cleanup on unmount only — keep stable to avoid killing mid-drag.
   useEffect(() => {
-    return () => stopInteraction();
-  }, [stopInteraction]);
+    const currentHandle = handleWindowPointerMove;
+    return () => {
+      window.removeEventListener("pointermove", currentHandle);
+      interactionRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
@@ -431,10 +480,10 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--studio-surface)]"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--studio-surface)"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--studio-error)]/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-(--studio-error)/10">
                   <svg
                     width="20"
                     height="20"
@@ -444,7 +493,7 @@ export const CanvasFrame = memo(function CanvasFrame({
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="text-[var(--studio-error)]"
+                    className="text-(--studio-error)"
                   >
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="8" x2="12" y2="12" />
@@ -452,10 +501,10 @@ export const CanvasFrame = memo(function CanvasFrame({
                   </svg>
                 </div>
                 <div className="max-w-[86%] px-4 text-center">
-                  <span className="font-mono text-[11px] text-[var(--studio-text-secondary)]">
+                  <span className="font-mono text-[11px] text-(--studio-text-secondary)">
                     This screen didn&apos;t compile
                   </span>
-                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-[var(--studio-text-muted)]">
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-(--studio-text-muted)">
                     Right-click and select &quot;Regenerate&quot; to try again.
                   </p>
                 </div>
@@ -473,14 +522,16 @@ export const CanvasFrame = memo(function CanvasFrame({
               style={{
                 pointerEvents: isActive ? "none" : "auto",
                 cursor: isActive ? "default" : "move",
+                touchAction: "none",
               }}
               onPointerDown={startDrag}
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect(id);
-                if (state === "done") {
+                if (state === "done" && !didDragRef.current) {
                   onActivate(id);
                 }
+                didDragRef.current = false;
               }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
@@ -518,14 +569,32 @@ export const CanvasFrame = memo(function CanvasFrame({
         <ContextMenuContent
           onEscapeKeyDown={(event) => event.stopPropagation()}
         >
-          {state === "done" && (
-            <ContextMenuItem onSelect={() => handleEditCode(id)}>
-              Edit Code
+          {state === "done" &&
+            (canEditCode ? (
+              <ContextMenuItem onSelect={() => handleEditCode(id)}>
+                Edit Code
+              </ContextMenuItem>
+            ) : (
+              <ContextMenuItem onSelect={() => onLockedAction?.("Edit Code")}>
+                <span className="opacity-50">Edit Code</span>
+                <Lock className="ml-auto size-3 text-amber-400" />
+              </ContextMenuItem>
+            ))}
+          {canRegenerate ? (
+            <ContextMenuItem onSelect={() => handleFrame(id)}>
+              Regenerate
+            </ContextMenuItem>
+          ) : (
+            <ContextMenuItem onSelect={() => onLockedAction?.("Regenerate")}>
+              <span className="opacity-50">Regenerate</span>
+              <Lock className="ml-auto size-3 text-amber-400" />
             </ContextMenuItem>
           )}
-          <ContextMenuItem onSelect={() => handleFrame(id)}>
-            Regenerate
-          </ContextMenuItem>
+          {canRegenerate && onOpenHistory && (
+            <ContextMenuItem onSelect={() => onOpenHistory(id)}>
+              History
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onSelect={() => handleDelete(id)}>
             Delete
           </ContextMenuItem>
@@ -541,7 +610,7 @@ function SkeletonView() {
       {[80, 60, 90, 50, 70].map((width, index) => (
         <div
           key={index}
-          className="h-3 rounded-md bg-foreground/[0.06]"
+          className="h-3 rounded-md bg-foreground/6"
           style={{
             width: `${width}%`,
           }}
@@ -566,14 +635,14 @@ function StreamingView() {
         {[0, 1, 2].map((index) => (
           <div
             key={index}
-            className="size-2 rounded-full bg-[var(--studio-accent)]"
+            className="size-2 rounded-full bg-(--studio-accent)"
             style={{
               animation: `streaming-dot 1s ease-in-out ${index * 120}ms infinite`,
             }}
           />
         ))}
       </div>
-      <span className="font-mono text-[10px] text-[var(--studio-text-muted)]">
+      <span className="font-mono text-[10px] text-(--studio-text-muted)">
         Generating...
       </span>
     </div>

@@ -33,7 +33,12 @@ function toFrameDataArray(
 export default function PublicProjectViewer({
   token,
 }: PublicProjectViewerProps) {
-  const { data: project, isLoading, isError, error } = useSharedProjectQuery(token);
+  const {
+    data: project,
+    isLoading,
+    isError,
+    error,
+  } = useSharedProjectQuery(token);
 
   const canvasRef = useRef<InfiniteCanvasHandle | null>(null);
   const [canvasTransform, setCanvasTransform] = useState<Transform>({
@@ -43,8 +48,6 @@ export default function PublicProjectViewer({
   });
   const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
-
-  const platform = project?.platform ?? "web";
 
   const isDark = true; // Public viewer defaults to dark theme
 
@@ -149,7 +152,12 @@ export default function PublicProjectViewer({
           <StudioThemeProvider value={{ mode: "dark", isDark }}>
             <InfiniteCanvas
               ref={canvasRef}
-              frames={frameList.map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h }))}
+              frames={frameList.map((f) => ({
+                x: f.x,
+                y: f.y,
+                w: f.w,
+                h: f.h,
+              }))}
               activeFrameId={activeFrameId}
               onFrameExit={() => setActiveFrameId(null)}
               onTransformChange={handleTransformChange}

@@ -82,7 +82,6 @@ export async function POST(req: NextRequest) {
           planId: body.data.planId,
           razorpayPlanId: planConfig.razorpayPlanId,
           cancelAtPeriodEnd: false,
-          cancelledAt: null,
         },
       });
     } catch (error) {

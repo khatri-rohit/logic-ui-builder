@@ -116,8 +116,6 @@ export function buildEnhancedPrompt({
   designContext,
 }: PromptEnhancerInput): string {
   const cleanedPrompt = prompt.trim();
-  const dials = inferDesignDials(cleanedPrompt);
-  const dialDirectives = buildDialDirectives(dials);
 
   const contextRules = designContext
     ? [
@@ -134,8 +132,8 @@ export function buildEnhancedPrompt({
       ]
     : [];
 
-  const computedDials = inferDesignDials(cleanedPrompt);
-  const computedDialDirectives = buildDialDirectives(computedDials);
+  const dials = inferDesignDials(cleanedPrompt);
+  const dialDirectives = buildDialDirectives(dials);
 
   return [
     "## PROMPT Framework",
@@ -150,12 +148,12 @@ export function buildEnhancedPrompt({
     ...CRITICAL_CONSTRAINTS.map((line) => `- ${line}`),
     "",
     "## DESIGN DIALS (Computed from prompt)",
-    `- DESIGN_VARIANCE: ${computedDials.variance}/10 (layout asymmetry level)`,
-    `- MOTION_INTENSITY: ${computedDials.motion}/10 (interaction richness)`,
-    `- VISUAL_DENSITY: ${computedDials.density}/10 (information density)`,
+    `- DESIGN_VARIANCE: ${dials.variance}/10 (layout asymmetry level)`,
+    `- MOTION_INTENSITY: ${dials.motion}/10 (interaction richness)`,
+    `- VISUAL_DENSITY: ${dials.density}/10 (information density)`,
     "",
     "## DESIGN DIAL DIRECTIVES (Apply these to the layout)",
-    ...computedDialDirectives.map((line) => `- ${line}`),
+    ...dialDirectives.map((line) => `- ${line}`),
     "",
     "USER INTENT:",
     cleanedPrompt,

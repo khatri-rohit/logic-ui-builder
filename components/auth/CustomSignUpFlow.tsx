@@ -87,6 +87,7 @@ export default function CustomSignUpFlow() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [oauthLoadingProvider, setOauthLoadingProvider] =
     useState<OAuthProvider | null>(null);
 
@@ -463,9 +464,49 @@ export default function CustomSignUpFlow() {
             ) : null}
           </div>
 
+          <div className="flex items-start gap-2">
+            <input
+              id="accept-terms"
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(event) => setAcceptedTerms(event.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-(--logic-primary-fixed)"
+            />
+            <label
+              htmlFor="accept-terms"
+              className={cn(
+                styles.supportText,
+                "logic-auth-body cursor-pointer text-xs leading-relaxed",
+              )}
+            >
+              I agree to the{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                className={cn(
+                  styles.supportLink,
+                  "underline-offset-2 hover:underline",
+                )}
+              >
+                Terms of Service
+              </Link>
+              {" "}and{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className={cn(
+                  styles.supportLink,
+                  "underline-offset-2 hover:underline",
+                )}
+              >
+                Privacy Policy
+              </Link>
+            </label>
+          </div>
+
           <button
             type="submit"
-            disabled={isAnyAuthFlowLoading}
+            disabled={isAnyAuthFlowLoading || !acceptedTerms}
             className={cn(styles.formPrimaryButton, "logic-auth-body")}
           >
             {isAnyAuthFlowLoading ? "Preparing..." : "Continue"}

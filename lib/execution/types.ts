@@ -1,0 +1,76 @@
+import { ComponentTreeNode, DesignContext, WebAppSpec } from "@/lib/types";
+import type { ScreenClass } from "@/lib/execution/modelRouter";
+import { initializeOllama } from "@/lib/ollama";
+
+export interface ModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ModelResult {
+  success: true;
+  code: string;
+  usage: ModelUsage | null;
+}
+
+export interface ModelFailure {
+  success: false;
+  reason: "client_abort" | "timeout" | "error";
+  error: Error;
+}
+
+export type ModelExecutionResult = ModelResult | ModelFailure;
+
+export interface ScreenResult {
+  success: boolean;
+  code: string;
+  error: string | null;
+  iterations: number;
+}
+
+export interface WriteFunction {
+  (payload: object): Promise<void>;
+}
+
+export interface PipelineContext {
+  ollama: ReturnType<typeof initializeOllama>;
+  spec: WebAppSpec;
+  tree: ComponentTreeNode[];
+  designContext: DesignContext;
+  stage3ModelPriority: string[];
+  abortController: AbortController;
+  write: WriteFunction;
+  systemPrompt?: string;
+  screenClass?: ScreenClass;
+  generationId?: string;
+  referenceScreenCode?: string;
+}
+
+export interface TelemetryPayload {
+  generationId: string;
+  screenName: string;
+  model: string;
+  stage: "stage3" | "repair" | "stage1" | "stage2";
+  success: boolean;
+  latencyMs: number;
+  tokenCount: number | null;
+  errorType: string | null;
+  screenClass: ScreenClass | null;
+}
+
+export interface ModelExecutorOptions {
+  ollama: ReturnType<typeof initializeOllama>;
+  model: string;
+  system: string;
+  prompt: string;
+  temperature: number;
+  abortController: AbortController;
+  modelTimeoutMs?: number;
+  onToken?: (token: string) => void | Promise<void>;
+}
+
+export type OnScreenComplete = (
+  index: number,
+  result: ScreenResult,
+) => void | Promise<void>;

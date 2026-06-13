@@ -45,8 +45,11 @@ yarn-error.log*
 next-env.d.ts
 
 
-# clerk configuration (can include secrets)
+# local agent / editor configuration
 /.clerk/
+/.claude/
+.fallowrc.json
 .agents/skills/*
 .claude/agent-memory/*
 .claude/agents/*
+/TODO.md

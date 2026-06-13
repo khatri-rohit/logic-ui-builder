@@ -16,6 +16,35 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+export async function sendOrgDissolvedEmail(params: {
+  to: string;
+  orgName: string;
+}) {
+  const orgNameHtml = escapeHtml(params.orgName);
+
+  await transporter.sendMail({
+    from: `"LOGIC" <${process.env.EMAIL_USER}>`,
+    to: params.to,
+    subject: `Organisation "${params.orgName}" dissolved on LOGIC`,
+    text: [
+      `The organisation "${orgNameHtml}" has been dissolved because the owner\'s Pro subscription ended.`,
+      "",
+      "Your access has been reverted to your personal subscription.",
+      "If you have a personal Pro subscription, your access continues as before.",
+      "",
+      "If you have any questions, please contact support.",
+    ].join("\n"),
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <p style="font-size: 20px; font-weight: 700; margin: 0 0 8px;">Organisation dissolved</p>
+        <p style="color: #555; margin: 0 0 24px;">The organisation "${orgNameHtml}" has been dissolved because the owner's Pro subscription ended.</p>
+        <p style="color: #555; margin: 0 0 24px;">Your access has been reverted to your personal subscription. If you have a personal Pro subscription, your access continues as before.</p>
+        <p style="color: #888; font-size: 12px; margin: 24px 0 0;">If you have any questions, please contact support.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendOrgInviteEmail(params: {
   to: string;
   inviterEmail: string;

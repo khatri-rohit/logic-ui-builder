@@ -67,7 +67,7 @@ export function projectsListQueryOptions() {
     queryKey: projectKeys.list(),
     queryFn: listProjects,
     refetchOnWindowFocus: false,
-    staleTime: Infinity, // ← Data never becomes stale
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 }
 
@@ -177,7 +177,7 @@ export function projectDetailQueryOptions(id: string) {
     queryFn: () => getProject(id),
     enabled: !!id,
     refetchOnWindowFocus: false,
-    staleTime: Infinity, // ← Data never becomes stale
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 }
 
@@ -316,19 +316,17 @@ export function useProjectMetadataUpdateMutation() {
       // Update Zustand cache
       const currentCache = useProjectsCacheStore.getState().projects;
       if (currentCache) {
-        useProjectsCacheStore
-          .getState()
-          .setProjects(
-            currentCache.map((project) =>
-              project.id === id
-                ? {
-                    ...project,
-                    title: data.project.title,
-                    description: data.project.description,
-                  }
-                : project,
-            ),
-          );
+        useProjectsCacheStore.getState().setProjects(
+          currentCache.map((project) =>
+            project.id === id
+              ? {
+                  ...project,
+                  title: data.project.title,
+                  description: data.project.description,
+                }
+              : project,
+          ),
+        );
       }
     },
   });
@@ -545,4 +543,95 @@ export function sharedProjectQueryOptions(token: string) {
 
 export function useSharedProjectQuery(token: string) {
   return useQuery(sharedProjectQueryOptions(token));
+}
+
+// -- Frame history
+export type FrameVersionItem = {
+  versionNumber: number;
+  content: string;
+  editedContent: string | null;
+  prompt: string | null;
+  createdAt: string;
+};
+
+type FrameHistoryResponse = {
+  versions: FrameVersionItem[];
+};
+
+async function getFrameHistory(
+  projectId: string,
+  frameId: string,
+): Promise<FrameHistoryResponse> {
+  return requestApi<FrameHistoryResponse>(
+    `/api/projects/${projectId}/frames/${frameId}/history`,
+  );
+}
+
+export function useFrameHistoryQuery(
+  projectId: string,
+  frameId: string | null,
+) {
+  return useQuery({
+    queryKey: ["projects", projectId, "frames", frameId, "history"],
+    queryFn: () => getFrameHistory(projectId, frameId!),
+    enabled: !!projectId && !!frameId,
+    refetchOnWindowFocus: false,
+  });
+}
+
+// -- Frame restore
+type RestoreFrameInput = {
+  projectId: string;
+  frameId: string;
+  versionNumber: number;
+};
+
+type RestoreFrameResponse = {
+  generation: ProjectGeneration;
+};
+
+async function restoreFrameVersion({
+  projectId,
+  frameId,
+  versionNumber,
+}: RestoreFrameInput): Promise<RestoreFrameResponse> {
+  return requestApi<RestoreFrameResponse>(
+    `/api/projects/${projectId}/frames/${frameId}/restore`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ versionNumber }),
+    },
+  );
+}
+
+export function useRestoreFrameVersionMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: restoreFrameVersion,
+    onSuccess: (data, { projectId }) => {
+      queryClient.setQueryData<ProjectDetail>(
+        ["projects", projectId],
+        (prev) => {
+          if (!prev) return prev;
+
+          const generations = prev.generations.map((gen) => {
+            if (gen.generationId === data.generation.generationId) {
+              return data.generation;
+            }
+            return gen;
+          });
+
+          const frames = flattenGenerationFrames(generations);
+
+          return {
+            ...prev,
+            generations,
+            frames,
+          };
+        },
+      );
+    },
+  });
 }

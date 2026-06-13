@@ -39,23 +39,30 @@ type ProjectActionId =
 
 export type ThemeMode = "light" | "dark" | "system";
 
-const projectActions: Array<{ id: ProjectActionId; label: string; icon: LucideIcon }> =
-  [
-    { id: "all-projects", label: "Go to all projects", icon: ChevronLeft },
-    { id: "share", label: "Share", icon: Share2 },
-    { id: "download", label: "Download project", icon: Download },
-    // { id: "export-png", label: "Export as PNG", icon: FileImage },
-    { id: "edit", label: "Edit", icon: Pencil },
-    { id: "delete", label: "Delete project", icon: Trash2 },
-    { id: "feedback", label: "Send feedback", icon: MessageCirclePlus },
-    //   { id: "duplicate", label: "Duplicate project", icon: SquareStack },
-    //   { id: "help", label: "Help", icon: HelpCircle },
-    //   { id: "settings", label: "Settings", icon: Settings2 },
-    //   { id: "command-menu", label: "Command menu", icon: Command, meta: "Ctrl+K" },
-    //   { id: "send-feedback", label: "Send feedback", icon: ExternalLink },
-  ];
+const projectActions: Array<{
+  id: ProjectActionId;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: "all-projects", label: "Go to all projects", icon: ChevronLeft },
+  { id: "share", label: "Share", icon: Share2 },
+  { id: "download", label: "Download project", icon: Download },
+  // { id: "export-png", label: "Export as PNG", icon: FileImage },
+  { id: "edit", label: "Edit", icon: Pencil },
+  { id: "delete", label: "Delete project", icon: Trash2 },
+  { id: "feedback", label: "Send feedback", icon: MessageCirclePlus },
+  //   { id: "duplicate", label: "Duplicate project", icon: SquareStack },
+  //   { id: "help", label: "Help", icon: HelpCircle },
+  //   { id: "settings", label: "Settings", icon: Settings2 },
+  //   { id: "command-menu", label: "Command menu", icon: Command, meta: "Ctrl+K" },
+  //   { id: "send-feedback", label: "Send feedback", icon: ExternalLink },
+];
 
-const themeOptions: Array<{ value: ThemeMode; label: string; icon: LucideIcon }> = [
+const themeOptions: Array<{
+  value: ThemeMode;
+  label: string;
+  icon: LucideIcon;
+}> = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
   { value: "system", label: "System", icon: Monitor },

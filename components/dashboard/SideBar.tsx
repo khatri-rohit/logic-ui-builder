@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useProjectsQuery } from "@/lib/projects/queries";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import SupportForm from "./SupportForm";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -40,6 +42,7 @@ const SideBar = ({
 
   const shouldReduceMotion = useReducedMotion();
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
+  const [openSupportForm, setOpenSupportForm] = useState(false);
 
   const fadeLeft = (delay = 0) =>
     shouldReduceMotion
@@ -289,6 +292,7 @@ const SideBar = ({
           <div className="mt-auto border-t border-border px-4 pt-4">
             <motion.button
               type="button"
+              onClick={() => setOpenSupportForm(true)}
               className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <HelpCircle className="size-4 shrink-0" />
@@ -302,6 +306,11 @@ const SideBar = ({
               </span>
             </motion.button>
           </div>
+
+          <SupportForm
+            open={openSupportForm}
+            onOpenChange={setOpenSupportForm}
+          />
         </div>
       </motion.aside>
 

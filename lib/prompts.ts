@@ -21,34 +21,8 @@ export function normalizeHexColor(hex: string): string {
   return hex;
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  issues: string[];
-}
-
-export function validateGeneratedTSX(code: string): ValidationResult {
-  const issues: string[] = [];
-
-  const braceCount = (code.match(/{/g) || []).length;
-  const closeBraceCount = (code.match(/}/g) || []).length;
-  if (braceCount !== closeBraceCount) {
-    issues.push("Unbalanced braces");
-  }
-
-  const openTags = (code.match(/<[A-Z][a-zA-Z]*[^/>]*>/g) || []).length +
-    (code.match(/<[a-z][a-z0-9-]*\b[^/>]*?(?<!\/)>/g) || []).length;
-  const closeTags = (code.match(/<\/[A-Z][a-zA-Z]*>/g) || []).length +
-    (code.match(/<\/[a-z][a-z0-9-]*>/g) || []).length;
-  if (openTags !== closeTags) {
-    issues.push("Unclosed JSX tags");
-  }
-
-  if (!code.includes("export default GeneratedScreen")) {
-    issues.push("Missing default export");
-  }
-
-  return { valid: issues.length === 0, issues };
-}
+export type { ValidationResult } from "./validation/engine";
+export { validateGeneratedTSX } from "./validation/engine";
 
 
 const IMPORT_ALLOWLIST = [
@@ -61,6 +35,155 @@ const IMPORT_ALLOWLIST = [
   "date-fns",
   "dayjs",
   "lodash",
+].join(", ");
+
+const LUCIDE_REACT_SYMBOLS = [
+  "Activity",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "BarChart2",
+  "BarChart3",
+  "BarChart4",
+  "Bell",
+  "Bookmark",
+  "Calendar",
+  "Check",
+  "CheckCircle",
+  "ChevronDown",
+  "ChevronLeft",
+  "ChevronRight",
+  "ChevronUp",
+  "Clock",
+  "Copy",
+  "CreditCard",
+  "DollarSign",
+  "Download",
+  "Edit",
+  "Eye",
+  "EyeOff",
+  "File",
+  "FileText",
+  "Filter",
+  "Flag",
+  "Folder",
+  "Globe",
+  "Heart",
+  "HelpCircle",
+  "Home",
+  "Image",
+  "Inbox",
+  "Info",
+  "Layers",
+  "Layout",
+  "Link",
+  "List",
+  "Lock",
+  "LogIn",
+  "LogOut",
+  "Mail",
+  "Map",
+  "MapPin",
+  "Maximize",
+  "Menu",
+  "MessageCircle",
+  "MessageSquare",
+  "Minimize",
+  "Moon",
+  "MoreHorizontal",
+  "MoreVertical",
+  "Move",
+  "Music",
+  "Package",
+  "Paperclip",
+  "Phone",
+  "Play",
+  "Plus",
+  "Power",
+  "Printer",
+  "Radio",
+  "RefreshCw",
+  "RotateCcw",
+  "Save",
+  "Search",
+  "Settings",
+  "Share",
+  "Share2",
+  "Shield",
+  "ShoppingBag",
+  "ShoppingCart",
+  "Shuffle",
+  "Sidebar",
+  "Sliders",
+  "Smartphone",
+  "Star",
+  "Sun",
+  "Table",
+  "Tag",
+  "Target",
+  "Terminal",
+  "ThumbsUp",
+  "Trash",
+  "Trash2",
+  "TrendingDown",
+  "TrendingUp",
+  "Truck",
+  "Upload",
+  "User",
+  "UserCheck",
+  "UserPlus",
+  "Users",
+  "Video",
+  "Volume",
+  "Wallet",
+  "Wifi",
+  "X",
+  "XCircle",
+  "Zap",
+  "ZoomIn",
+  "ZoomOut",
+].join(", ");
+
+const RECHARTS_SYMBOLS = [
+  "Area",
+  "AreaChart",
+  "Bar",
+  "BarChart",
+  "Brush",
+  "CartesianGrid",
+  "Cell",
+  "ComposedChart",
+  "Curve",
+  "Dot",
+  "ErrorBar",
+  "Funnel",
+  "FunnelChart",
+  "Label",
+  "LabelList",
+  "Legend",
+  "Line",
+  "LineChart",
+  "Pie",
+  "PieChart",
+  "PolarAngleAxis",
+  "PolarGrid",
+  "PolarRadiusAxis",
+  "Radar",
+  "RadarChart",
+  "RadialBar",
+  "RadialBarChart",
+  "Rectangle",
+  "ReferenceLine",
+  "ResponsiveContainer",
+  "Sankey",
+  "Scatter",
+  "ScatterChart",
+  "Sector",
+  "Tooltip",
+  "Treemap",
+  "XAxis",
+  "YAxis",
 ].join(", ");
 
 export const STAGE1_SYSTEM = `
@@ -476,6 +599,16 @@ Generate complete, production-quality React/TypeScript code for a single screen.
 - NO runtime features: no timers, effects, network calls, CSS keyframes, mount animations
 - Static interactive UI only - appearance of interactivity without behavior
 
+## IMPORT DISCIPLINE (CRITICAL - prevents runtime errors)
+You MUST separate imports by package. NEVER mix icons and chart components in the same import statement.
+- lucide-react exports ONLY these icon components: ${LUCIDE_REACT_SYMBOLS}. NEVER import chart components from lucide-react.
+- recharts exports ONLY these chart components: ${RECHARTS_SYMBOLS}. NEVER import icons from recharts.
+- Example CORRECT:
+  import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+  import { TrendingUp, Users, DollarSign, Activity, Calendar, Filter } from "lucide-react";
+- Example INCORRECT (will cause runtime error):
+  import { BarChart, Bar, TrendingUp, Users } from "recharts";  // TrendingUp, Users are NOT in recharts
+
 ${DESIGN_VOCABULARY_DIRECTIVE}
 
 ## Output Format (strict TSX)
@@ -712,25 +845,11 @@ AUTHORITATIVE DESIGN CONTEXT:
 `.trim();
 }
 
-export function buildScreenPrompt(
+export function buildSystemPrompt(
   spec: WebAppSpec,
-  tree: ComponentTreeNode[],
-  screen: string,
-  userPrompt: string,
   designContext?: DesignContext,
 ): string {
-  const node = tree.find((n) => n.screen === screen) as
-    | (ComponentTreeNode & {
-        layoutArchitecture?: Record<string, unknown>;
-        componentIntents?: unknown[];
-      })
-    | undefined;
-  const components = node?.components ?? spec.components ?? [];
-  const layoutArch = node?.layoutArchitecture;
-  const componentIntents = node?.componentIntents ?? [];
-
-  const isDark = spec.colorMode === "dark"; // Default to light surface colors if colorMode is not specified
-  const isMobile = spec.platform === "mobile";
+  const isDark = spec.colorMode === "dark";
 
   const tokenSystem = `
 DESIGN TOKENS (STRICTLY ENFORCED):
@@ -878,6 +997,30 @@ Define these as inline CSS variables on the root element and use them semantical
 - ALWAYS add complete hover/active/focus/disabled states to interactive elements
 `.trim();
 
+  const colorEnforcement = `
+## MANDATORY COLOR ENFORCEMENT (CRITICAL — NEVER VIOLATE):
+
+### Visible Brand Color Quota Per Screen:
+- PRIMARY color (${spec.primaryColor}) MUST appear on at least 3 distinct, visible elements: main CTA button, active nav item or link, key icon, at least one heading, card border, or prominent background band.
+- ACCENT color (${spec.accentColor}) MUST appear on at least 2 distinct, visible elements: badge, status indicator, highlight pill, decorative dot, secondary CTA, chart series, or illustration detail.
+- It is NOT sufficient to assign primary to a single button and call it done. Spread it deliberately across the layout.
+
+### Background Policy:
+- Page/container backgrounds MUST NOT be pure white (#ffffff) or pure black (#000000). Use the token --surface which carries a subtle tint toward the brand palette.
+- Card and section backgrounds MUST NOT be 100% neutral gray. Tint them slightly toward --primary-muted or --accent-muted to reinforce brand identity.
+- Exception: Only text fields and data-dense tables may use near-neutral backgrounds IF the user explicitly requested a minimalist look.
+
+### Monochrome Ban:
+- A screen that uses ONLY shades of gray/black/white is INVALID. Reject monochrome-only designs.
+- If the user prompt implies a grayscale aesthetic, still inject at least one primary-colored focal element and one accent-colored micro-detail.
+
+### Token Translation Examples (COPY THESE EXACT PATTERNS):
+- Hero band behind headline: bg-[var(--primary)]/10 with text-[var(--primary)] heading
+- Featured card: border-l-4 border-[var(--primary)] bg-[var(--surface-elevated)]
+- KPI highlight: text-[var(--accent)] font-bold with a bg-[var(--accent)]/10 badge
+- Nav active state: bg-[var(--primary)] text-white OR text-[var(--primary)] border-b-2 border-[var(--primary)]
+`.trim();
+
   const componentStates = `
 ## COMPONENT STATES (REQUIRED FOR ALL INTERACTIVE ELEMENTS)
 
@@ -918,7 +1061,7 @@ Define these as inline CSS variables on the root element and use them semantical
 
 ### 1. BUTTON HIERARCHY DECISION:
 **Is this the MAIN action on the screen?**
-- YES (primary CTA like "Sign Up", "Buy Now", "Submit"): 
+- YES (primary CTA like "Sign Up", "Buy Now", "Submit"):
   → Use: className="bg-[var(--primary)] text-white"
 - Is it a secondary action (Cancel, Back, Skip)?
   → Use: className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)]"
@@ -954,6 +1097,107 @@ Define these as inline CSS variables on the root element and use them semantical
 - ACCENT: Badges, notifications, success indicators, secondary highlights
 - NEVER use primary for everything - reserve it for most important elements
 `.trim();
+
+  const antiPatterns = `
+ANTI-PATTERNS TO AVOID:
+- Equal-size KPI cards with identical visual weight. Vary emphasis and add trend context.
+- Generic three-card feature rows. Use asymmetric rhythm or a table/list when the content is comparable.
+- text-gray-500 for all secondary text. Use the token system.
+- Every button styled as primary. Use primary, secondary, and ghost hierarchy.
+- p-4 on every element. Follow the spacing contract.
+- Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
+- Dashboard content trapped in a narrow centered column. Use the available width.
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
+`.trim();
+
+  const generationContract = buildGenerationDesignContract(spec, designContext);
+  const designContextContract = buildDesignContextContract(designContext);
+
+  return `
+${tokenSystem}
+
+${colorEnforcement}
+
+${componentStates}
+
+${designDecisionRules}
+
+${generationContract}
+
+${designContextContract}
+
+${antiPatterns}
+
+SYNTAX REQUIREMENTS:
+- Component name: GeneratedScreen.
+- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
+- Include realistic mock data with at least 4 items for every list, grid, chart, or table.
+- Close all JSX tags and balance all braces.
+- Final line: export default GeneratedScreen;
+- Output code only.
+`.trim();
+}
+
+function sanitizeReferenceScreenCode(code: string): string {
+  const maxLen = 600;
+  let safe = code
+    .replace(/```/g, "")
+    .replace(/\$\{/g, "")
+    .replace(/`/g, "");
+  safe = safe.replace(/^import\s+.*?(?:from\s+['"][^'"]*['"]\s*;?)?$/gm, "");
+  safe = safe.replace(/\/\/.*$/gm, "");
+  safe = safe.replace(/\/\*[\s\S]*?\*\//g, "");
+  safe = safe.replace(/>[^<>]*?</g, "><");
+
+  const classTokens: string[] = [];
+  const classRe = /className=["']([^"']*)["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = classRe.exec(safe)) !== null) {
+    for (const cls of m[1].split(/\s+/)) {
+      if (/^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(cls)) {
+        classTokens.push(cls);
+      }
+    }
+  }
+
+  const styleTokens: string[] = [];
+  const styleRe = /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
+  while ((m = styleRe.exec(safe)) !== null) {
+    styleTokens.push(`${m[1]}: ${m[2].trim()}`);
+  }
+
+  const parts: string[] = [];
+  const uniqueClasses = [...new Set(classTokens)].sort();
+  if (uniqueClasses.length) {
+    parts.push(`Design token classes: ${uniqueClasses.join(", ")}`);
+  }
+  const uniqueStyles = [...new Set(styleTokens)];
+  if (uniqueStyles.length) {
+    parts.push(`Inline styles: ${uniqueStyles.join(" | ")}`);
+  }
+  const result = parts.join("\n");
+  return result ? result.slice(0, maxLen) : "[compact reference]";
+}
+
+export function buildScreenPrompt(
+  spec: WebAppSpec,
+  tree: ComponentTreeNode[],
+  screen: string,
+  userPrompt: string,
+  designContext?: DesignContext,
+  referenceScreenCode?: string,
+): string {
+  const node = tree.find((n) => n.screen === screen) as
+    | (ComponentTreeNode & {
+        layoutArchitecture?: Record<string, unknown>;
+        componentIntents?: unknown[];
+      })
+    | undefined;
+  const components = node?.components ?? spec.components ?? [];
+  const layoutArch = node?.layoutArchitecture;
+  const componentIntents = node?.componentIntents ?? [];
+
+  const isMobile = spec.platform === "mobile";
 
   const layoutDirective = layoutArch
     ? `
@@ -1002,19 +1246,22 @@ ${(
 `
       : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
-  const antiPatterns = `
-ANTI-PATTERNS TO AVOID:
-- Equal-size KPI cards with identical visual weight. Vary emphasis and add trend context.
-- Generic three-card feature rows. Use asymmetric rhythm or a table/list when the content is comparable.
-- text-gray-500 for all secondary text. Use the token system.
-- Every button styled as primary. Use primary, secondary, and ghost hierarchy.
-- p-4 on every element. Follow the spacing contract.
-- Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
-- Dashboard content trapped in a narrow centered column. Use the available width.
-- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
-`.trim();
+  const crossScreenConsistency = referenceScreenCode
+    ? `
+CROSS-SCREEN CONSISTENCY REFERENCE:
+Your screen MUST match the first screen's visual language — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy.
 
-  const generationContract = buildGenerationDesignContract(spec, designContext);
+${sanitizeReferenceScreenCode(referenceScreenCode)}
+
+RULES:
+- Preserve the exact primary/accent color usage patterns seen in the reference.
+- Match the card elevation style (shadow-sm/shadow-md/shadow-lg usage).
+- Match the border radius scale (rounded-md/rounded-lg/rounded-xl choices).
+- Match the spacing rhythm (gap sizes, padding sizes).
+- Match the typography hierarchy (heading sizes, body sizes, weight patterns).
+- Do NOT introduce new colors, new spacing scales, or new component styles.
+`.trim()
+    : "";
 
   return `
 Generate a complete, production-quality React component for screen: "${screen}".
@@ -1026,27 +1273,14 @@ ${designBrief}
 
 ${buildSplitFlowDirective(spec, screen)}
 
-${generationContract}
-
-${buildDesignContextContract(designContext)}
-
-${tokenSystem}
-
-${componentStates}
-
-${designDecisionRules}
-
 ${layoutDirective}
 
 ${componentPlan}
 
-${antiPatterns}
+${crossScreenConsistency}
 
-SYNTAX REQUIREMENTS:
+SYNTAX REMINDER:
 - Component name: GeneratedScreen.
-- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
-- Include realistic mock data with at least 4 items for every list, grid, chart, or table.
-- Close all JSX tags and balance all braces.
 - Final line: export default GeneratedScreen;
 - Output code only.
 `.trim();

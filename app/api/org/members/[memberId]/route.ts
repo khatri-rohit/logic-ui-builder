@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { removeMember, isOrgError } from "@/lib/org";
+import { guardOrgAccess } from "@/lib/plan-guard";
 import { orgRatelimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 
@@ -28,6 +29,9 @@ export async function DELETE(
     }
 
     const { memberId } = await params;
+
+    const guardResult = guardOrgAccess(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     if (!authContext.orgId) {
       return NextResponse.json(
@@ -95,6 +99,9 @@ export async function PATCH(
     }
 
     const { memberId } = await params;
+
+    const guardResult = guardOrgAccess(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     if (!authContext.isOrgOwner) {
       return NextResponse.json(

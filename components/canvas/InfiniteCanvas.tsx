@@ -11,6 +11,7 @@ import {
 
 import { CanvasGrid } from "@/components/canvas/CanvasGrid";
 import { StudioToolbar } from "@/components/canvas/StudioToolbar";
+import { CanvasFrameData } from "@/components/canvas/types";
 import {
   CanvasTransformHandle,
   FrameRect,
@@ -26,7 +27,9 @@ export interface InfiniteCanvasHandle extends CanvasTransformHandle {
 interface InfiniteCanvasProps {
   children?: React.ReactNode;
   frames?: FrameRect[];
+  frameData?: CanvasFrameData[];
   activeFrameId: string | null;
+  selectedFrameId?: string | null;
   onFrameExit: () => void;
   className?: string;
   onTransformChange?: (transform: Transform) => void;
@@ -39,7 +42,9 @@ export const InfiniteCanvas = forwardRef<
   {
     children,
     frames = [],
+    frameData,
     activeFrameId,
+    selectedFrameId,
     onFrameExit,
     className,
     onTransformChange,
@@ -75,6 +80,19 @@ export const InfiniteCanvas = forwardRef<
     },
     [onFrameExit],
   );
+
+  const selectedFrameRect = useMemo(() => {
+    if (!selectedFrameId || !frameData) return null;
+    const found = frameData.find((f) => f.id === selectedFrameId);
+    if (!found) return null;
+    return { x: found.x, y: found.y, w: found.w, h: found.h };
+  }, [frameData, selectedFrameId]);
+
+  const handleFitSelected = useCallback(() => {
+    if (selectedFrameRect) {
+      transformApi.zoomToRect(selectedFrameRect, 40);
+    }
+  }, [selectedFrameRect, transformApi]);
 
   useImperativeHandle(
     ref,
@@ -113,6 +131,8 @@ export const InfiniteCanvas = forwardRef<
         onZoomIn={transformApi.zoomIn}
         onZoomOut={transformApi.zoomOut}
         onFit={() => transformApi.zoomToFit(frames)}
+        onFitSelected={handleFitSelected}
+        hasSelectedFrame={!!selectedFrameId}
       />
     </div>
   );

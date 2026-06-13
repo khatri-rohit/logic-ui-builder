@@ -1,5 +1,4 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -8,7 +7,6 @@ import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import logger from "@/lib/logger";
 import { initializeOllama } from "@/lib/ollama";
 import prisma from "@/lib/prisma";
-import { buildScreenPrompt, STAGE3_SYSTEM, validateGeneratedTSX } from "@/lib/prompts";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import { buildDesignContext } from "@/lib/designContext";
 import {
@@ -27,8 +25,10 @@ import {
   toPrismaPlatform,
   buildModelPriority,
   reserveGenerationWithIdempotency,
-  createModelAbortSignal,
 } from "@/lib/generation";
+import { runScreenGeneration } from "@/lib/execution/generationPipeline";
+import type { PipelineContext } from "@/lib/execution/types";
+import { buildSystemPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 
@@ -445,77 +445,79 @@ export async function POST(
         );
         await incrementFrameRegenUsage(usage.usagePeriodId);
 
-        let generated = false;
-        let streamError: unknown = null;
+        if (
+          sourceFrame &&
+          sourceGeneration &&
+          sourceFrame.state === "done" &&
+          sourceFrame.content
+        ) {
+          await prisma.$transaction(async (tx) => {
+            const maxVersion = await tx.frameVersion.aggregate({
+              where: { projectId: project.id, frameId: sourceFrame.id },
+              _max: { versionNumber: true },
+            });
+            const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
 
-        for (let i = 0; i < stage3ModelPriority.length; i++) {
-          const candidateModel = stage3ModelPriority[i];
-
-          try {
-            if (i > 0) {
-              generatedCode = "";
-              await write({
-                type: "frame_reset",
-                frameId: responseFrameId,
-                screen: sourceFrame.screenName,
-                reason: `retry:${candidateModel}`,
-              });
-            }
-
-            logger.info(
-              `Frame regenerate '${sourceFrame.screenName}' via model: ${candidateModel}`,
-            );
-
-            const modelSignal = createModelAbortSignal(abortController);
-            const result = streamText({
-              model: ollama(candidateModel),
-              system: STAGE3_SYSTEM,
-              prompt: buildScreenPrompt(
-                spec,
-                tree,
-                sourceFrame.screenName,
-                regeneratePrompt,
-                designContext,
-              ),
-              temperature: 0.2,
-              abortSignal: modelSignal,
+            await tx.frameVersion.create({
+              data: {
+                projectId: project.id,
+                generationId: sourceGeneration.id,
+                frameId: sourceFrame.id,
+                versionNumber: nextVersion,
+                content: sourceFrame.content,
+                editedContent: sourceFrame.editedContent ?? null,
+                prompt: sourceGeneration.prompt,
+              },
             });
 
-            for await (const token of result.textStream) {
-              if (abortController.signal.aborted) break;
-              generatedCode += token;
-              await write({
-                type: "code_chunk",
-                frameId: responseFrameId,
-                token,
+            const count = await tx.frameVersion.count({
+              where: { projectId: project.id, frameId: sourceFrame.id },
+            });
+
+            if (count > 50) {
+              const removeCount = count - 50;
+              const toDelete = await tx.frameVersion.findMany({
+                where: { projectId: project.id, frameId: sourceFrame.id },
+                orderBy: { versionNumber: "asc" },
+                select: { id: true },
+                take: removeCount,
               });
+
+              if (toDelete.length > 0) {
+                await tx.frameVersion.deleteMany({
+                  where: {
+                    id: { in: toDelete.map((v) => v.id) },
+                  },
+                });
+              }
             }
-
-            generated = true;
-            break;
-          } catch (error) {
-            streamError = error;
-            logger.warn(
-              `Frame regenerate model failed '${sourceFrame.screenName}': ${candidateModel}`,
-              error,
-            );
-          }
+          });
         }
 
-        if (!generated) {
+        const framePipelineContext: PipelineContext = {
+          ollama,
+          spec,
+          tree,
+          designContext,
+          stage3ModelPriority,
+          abortController,
+          write,
+          systemPrompt: buildSystemPrompt(spec, designContext),
+          generationId,
+        };
+
+        const frameResult = await runScreenGeneration(
+          framePipelineContext,
+          sourceFrame.screenName,
+          responseFrameId,
+          regeneratePrompt,
+          "frame",
+        );
+        generatedCode = frameResult.code;
+
+        if (!frameResult.success) {
           throw new Error(
-            `All stage 3 models failed for frame ${sourceFrame.id}: ${String(streamError)}`,
-          );
-        }
-
-        if (!generatedCode.trim()) {
-          throw new Error("Generation ended before this frame completed.");
-        }
-
-        const syntaxValidation = validateGeneratedTSX(generatedCode);
-        if (!syntaxValidation.valid) {
-          throw new Error(
-            `Frame TSX validation failed: ${syntaxValidation.issues.join("; ")}`,
+            frameResult.error || `All models failed for frame ${sourceFrame.id}`,
           );
         }
 
@@ -523,7 +525,7 @@ export async function POST(
           ...sourceFrame,
           id: responseFrameId,
           state: "done",
-          content: sanitizeGeneratedCode(generatedCode),
+          content: frameResult.code,
           editedContent: null,
           error: null,
         };
@@ -560,6 +562,8 @@ export async function POST(
           type: "frame_done",
           frameId: responseFrameId,
           screen: sourceFrame.screenName,
+          content: generatedCode,
+          error: frameResult.success ? null : frameResult.error,
         });
         await write({ type: "done" });
       } catch (error) {

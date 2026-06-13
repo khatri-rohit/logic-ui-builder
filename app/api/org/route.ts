@@ -7,7 +7,7 @@ import {
   isOrgError,
   OrgError,
 } from "@/lib/org";
-import { guardOrgCreation } from "@/lib/plan-guard";
+import { guardOrgAccess, guardOrgCreation } from "@/lib/plan-guard";
 import { orgRatelimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
@@ -24,6 +24,9 @@ export async function GET(req: NextRequest) {
       request: req,
       eventType: "org.fetched",
     });
+
+    const guardResult = guardOrgAccess(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     if (!authContext.orgId) {
       return NextResponse.json({ error: false, data: null });
@@ -148,6 +151,9 @@ export async function DELETE(req: NextRequest) {
         { status: 429 },
       );
     }
+
+    const guardResult = guardOrgAccess(authContext);
+    if (!guardResult.allowed) return guardResult.response;
 
     if (!authContext.orgId || !authContext.isOrgOwner) {
       return NextResponse.json(

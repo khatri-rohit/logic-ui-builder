@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
-import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import { isAuthError, requireAuthContext, invalidateAuthContextCache } from "@/lib/get-auth";
+import { Redis } from "@upstash/redis";
 import logger from "@/lib/logger";
+
+const redis = Redis.fromEnv();
 
 export const runtime = "nodejs";
 
@@ -19,7 +23,9 @@ export async function POST(req: NextRequest) {
         razorpaySubscriptionId: true,
         razorpayPlanId: true,
         planId: true,
+        status: true,
         cancelAtPeriodEnd: true,
+        currentPeriodEnd: true,
       },
     });
 
@@ -27,6 +33,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: true, message: "No active subscription found." },
         { status: 404 },
+      );
+    }
+
+    const mutableStatuses = ["ACTIVE", "AUTHENTICATED"];
+    if (!mutableStatuses.includes(subscription.status)) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "SUBSCRIPTION_NOT_MUTABLE",
+          message: `Cannot cancel a subscription with status: ${subscription.status}. Please complete payment setup first.`,
+        },
+        { status: 409 },
       );
     }
 
@@ -48,13 +66,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const hasValidPeriodEnd = !!(
+      subscription.currentPeriodEnd &&
+      new Date(subscription.currentPeriodEnd) > new Date()
+    );
+
     try {
       await razorpay.subscriptions.cancel(
         subscription.razorpaySubscriptionId,
-        true, // cancel_at_cycle_end = true
+        hasValidPeriodEnd,
       );
     } catch (error) {
       logger.error("Error canceling Razorpay subscription: ", { error });
+      if (isRazorpayError(error)) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: error.error.description || "Failed to cancel subscription.",
+            code: error.error.code || "RAZORPAY_ERROR",
+          },
+          { status: Number(error.statusCode) || 500 },
+        );
+      }
       return NextResponse.json(
         {
           error: true,
@@ -64,23 +97,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Keep current plan features until the actual cancellation date.
-    // planId stays as-is; restriction happens via status + effectivePlanId.
+    // Immediately mark as cancelled in DB — do NOT wait for webhook.
+    // Razorpay cancel() sets status to 'cancelled' immediately.
+    // planId stays as-is until currentPeriodEnd passes; grace period is
+    // computed in get-auth.ts from status + currentPeriodEnd.
     await prisma.subscription.update({
       where: { userId: authContext.appUserId },
       data: {
-        cancelAtPeriodEnd: true,
-        cancelledAt: new Date(),
-        scheduledPlanId: "FREE",
-        scheduledChangeAt: null, // will be populated by webhook when cycle ends
+        status: "CANCELLED",
+        cancelAtPeriodEnd: false,
+        scheduledPlanId: null,
+        scheduledChangeAt: null,
       },
     });
 
+    // Invalidate caches so effectivePlanId reflects the change immediately
+    await invalidateAuthContextCache(authContext.clerkSessionId);
+    await redis.del(`auth:subscription:${authContext.appUserId}`).catch(() => {});
+
+    const periodEndValid =
+      subscription.currentPeriodEnd &&
+      new Date(subscription.currentPeriodEnd) > new Date();
+
     return NextResponse.json({
       error: false,
-      message:
-        "Subscription cancellation initiated. Your subscription is active until the end of the current billing period.",
-      data: { planId: subscription.planId, scheduledPlanId: "FREE" },
+      message: `Subscription cancelled. You won't be charged again. Your ${subscription.planId} access continues until ${periodEndValid ? subscription.currentPeriodEnd!.toLocaleDateString("en-IN") : "the end of your billing period"}.`,
+      data: { planId: subscription.planId, changed: true },
     });
   } catch (error) {
     if (isAuthError(error)) {

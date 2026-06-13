@@ -5,13 +5,12 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { initializeOllama } from "@/lib/ollama";
 
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import {
-  buildScreenPrompt,
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
-  STAGE3_SYSTEM,
+  buildSystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -37,15 +36,18 @@ import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 import { guardGenerationRequest } from "@/lib/plan-guard";
-import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import {
   toApiPlatform,
   toPrismaPlatform,
   buildModelPriority,
   reserveGenerationWithIdempotency,
-  createModelAbortSignal,
 } from "@/lib/generation";
 import { releaseGenerationSlot } from "@/lib/usage";
+import {
+  runFullGeneration,
+  runScreenGeneration,
+} from "@/lib/execution/generationPipeline";
+import type { PipelineContext } from "@/lib/execution/types";
 
 export const runtime = "nodejs";
 
@@ -70,11 +72,6 @@ const STAGE3_MODELS = [
 const generationBodySchema = generationRequestBodySchema;
 
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
-
-function normalizePlatform(value: unknown): GenerationPlatform {
-  return value === "mobile" ? "mobile" : "web";
-}
-
 
 const MOBILE_COMPLEXITY_KEYWORDS = [
   "landing",
@@ -250,6 +247,23 @@ function parseJsonStrict<T>(raw: string): T {
   throw new Error("No valid JSON object found in model output");
 }
 
+function isValidComponentTree(
+  tree: unknown,
+  expectedScreens: string[],
+): tree is ComponentTreeNode[] {
+  if (!Array.isArray(tree) || tree.length === 0) return false;
+  return tree.every(
+    (item) =>
+      item != null &&
+      typeof item === "object" &&
+      "screen" in item &&
+      typeof item.screen === "string" &&
+      expectedScreens.includes(item.screen) &&
+      "components" in item &&
+      Array.isArray(item.components),
+  );
+}
+
 async function generateTextWithFallback({
   stage,
   models,
@@ -410,10 +424,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isFrameRegeneration = !!body.frameId && !!body.generationId;
+    const hasFrameContext = !!body.frameId && !!body.generationId;
+    const isFrameRegeneration = hasFrameContext && !body.createNewFrame;
+    const createNewFrameWithContext = hasFrameContext && !!body.createNewFrame;
     const targetFrameId = isFrameRegeneration
       ? (body.targetFrameId ?? body.frameId)
-      : null;
+      : createNewFrameWithContext
+        ? crypto.randomUUID()
+        : null;
 
     let sourceGeneration: {
       id: string;
@@ -427,7 +445,7 @@ export async function POST(req: NextRequest) {
 
     let sourceFrame: PersistedGenerationScreen | null = null;
 
-    if (isFrameRegeneration) {
+    if (isFrameRegeneration || createNewFrameWithContext) {
       const generationCandidates = await prisma.generation.findMany({
         where: {
           projectId: project.id,
@@ -483,14 +501,18 @@ export async function POST(req: NextRequest) {
     const { usage } = guardResult;
     if (!usage) {
       return NextResponse.json(
-        { error: true, code: "USAGE_UNAVAILABLE", message: "Usage context missing." },
+        {
+          error: true,
+          code: "USAGE_UNAVAILABLE",
+          message: "Usage context missing.",
+        },
         { status: 503 },
       );
     }
     logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
-      isFrameRegeneration && sourceGeneration
+      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
         ? toApiPlatform(sourceGeneration.platform)
         : toApiPlatform(project.platform);
     const prompt = body.prompt.trim();
@@ -499,7 +521,7 @@ export async function POST(req: NextRequest) {
     let stage3Prompt: string;
     let designContextText: string;
 
-    if (isFrameRegeneration && sourceGeneration) {
+    if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration) {
       designContext = await buildDesignContext({
         prompt: sourceGeneration.prompt,
         platform: toApiPlatform(sourceGeneration.platform),
@@ -537,9 +559,9 @@ export async function POST(req: NextRequest) {
     );
 
     const requestedModelForPersistence =
-      isFrameRegeneration && sourceGeneration
-        ? preferredModel ?? sourceGeneration.model
-        : preferredModel ?? stage3ModelPriority[0];
+      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+        ? (preferredModel ?? sourceGeneration.model)
+        : (preferredModel ?? stage3ModelPriority[0]);
 
     let generationId: string | null = null;
 
@@ -548,20 +570,20 @@ export async function POST(req: NextRequest) {
       const result = await reserveGenerationWithIdempotency(tx, {
         projectId: project.id,
         prompt:
-          isFrameRegeneration && sourceGeneration
+          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
             ? prompt || sourceGeneration.prompt
             : prompt,
         model: requestedModelForPersistence,
         platform:
-          isFrameRegeneration && sourceGeneration
+          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
             ? sourceGeneration.platform
             : toPrismaPlatform(requestedPlatform),
         spec:
-          isFrameRegeneration && sourceGeneration
+          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
             ? (sourceGeneration.spec as unknown as Prisma.InputJsonValue)
             : ({} as Prisma.InputJsonValue),
         tree:
-          isFrameRegeneration && sourceGeneration
+          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
             ? (sourceGeneration.tree as Prisma.InputJsonValue | undefined)
             : undefined,
         idempotencyKey,
@@ -609,14 +631,50 @@ export async function POST(req: NextRequest) {
 
       try {
         // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
-        if (isFrameRegeneration && sourceGeneration && sourceFrame) {
+        if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration && sourceFrame) {
           logger.info("Frame regeneration: skipping Stage 1 & 2", {
             generationId,
             frameId: body.frameId,
             screenName: sourceFrame!.screenName,
           });
 
+          const regenerationFrameId = targetFrameId ?? body.frameId!;
+
+          // When creating a new frame from context, offset position from source
+          const framePosX = createNewFrameWithContext ? sourceFrame.x + 40 : sourceFrame.x;
+          const framePosY = createNewFrameWithContext ? sourceFrame.y + 40 : sourceFrame.y;
+
+          // Pre-populate with an error placeholder so the outer catch handler
+          // always writes a valid frame record if the stream is interrupted.
+          persistedScreens.push({
+            id: regenerationFrameId,
+            state: "error",
+            x: framePosX,
+            y: framePosY,
+            w: sourceFrame.w,
+            h: sourceFrame.h,
+            screenName: sourceFrame.screenName,
+            content: "",
+            editedContent: null,
+            error: "Generation was interrupted before this screen completed.",
+          });
+
           await write({ type: "generation_id", generationId });
+
+          if (createNewFrameWithContext) {
+            await write({
+              type: "layout",
+              layout: [{
+                screen: sourceFrame.screenName,
+                frameId: regenerationFrameId,
+                x: framePosX,
+                y: framePosY,
+                w: sourceFrame.w,
+                h: sourceFrame.h,
+              }],
+              platform: toApiPlatform(sourceGeneration.platform),
+            });
+          }
 
           const sourcePlatform = toApiPlatform(sourceGeneration.platform);
 
@@ -671,122 +729,45 @@ export async function POST(req: NextRequest) {
                 components: [],
               };
 
-          await write({ type: "screen_start", screen: sourceFrame.screenName });
+          const framePipelineContext: PipelineContext = {
+            ollama,
+            spec,
+            tree,
+            designContext,
+            stage3ModelPriority,
+            abortController,
+            write,
+            systemPrompt: buildSystemPrompt(spec, designContext),
+            generationId,
+          };
 
-          let screenGenerated = false;
-          let streamErr: unknown = null;
-          let finalCode = "";
+          const frameResult = await runScreenGeneration(
+            framePipelineContext,
+            sourceFrame.screenName,
+            regenerationFrameId,
+            stage3Prompt,
+          );
 
-          for (let i = 0; i < stage3ModelPriority.length; i++) {
-            const candidateModel = stage3ModelPriority[i];
-            try {
-              if (i > 0) {
-                finalCode = "";
-                await write({
-                  type: "screen_reset",
-                  screen: sourceFrame.screenName,
-                  reason: `retry:${candidateModel}`,
-                });
-              }
-
-              logger.info(
-                `Frame regeneration Stage 3 '${sourceFrame.screenName}' via model: ${candidateModel}`,
-              );
-              const modelSignal = createModelAbortSignal(abortController);
-              const { usage: stage3Usage, textStream } = streamText({
-                model: ollama(candidateModel),
-                system: STAGE3_SYSTEM,
-                prompt: buildScreenPrompt(
-                  spec,
-                  tree,
-                  sourceFrame.screenName,
-                  stage3Prompt,
-                  designContext,
-                ),
-                temperature: 0.2,
-                abortSignal: modelSignal,
-              });
-
-              for await (const token of textStream) {
-                if (abortController.signal.aborted) break;
-                finalCode += token;
-                await write({
-                  type: "code_chunk",
-                  screen: sourceFrame.screenName,
-                  token,
-                });
-              }
-              logger.info("Frame regeneration response stream complete", {
-                usage: stage3Usage,
-              });
-              screenGenerated = true;
-              break;
-            } catch (err) {
-              streamErr = err;
-              logger.warn(
-                `Frame regeneration model failed '${sourceFrame.screenName}': ${candidateModel}`,
-                err,
-              );
-              if ((err as Error)?.name === "AbortError") {
-                logger.info(
-                  "Frame regeneration aborted due to client disconnect",
-                );
-                throw new Error("Aborted by client disconnect");
-              }
-            }
-          }
-
-          if (!screenGenerated) {
-            persistedScreens.push({
-              id: targetFrameId ?? body.frameId!,
-              state: "error",
-              x: sourceFrame!.x,
-              y: sourceFrame!.y,
-              w: sourceFrame!.w,
-              h: sourceFrame!.h,
-              screenName: sourceFrame!.screenName,
-              content: sanitizeGeneratedCode(finalCode),
-              editedContent: null,
-              error: `All stage 3 models failed: ${String(streamErr)}`,
-            });
-
-            throw new Error(
-              `All stage 3 models failed for frame ${body.frameId}: ${String(streamErr)}`,
-            );
-          }
-
-          // Validate TSX for frame regeneration but remain lenient
-          const frameSyntaxValidation = validateGeneratedTSX(finalCode);
-          if (!frameSyntaxValidation.valid) {
-            logger.warn(
-              `Frame regeneration TSX issues for '${sourceFrame!.screenName}': ${frameSyntaxValidation.issues.join("; ")}`,
-            );
-            await write({
-              type: "quality_warning",
-              screen: sourceFrame!.screenName,
-              issues: frameSyntaxValidation.issues,
-              score: 0,
-            });
-          }
-
-          persistedScreens.push({
-            id: targetFrameId ?? body.frameId!,
-            state: finalCode.trim() ? "done" : "error",
-            x: sourceFrame!.x,
-            y: sourceFrame!.y,
-            w: sourceFrame!.w,
-            h: sourceFrame!.h,
-            screenName: sourceFrame!.screenName,
-            content: sanitizeGeneratedCode(finalCode),
+          persistedScreens[0] = {
+            id: regenerationFrameId,
+            state: frameResult.success ? "done" : "error",
+            x: framePosX,
+            y: framePosY,
+            w: sourceFrame.w,
+            h: sourceFrame.h,
+            screenName: sourceFrame.screenName,
+            content: frameResult.code,
             editedContent: null,
-            error: finalCode.trim()
-              ? frameSyntaxValidation.valid
-                ? null
-                : `TSX issues: ${frameSyntaxValidation.issues.join("; ")}`
-              : "Generation ended before this screen completed.",
-          });
+            error: frameResult.success ? null : frameResult.error,
+          };
 
-          await write({ type: "screen_done", screen: sourceFrame.screenName });
+          await write({
+            type: "screen_done",
+            screen: sourceFrame.screenName,
+            frameId: regenerationFrameId,
+            content: frameResult.code,
+            error: frameResult.success ? null : frameResult.error,
+          });
 
           if (generationId) {
             await prisma.$transaction([
@@ -834,11 +815,28 @@ export async function POST(req: NextRequest) {
           coerceSpec(rawParsedSpec, requestedPlatform),
           prompt,
         );
+
+        // Override generic default colors with design-context palette to avoid monochrome/generic designs
+        if (designContext.palette) {
+          if (
+            spec.primaryColor === "#2563eb" &&
+            designContext.palette.primaryHex
+          ) {
+            spec.primaryColor = designContext.palette.primaryHex;
+          }
+          if (
+            spec.accentColor === "#f59e0b" &&
+            designContext.palette.accentHex
+          ) {
+            spec.accentColor = designContext.palette.accentHex;
+          }
+        }
+
         logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
 
         await prisma.generation.update({
           where: { id: generationId },
-          data: { spec: (spec as unknown as Prisma.InputJsonValue) },
+          data: { spec: spec as unknown as Prisma.InputJsonValue },
         });
 
         await write({ type: "generation_id", generationId });
@@ -855,7 +853,16 @@ export async function POST(req: NextRequest) {
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
             abortSignal: abortController.signal,
           });
-        const tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
+        let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
+        if (!isValidComponentTree(tree, spec.screens)) {
+          logger.warn(
+            "Stage 2 produced invalid tree; constructing fallback from spec screens",
+          );
+          tree = spec.screens.map((screen) => ({
+            screen,
+            components: spec.components ?? [],
+          }));
+        }
         await write({ type: "tree", tree });
         logger.info("Stage 2 Component Planner complete", { usage: treeUsage });
         if (generationId) {
@@ -870,169 +877,78 @@ export async function POST(req: NextRequest) {
           name: screenName,
           ...getInitialDimensionsForPlatform(screenName, requestedPlatform),
         }));
-        const positions = getGenerationLayout([], screensWithDims);
 
-        const MAX_CRITIQUE_ITERATIONS = 3;
-
-        const generateScreenWithRetry = async (
-          screen: string,
-          position: { x: number; y: number },
-          dimensions: { w: number; h: number },
-          frameId: string,
-          basePrompt: string,
-        ): Promise<{
-          success: boolean;
-          code: string;
-          error: string | null;
-          iterations: number;
-        }> => {
-          let currentCode = "";
-          let iterations = 0;
-          let lastError: string | null = null;
-          let pinnedModel: string | null = null;
-
-          for (
-            let iteration = 0;
-            iteration < MAX_CRITIQUE_ITERATIONS;
-            iteration++
-          ) {
-            iterations++;
-            let screenGenerated = false;
-            let streamErr: unknown = null;
-
-            // Pin the first model that streams successfully. Only fall back to
-            // other models when the pinned model itself errors (API failure).
-            const modelsToTry: string[] = pinnedModel
-              ? [
-                  pinnedModel,
-                  ...stage3ModelPriority.filter((m) => m !== pinnedModel),
-                ]
-              : stage3ModelPriority;
-
-            for (let modelIdx = 0; modelIdx < modelsToTry.length; modelIdx++) {
-              const candidateModel = modelsToTry[modelIdx];
-              try {
-                if (modelIdx > 0 || iteration > 0) {
-                  currentCode = "";
-                  await write({
-                    type: "screen_reset",
-                    screen,
-                    reason:
-                      iteration > 0
-                        ? `critique-retry:${iteration}`
-                        : `retry:${candidateModel}`,
-                  });
-                }
-
-                const promptWithFixes =
-                  iteration > 0 && lastError
-                    ? `${basePrompt}\n\nCRITICAL FIXES NEEDED:\n${lastError}`
-                    : basePrompt;
-
-                logger.info(
-                  `Stage 3 screen '${screen}' iteration ${iteration} via model: ${candidateModel}`,
-                );
-                const modelSignal = createModelAbortSignal(abortController);
-                const { usage: stage3Usage, textStream } = streamText({
-                  model: ollama(candidateModel),
-                  system: STAGE3_SYSTEM,
-                  prompt: buildScreenPrompt(
-                    spec,
-                    tree,
-                    screen,
-                    promptWithFixes,
-                    designContext,
-                  ),
-                  temperature: 0.2,
-                  abortSignal: modelSignal,
-                });
-
-                for await (const token of textStream) {
-                  if (abortController.signal.aborted) break;
-                  currentCode += token;
-                  await write({ type: "code_chunk", screen, token });
-                }
-                logger.info("Response stream complete for screen", {
-                  usage: stage3Usage,
-                });
-                screenGenerated = true;
-                if (!pinnedModel) pinnedModel = candidateModel;
-                break;
-              } catch (err) {
-                streamErr = err;
-                logger.warn(
-                  `Stage 3 model failed for '${screen}' iteration ${iteration}: ${candidateModel}`,
-                  err,
-                );
-                if ((err as Error)?.name === "AbortError") {
-                  logger.info("Generation aborted due to client disconnect");
-                  throw new Error("Aborted by client disconnect");
-                }
-              }
-            }
-
-            if (!screenGenerated) {
-              return {
-                success: false,
-                code: currentCode,
-                error: `All models failed: ${String(streamErr)}`,
-                iterations,
-              };
-            }
-
-            const syntaxValidation = validateGeneratedTSX(currentCode);
-            if (syntaxValidation.valid) {
-              return {
-                success: true,
-                code: sanitizeGeneratedCode(currentCode),
-                error: null,
-                iterations,
-              };
-            }
-
-            lastError = syntaxValidation.issues.join("; ");
-            logger.info(
-              `Screen '${screen}' TSX validation failed, retry ${iteration + 1}/${MAX_CRITIQUE_ITERATIONS}:`,
-              {
-                issues: lastError,
-              },
-            );
-
-            await write({
-              type: "quality_warning",
-              screen,
-              issues: syntaxValidation.issues,
-              score: 0,
-            });
+        const existingGenerations = await prisma.generation.findMany({
+          where: { projectId: project.id },
+          select: { screens: true },
+        });
+        const existingFrameBounds: Array<{ x: number; y: number; w: number; h: number }> = [];
+        for (const gen of existingGenerations) {
+          const screens = parseGenerationScreens(gen.screens);
+          for (const s of screens) {
+            existingFrameBounds.push({ x: s.x, y: s.y, w: s.w, h: s.h });
           }
+        }
 
-          const isValid = validateGeneratedTSX(currentCode).valid;
-          return {
-            success: isValid,
-            code: sanitizeGeneratedCode(currentCode),
-            error: isValid ? null : (lastError || "Max retries reached without valid TSX"),
-            iterations,
-          };
+        const positions = getGenerationLayout(existingFrameBounds, screensWithDims);
+
+        const frameAssignments = screensWithDims.map((screen, index) => ({
+          screen: screen.name,
+          frameId: crypto.randomUUID(),
+          x: positions[index]?.x ?? 100 + index * 40,
+          y: positions[index]?.y ?? 100 + index * 40,
+          w: screen.w,
+          h: screen.h,
+        }));
+
+        await write({
+          type: "layout",
+          layout: frameAssignments,
+          platform: requestedPlatform,
+        });
+
+        // Pre-populate persistedScreens with error placeholders so the abort
+        // handler always writes a complete set — no frames are ever lost.
+        persistedScreens.push(
+          ...frameAssignments.map((a) => ({
+            id: a.frameId,
+            state: "error" as const,
+            x: a.x,
+            y: a.y,
+            w: a.w,
+            h: a.h,
+            screenName: a.screen,
+            content: "",
+            editedContent: null,
+            error: "Generation was interrupted before this screen completed.",
+          })),
+        );
+
+        const pipelineContext: PipelineContext = {
+          ollama,
+          spec,
+          tree,
+          designContext,
+          stage3ModelPriority,
+          abortController,
+          write,
+          systemPrompt: buildSystemPrompt(spec, designContext),
+          generationId,
         };
 
-        for (const [index, screen] of spec.screens.entries()) {
-          await write({ type: "screen_start", screen });
+        const screenJobs = frameAssignments.map((a) => ({
+          screen: a.screen,
+          frameId: a.frameId,
+          position: { x: a.x, y: a.y },
+          dimensions: { w: a.w, h: a.h },
+        }));
 
-          const position = positions[index] ?? {
-            x: 100 + index * 40,
-            y: 100 + index * 40,
-          };
-          const dimensions = screensWithDims[index] ?? { w: 1200, h: 800 };
-          const frameId = crypto.randomUUID();
-
-          const finalResult: Awaited<ReturnType<typeof generateScreenWithRetry>> =
-            await generateScreenWithRetry(
-              screen,
-              position,
-              dimensions,
-              frameId,
-              stage3Prompt,
-            );
+        const onScreenComplete = async (
+          i: number,
+          finalResult: Awaited<ReturnType<typeof runScreenGeneration>>,
+        ) => {
+          const screen = spec.screens[i];
+          const assignment = frameAssignments[i];
 
           // Lenient quality check: warn only, never block persistence
           if (finalResult.success && finalResult.code) {
@@ -1055,38 +971,45 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          if (!finalResult.success) {
-            persistedScreens.push({
-              id: frameId,
-              state: "error",
-              x: position.x,
-              y: position.y,
-              w: dimensions.w,
-              h: dimensions.h,
-              screenName: screen,
-              content: finalResult.code,
-              editedContent: null,
-              error: finalResult.error,
-            });
-            await write({ type: "screen_done", screen });
-            continue;
-          }
-
-          persistedScreens.push({
-            id: frameId,
-            state: "done",
-            x: position.x,
-            y: position.y,
-            w: dimensions.w,
-            h: dimensions.h,
+          persistedScreens[i] = {
+            id: assignment.frameId,
+            state: finalResult.success ? "done" : "error",
+            x: assignment.x,
+            y: assignment.y,
+            w: assignment.w,
+            h: assignment.h,
             screenName: screen,
             content: finalResult.code,
             editedContent: null,
-            error: null,
+            error: finalResult.success ? null : finalResult.error,
+          };
+
+          await write({
+            type: "screen_done",
+            screen,
+            frameId: assignment.frameId,
+            content: finalResult.code,
+            error: finalResult.success ? null : finalResult.error,
           });
 
-          await write({ type: "screen_done", screen });
-        }
+          // Eager DB persistence: write completed screens immediately so a
+          // mid-generation disconnect doesn't lose already-finished frames.
+          if (generationId) {
+            await prisma.generation.update({
+              where: { id: generationId },
+              data: {
+                screens: persistedScreens as unknown as Prisma.InputJsonValue,
+              },
+            });
+          }
+        };
+
+        await runFullGeneration(
+          pipelineContext,
+          screenJobs,
+          stage3Prompt,
+          onScreenComplete,
+        );
 
         if (generationId) {
           await prisma.$transaction([
@@ -1122,6 +1045,15 @@ export async function POST(req: NextRequest) {
           : err instanceof Error
             ? err.message
             : String(err);
+
+        // Ensure any placeholder error messages reflect the actual failure reason
+        if (isAbort) {
+          for (const screen of persistedScreens) {
+            if (screen.state === "error") {
+              screen.error = message;
+            }
+          }
+        }
 
         if (generationId) {
           await prisma.$transaction([

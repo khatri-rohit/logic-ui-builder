@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { BillingUpgradeClient } from "@/components/billing/BillingUpgradeClient";
+import { UpgradePageClient } from "@/components/billing/UpgradePageClient";
 
 export const metadata: Metadata = {
   title: "Upgrade Plan",
@@ -11,5 +11,5 @@ export const metadata: Metadata = {
 export default async function BillingUpgradePage() {
   const { isAuthenticated } = await auth();
   if (!isAuthenticated) redirect("/sign-in");
-  return <BillingUpgradeClient />;
+  return <UpgradePageClient />;
 }

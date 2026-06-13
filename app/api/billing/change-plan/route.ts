@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import { getPlanConfig, PlanId } from "@/lib/plans";
 import logger from "@/lib/logger";
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Guard: subscription must be in a mutable state ──────────────────────
-    const mutableStatuses = ["ACTIVE", "AUTHENTICATED", "PENDING", "CREATED"];
+    const mutableStatuses = ["ACTIVE", "AUTHENTICATED"];
     if (!mutableStatuses.includes(subscription.status)) {
       return NextResponse.json(
         {
@@ -121,7 +122,38 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      await razorpay.subscriptions.cancel(subscriptionId, true); // cancel_at_cycle_end = true
+      const hasValidPeriodEnd = !!(
+        subscription.currentPeriodEnd &&
+        new Date(subscription.currentPeriodEnd) > new Date()
+      );
+
+      try {
+        await razorpay.subscriptions.cancel(subscriptionId, hasValidPeriodEnd);
+      } catch (razorpayError) {
+        logger.error(
+          "Razorpay subscription cancellation for downgrade failed",
+          { razorpayError },
+        );
+        if (isRazorpayError(razorpayError)) {
+          return NextResponse.json(
+            {
+              error: true,
+              message:
+                razorpayError.error.description ||
+                "Failed to cancel subscription with payment provider.",
+              code: razorpayError.error.code || "RAZORPAY_ERROR",
+            },
+            { status: Number(razorpayError.statusCode) || 502 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: true,
+            message: "Failed to cancel subscription with payment provider.",
+          },
+          { status: 502 },
+        );
+      }
 
       await prisma.subscription.update({
         where: { userId: authContext.appUserId },
@@ -250,7 +282,9 @@ export async function POST(req: NextRequest) {
           where: { userId: authContext.appUserId },
           data: { scheduledPlanId: null },
         });
-        logger.error("Razorpay subscription downgrade failed", { razorpayError });
+        logger.error("Razorpay subscription downgrade failed", {
+          razorpayError,
+        });
         return NextResponse.json(
           {
             error: true,

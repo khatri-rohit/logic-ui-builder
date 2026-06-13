@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   useOrgQuery,
@@ -17,14 +17,19 @@ import { InviteFormSection } from "./components/InviteFormSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { CreateOrgForm } from "./components/CreateOrgForm";
 import { toast } from "sonner";
+import { useUsageQuery } from "@/lib/billing/queries";
+import { useRouter } from "next/navigation";
 
 export default function OrgPageClient({ currentUserId }: OrgPageClientProps) {
   const { data: org, isLoading, error } = useOrgQuery();
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const { data: usage } = useUsageQuery();
+  const router = useRouter();
 
   const { mutateAsync: removeMember } = useRemoveMemberMutation();
   const { mutateAsync: revokeInvite } = useRevokeInviteMutation();
+
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const handleRemoveMember = async (memberId: string) => {
     setRemovingId(memberId);
@@ -54,8 +59,23 @@ export default function OrgPageClient({ currentUserId }: OrgPageClientProps) {
     }
   };
 
+  useEffect(() => {
+    if (usage) {
+      const { planId } = usage || {};
+      if (!planId) {
+        router.push("/billing/upgrade");
+      } else if (planId === "FREE") {
+        router.push("/billing/upgrade");
+      }
+    }
+  }, [router, usage]);
+
   if (isLoading) {
-    return <LoadingState message="Loading organization..." />;
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <LoadingState message="Loading organization..." />
+      </div>
+    );
   }
 
   if (error || !org) {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { JetBrains_Mono } from "next/font/google";
 import { useRouter } from "next/navigation";
-import { Crown, Loader2, LucideIcon } from "lucide-react";
+import { Loader2, LucideIcon } from "lucide-react";
 import {
   ArrowUp,
   Bolt,
@@ -22,15 +22,12 @@ import { toast } from "sonner";
 import { useSpeechRecognition } from "../../lib/hooks/useSpeechRecognition";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
-import {
-  clerkUserButtonAppearance,
-  clerkUserProfileAppearance,
-} from "@/lib/clerkAppearance";
 import SideBar from "./SideBar";
+import UserMenu from "./UserMenu";
 import { useUserActivityStore } from "@/providers/zustand-provider";
 import { useCreateProjectMutation } from "@/lib/projects/queries";
 import { useOrgQuery } from "@/lib/org/queries";
+import { useUsageQuery, type UserUsage } from "@/lib/billing/queries";
 import { PricingModal } from "./PricingModal";
 
 const mono = JetBrains_Mono({
@@ -86,6 +83,9 @@ const Dashboard = () => {
 
   const shouldReduceMotion = useReducedMotion();
   const { data: org } = useOrgQuery();
+  const { data: usage } = useUsageQuery();
+  const { planId } = usage || {};
+
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -151,6 +151,37 @@ const Dashboard = () => {
     }
 
     setError(null);
+
+    try {
+      const usageRes = await fetch("/api/usage", { cache: "no-store" });
+      const usageJson = await usageRes.json();
+      const usage = usageJson.data as UserUsage | undefined;
+
+      if (usage) {
+        const projectBlocked =
+          usage.projectLimit !== -1 && usage.projectsRemaining <= 0;
+        const generationBlocked =
+          usage.generationLimit !== -1 && usage.generationsRemaining <= 0;
+
+        if (projectBlocked) {
+          setError(
+            `You have reached the ${usage.projectLimit}-project limit on the ${usage.planDisplayName} plan.`,
+          );
+          setPricingModalOpen(true);
+          return;
+        }
+
+        if (generationBlocked) {
+          setError(
+            `You have used all ${usage.generationLimit} generations this month on the ${usage.planDisplayName} plan.`,
+          );
+          setPricingModalOpen(true);
+          return;
+        }
+      }
+    } catch {
+      // Usage fetch failed — fall through, server guard will handle it
+    }
 
     try {
       const createdProject = await createProject({
@@ -234,13 +265,7 @@ const Dashboard = () => {
           </span>
         </div>
 
-        {isPricingModalOpen && (
-          <PricingModal
-            open={isPricingModalOpen}
-            onOpenChange={setPricingModalOpen}
-          />
-        )}
-        {org && (
+        {planId === "PRO" && org && (
           <span
             className={cn(
               "hidden md:block text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-300/70",
@@ -251,18 +276,7 @@ const Dashboard = () => {
           </span>
         )}
         <div className="flex items-center gap-2">
-          <UserButton
-            appearance={clerkUserButtonAppearance}
-            userProfileProps={{ appearance: clerkUserProfileAppearance }}
-          >
-            <UserButton.MenuItems>
-              <UserButton.Action
-                label="Manage Subscription"
-                labelIcon={<Crown size={14} strokeWidth={1.8} />}
-                onClick={() => setPricingModalOpen(true)}
-              />
-            </UserButton.MenuItems>
-          </UserButton>
+          <UserMenu onOpenPricing={() => setPricingModalOpen(true)} />
 
           <Button
             ref={launcherButtonRef}
@@ -546,6 +560,10 @@ const Dashboard = () => {
           </motion.section>
         </main>
       </div>
+      <PricingModal
+        open={isPricingModalOpen}
+        onOpenChange={setPricingModalOpen}
+      />
     </div>
   );
 };

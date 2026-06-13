@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, UserMinus, Trash2, Loader2 } from "lucide-react";
+import { AlertTriangle, UserMinus, Trash2 } from "lucide-react";
 import { useLeaveOrgMutation } from "@/lib/org/queries";
 import { LoadingSpinner } from "./LoadingState";
 
@@ -136,7 +136,8 @@ export function SettingsSection({ orgName, userRole }: SettingsSectionProps) {
     <section className="space-y-4">
       <h2 className="text-xl font-semibold">Settings</h2>
       <div className="rounded-lg border p-4 space-y-4">
-        {!isOwner && <LeaveOrgButton disabled={false} />}
+        {/* Only show leave button to non-owners, but disable it. Owners must dissolve the org instead. */}
+        {!isOwner && <LeaveOrgButton disabled={true} />}
         {isOwner && <DissolveOrgButton orgName={orgName} />}
       </div>
     </section>

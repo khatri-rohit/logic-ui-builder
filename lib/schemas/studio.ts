@@ -171,6 +171,7 @@ export const generationRequestBodySchema = z.object({
   frameId: z.string().optional(),
   generationId: z.string().cuid().optional(),
   targetFrameId: z.string().optional(),
+  createNewFrame: z.boolean().optional(),
 });
 
 export const frameRegenerateRequestBodySchema = z.object({
@@ -193,6 +194,7 @@ export const feedbackBodySchema = z.object({
 export const feedbackFormBodySchema = z
   .object({
     feedback: feedbackTextSchema,
+    type: z.enum(["feedback", "support"]).optional().default("feedback"),
     attachments: z
       .array(feedbackAttachmentFileSchema)
       .max(FEEDBACK_MAX_ATTACHMENTS)

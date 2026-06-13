@@ -6,8 +6,8 @@ export interface PlanConfig {
   monthlyGenerationLimit: number; // -1 = unlimited
   projectLimit: number; // -1 = unlimited
   frameRegenerationEnabled: boolean;
+  editCodeEnabled: boolean;
   organizationEnabled: boolean;
-  rolloverGenerations: number; // max rollover from previous period
   razorpayPlanId: string | null;
 }
 
@@ -18,8 +18,8 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: 10,
     projectLimit: 3,
     frameRegenerationEnabled: false,
+    editCodeEnabled: false,
     organizationEnabled: false,
-    rolloverGenerations: 0,
     razorpayPlanId: null,
   },
   STANDARD: {
@@ -28,8 +28,8 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: 100,
     projectLimit: -1,
     frameRegenerationEnabled: true,
+    editCodeEnabled: true,
     organizationEnabled: false,
-    rolloverGenerations: 0,
     razorpayPlanId: process.env.RAZORPAY_PLAN_STANDARD ?? null,
   },
   PRO: {
@@ -38,8 +38,8 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     monthlyGenerationLimit: -1,
     projectLimit: -1,
     frameRegenerationEnabled: true,
+    editCodeEnabled: true,
     organizationEnabled: true,
-    rolloverGenerations: 50,
     razorpayPlanId: process.env.RAZORPAY_PLAN_PRO ?? null,
   },
 };

@@ -126,8 +126,7 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
               const qstash = new Client({
                 token: process.env.QSTASH_TOKEN,
               });
-              const queueBaseUrl =
-                process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
+              const queueBaseUrl = process.env.BACKGROUND_TASK_QUEUE_PUBLIC_URL;
               if (queueBaseUrl) {
                 qstash
                   .publishJSON({
@@ -154,7 +153,7 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
         logger.warn("Reconciliation fetch failed", {
           userId: dbSub.userId,
           razorpaySubscriptionId: dbSub.razorpaySubscriptionId,
-          error: String(fetchError),
+          error: fetchError,
         });
       }
 

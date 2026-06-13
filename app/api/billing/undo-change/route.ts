@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import { getPlanConfig } from "@/lib/plans";
 import logger from "@/lib/logger";
@@ -85,8 +86,7 @@ export async function POST(req: NextRequest) {
         "Your plan change has been cancelled. Your subscription continues as normal.",
       data: { planId: subscription.planId, changed: true },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: true, code: error.code, message: error.message },
@@ -94,14 +94,14 @@ export async function POST(req: NextRequest) {
       );
     }
     logger.error("Error undoing plan change", { error });
-    if (error?.error) {
+    if (isRazorpayError(error)) {
       return NextResponse.json(
         {
           error: true,
-          code: error.error?.code || "RAZORPAY_ERROR",
-          message: error.error?.description || "Failed to undo plan change.",
+          code: error.error.code || "RAZORPAY_ERROR",
+          message: error.error.description || "Failed to undo plan change.",
         },
-        { status: error?.statusCode || 500 },
+        { status: Number(error.statusCode) || 500 },
       );
     }
     return NextResponse.json(

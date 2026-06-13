@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import { getPlanConfig, PlanId } from "@/lib/plans";
 import logger from "@/lib/logger";
@@ -129,23 +129,29 @@ export async function POST(req: NextRequest) {
 
       try {
         await razorpay.subscriptions.cancel(subscriptionId, hasValidPeriodEnd);
-      } catch (razorpayError: any) {
+      } catch (razorpayError) {
         logger.error(
           "Razorpay subscription cancellation for downgrade failed",
-          {
-            razorpayError,
-          },
+          { razorpayError },
         );
-        const rzpError = razorpayError?.error;
+        if (isRazorpayError(razorpayError)) {
+          return NextResponse.json(
+            {
+              error: true,
+              message:
+                razorpayError.error.description ||
+                "Failed to cancel subscription with payment provider.",
+              code: razorpayError.error.code || "RAZORPAY_ERROR",
+            },
+            { status: Number(razorpayError.statusCode) || 502 },
+          );
+        }
         return NextResponse.json(
           {
             error: true,
-            message:
-              rzpError?.description ||
-              "Failed to cancel subscription with payment provider.",
-            code: rzpError?.code || "RAZORPAY_ERROR",
+            message: "Failed to cancel subscription with payment provider.",
           },
-          { status: razorpayError?.statusCode || 502 },
+          { status: 502 },
         );
       }
 

@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext, invalidateAuthContextCache } from "@/lib/get-auth";
 import { Redis } from "@upstash/redis";
@@ -76,16 +76,24 @@ export async function POST(req: NextRequest) {
         subscription.razorpaySubscriptionId,
         hasValidPeriodEnd,
       );
-    } catch (error: any) {
+    } catch (error) {
       logger.error("Error canceling Razorpay subscription: ", { error });
-      const rzpError = error?.error;
+      if (isRazorpayError(error)) {
+        return NextResponse.json(
+          {
+            error: true,
+            message: error.error.description || "Failed to cancel subscription.",
+            code: error.error.code || "RAZORPAY_ERROR",
+          },
+          { status: Number(error.statusCode) || 500 },
+        );
+      }
       return NextResponse.json(
         {
           error: true,
-          message: rzpError?.description || "Failed to cancel subscription.",
-          code: rzpError?.code || "RAZORPAY_ERROR",
+          message: "Failed to cancel subscription.",
         },
-        { status: error?.statusCode || 500 },
+        { status: 500 },
       );
     }
 

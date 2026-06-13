@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { razorpay } from "@/lib/razorpay";
+import { isRazorpayError } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getPlanConfig } from "@/lib/plans";
@@ -144,8 +145,7 @@ export async function POST(req: NextRequest) {
         razorpayKeyId: process.env.RAZORPAY_KEY_ID,
       },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: true, code: error.code, message: error.message },
@@ -153,12 +153,21 @@ export async function POST(req: NextRequest) {
       );
     }
     logger.error("Error creating subscription: ", { error });
+    if (isRazorpayError(error)) {
+      return NextResponse.json(
+        {
+          error: true,
+          message: error.error.description ?? "Failed to create subscription.",
+        },
+        { status: Number(error.statusCode) ?? 500 },
+      );
+    }
     return NextResponse.json(
       {
         error: true,
-        message: error?.error?.description ?? error?.message ?? "Failed to create subscription.",
+        message: (error instanceof Error ? error.message : undefined) ?? "Failed to create subscription.",
       },
-      { status: error?.statusCode ?? 500 },
+      { status: 500 },
     );
   }
 }

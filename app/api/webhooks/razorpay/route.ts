@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
 import { razorpay, verifyWebhookSignature } from "@/lib/razorpay";
+import type { Subscriptions, Payments } from "@/lib/razorpay-types";
 import logger from "@/lib/logger";
 import { SubscriptionStatus } from "@/app/generated/prisma/enums";
 import { Redis } from "@upstash/redis";
@@ -76,12 +77,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  let event: {
+  type RazorpayWebhookEvent = {
     id: string;
     entity: string;
     event: string;
-    payload: Record<string, { entity: Record<string, unknown> }>;
+    payload: Record<string, { entity: Record<string, unknown> }> & {
+      subscription?: { entity: Subscriptions.RazorpaySubscription };
+      payment?: { entity: Payments.RazorpayPayment };
+    };
   };
+  let event: RazorpayWebhookEvent;
   try {
     event = JSON.parse(body);
   } catch {

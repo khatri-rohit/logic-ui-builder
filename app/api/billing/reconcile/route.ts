@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { Client } from "@upstash/qstash";
 import { razorpay } from "@/lib/razorpay";
+import type { Subscriptions } from "@/lib/razorpay-types";
 import prisma from "@/lib/prisma";
 import logger from "@/lib/logger";
 import { Redis } from "@upstash/redis";
@@ -74,14 +75,9 @@ export const POST = verifySignatureAppRouter(async (req: NextRequest) => {
       if (!dbSub.razorpaySubscriptionId) continue;
 
       try {
-        const rzpSub = (await razorpay.subscriptions.fetch(
+        const rzpSub = await razorpay.subscriptions.fetch(
           dbSub.razorpaySubscriptionId,
-        )) as {
-          status: string;
-          plan_id?: string;
-          current_start?: number;
-          current_end?: number;
-        };
+        );
 
         const rzpStatus = RAZORPAY_TO_STATUS[rzpSub.status] ?? rzpSub.status;
         const needsUpdate: Record<string, unknown> = {};

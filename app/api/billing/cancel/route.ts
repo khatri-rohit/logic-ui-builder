@@ -2,8 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
 import prisma from "@/lib/prisma";
-import { isAuthError, requireAuthContext } from "@/lib/get-auth";
+import { isAuthError, requireAuthContext, invalidateAuthContextCache } from "@/lib/get-auth";
+import { Redis } from "@upstash/redis";
 import logger from "@/lib/logger";
+
+const redis = Redis.fromEnv();
 
 export const runtime = "nodejs";
 
@@ -99,6 +102,10 @@ export async function POST(req: NextRequest) {
         scheduledChangeAt: null,
       },
     });
+
+    // Invalidate caches so effectivePlanId reflects the change immediately
+    await invalidateAuthContextCache(authContext.clerkSessionId);
+    await redis.del(`auth:subscription:${authContext.appUserId}`).catch(() => {});
 
     const periodEndValid =
       subscription.currentPeriodEnd &&

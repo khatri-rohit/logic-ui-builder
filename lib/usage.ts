@@ -43,13 +43,12 @@ function getPeriodBounds(billingAnchorDay: number | null): {
 
 export async function getOrCreateUsagePeriod(
   userId: string,
-  effectivePlanOverride?: "FREE" | "STANDARD" | "PRO",
+  effectivePlanId: "FREE" | "STANDARD" | "PRO",
 ): Promise<UsageContext | null> {
   const subscription = await prisma.subscription.findUnique({
     where: { userId },
     select: {
       id: true,
-      planId: true,
       status: true,
       billingAnchorDay: true,
       generationLimit: true,
@@ -76,18 +75,9 @@ export async function getOrCreateUsagePeriod(
     razorpayPeriodEnd &&
     razorpayPeriodEnd > now;
 
-  // CANCELLED subscriptions with a future currentPeriodEnd are still in grace period
-  const trulyDead =
-    ["COMPLETED", "EXPIRED", "HALTED"].includes(subscription.status) ||
-    (subscription.status === "CANCELLED" &&
-      (!razorpayPeriodEnd || now >= razorpayPeriodEnd));
-
-  if (trulyDead) {
-    return null;
-  }
-
-  // Use override when provided (member inheriting org PRO)
-  const planId = (effectivePlanOverride ?? subscription.planId) as PlanId;
+  // effectivePlanId is the caller's computed plan from auth context
+  // (handles personal plan, org PRO inheritance, grace period, FREE fallback)
+  const planId = effectivePlanId as PlanId;
 
   const planConfig = getPlanConfig(planId);
   const effectiveGenerationLimit = getEffectiveGenerationLimit(

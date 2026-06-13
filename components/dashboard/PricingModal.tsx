@@ -129,11 +129,8 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
       })
     : null;
 
-  // Grace period check
-  const isInGracePeriod =
-    usage?.status === "CANCELLED" &&
-    usage?.periodEnd &&
-    new Date() < new Date(usage.periodEnd);
+  // Grace period check — server-computed from subscription.currentPeriodEnd
+  const isInGracePeriod = usage?.inGracePeriod ?? false;
 
   const handleSubscribeOrChange = async (
     targetPlan: "FREE" | "STANDARD" | "PRO",
@@ -215,25 +212,21 @@ export function PricingModal({ open, onOpenChange }: PricingModalProps) {
     variant: CtaVariant;
     disabled: boolean;
   } {
-    // Truly dead (past grace period)
-    if (
-      usage?.status === "CANCELLED" &&
-      usage?.periodEnd &&
-      new Date() >= new Date(usage.periodEnd)
-    ) {
+    // CANCELLED — use server-computed inGracePeriod instead of local date
+    if (usage?.status === "CANCELLED") {
+      if (isInGracePeriod) {
+        // Grace period — still has access
+        if (planId === "FREE")
+          return {
+            label: `Expired${periodEnd ? ` ${periodEnd}` : ""} — resubscribe`,
+            variant: "expired",
+            disabled: false,
+          };
+        return { label: "Subscribe", variant: "subscribe", disabled: false };
+      }
+      // Past grace — truly dead
       if (planId === "FREE")
         return { label: "Current Plan", variant: "current", disabled: true };
-      return { label: "Subscribe", variant: "subscribe", disabled: false };
-    }
-
-    // Grace period (cancelled but still has access)
-    if (isInGracePeriod) {
-      if (planId === "FREE")
-        return {
-          label: `Expired${periodEnd ? ` ${periodEnd}` : ""} — resubscribe`,
-          variant: "expired",
-          disabled: false,
-        };
       return { label: "Subscribe", variant: "subscribe", disabled: false };
     }
 

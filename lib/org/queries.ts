@@ -42,8 +42,7 @@ export function useOrgQuery() {
     queryOptions({
       queryKey: orgKeys.detail(),
       queryFn: () => requestApi<OrgDetail | null>("/api/org"),
-      staleTime: 30 * 1000,
-      refetchOnWindowFocus: true,
+      staleTime: 5 * 60 * 1000,
     }),
   );
 }

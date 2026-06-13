@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
@@ -129,9 +130,12 @@ export async function POST(req: NextRequest) {
       try {
         await razorpay.subscriptions.cancel(subscriptionId, hasValidPeriodEnd);
       } catch (razorpayError: any) {
-        logger.error("Razorpay subscription cancellation for downgrade failed", {
-          razorpayError,
-        });
+        logger.error(
+          "Razorpay subscription cancellation for downgrade failed",
+          {
+            razorpayError,
+          },
+        );
         const rzpError = razorpayError?.error;
         return NextResponse.json(
           {
@@ -272,7 +276,9 @@ export async function POST(req: NextRequest) {
           where: { userId: authContext.appUserId },
           data: { scheduledPlanId: null },
         });
-        logger.error("Razorpay subscription downgrade failed", { razorpayError });
+        logger.error("Razorpay subscription downgrade failed", {
+          razorpayError,
+        });
         return NextResponse.json(
           {
             error: true,

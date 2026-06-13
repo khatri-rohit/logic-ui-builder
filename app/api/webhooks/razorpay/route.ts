@@ -43,6 +43,20 @@ async function invalidateSubscriptionCache(userId: string): Promise<void> {
   await redis.del(`auth:subscription:${userId}`).catch(() => {});
 }
 
+async function invalidateUserAuthCaches(userId: string): Promise<void> {
+  const sessions = await prisma.appSession
+    .findMany({
+      where: { userId, status: "ACTIVE" },
+      select: { clerkSessionId: true },
+      take: 50,
+    })
+    .catch(() => []);
+  if (sessions.length === 0) return;
+  await redis
+    .del(...sessions.map((s) => `auth:context:${s.clerkSessionId}`))
+    .catch(() => {});
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("x-razorpay-signature") ?? "";
@@ -181,6 +195,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
 
       logger.info(`Razorpay ${eventType} handled`, {
@@ -221,6 +236,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
 
       logger.info(`Razorpay ${eventType} handled — access restricted`, {
@@ -261,6 +277,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
     }
 
@@ -291,6 +308,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
     }
 
@@ -338,6 +356,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
 
       // Fetch and store the invoice for this charge — fire-and-forget so the
@@ -456,6 +475,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
 
       logger.info(`Razorpay ${eventType} handled`, {
@@ -497,6 +517,7 @@ export async function POST(req: NextRequest) {
 
       if (dbSub?.userId) {
         await invalidateSubscriptionCache(dbSub.userId);
+        await invalidateUserAuthCaches(dbSub.userId);
       }
     }
 

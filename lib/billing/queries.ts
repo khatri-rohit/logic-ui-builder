@@ -42,6 +42,7 @@ export interface UserUsage {
   scheduledChangeAt: string | null;
   cancelAtPeriodEnd: boolean;
   pendingPlanId: "FREE" | "STANDARD" | "PRO" | null;
+  inGracePeriod: boolean;
   status:
     | "ACTIVE"
     | "AUTHENTICATED"

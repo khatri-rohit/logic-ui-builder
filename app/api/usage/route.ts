@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       where: { userId: authContext.appUserId },
       select: {
         status: true,
+        currentPeriodEnd: true,
         scheduledPlanId: true,
         scheduledChangeAt: true,
         cancelAtPeriodEnd: true,
@@ -50,6 +51,11 @@ export async function GET(req: Request) {
         { status: 404 },
       );
     }
+
+    const inGracePeriod =
+      subscription.status === "CANCELLED" &&
+      subscription.currentPeriodEnd != null &&
+      new Date(subscription.currentPeriodEnd) > new Date();
 
     return NextResponse.json({
       error: false,
@@ -71,6 +77,7 @@ export async function GET(req: Request) {
           subscription.scheduledChangeAt?.toISOString() ?? null,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         pendingPlanId: planFromRazorpayPlanId(subscription.razorpayPlanId),
+        inGracePeriod,
       },
     });
   } catch (error) {

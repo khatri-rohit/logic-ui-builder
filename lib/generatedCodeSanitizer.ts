@@ -1,3 +1,7 @@
+import {
+  ALLOWED_LUCIDE_ICON_SET,
+  LUCIDE_FALLBACK_ICON,
+} from "@/lib/lucideAllowlist";
 import * as ts from "typescript";
 
 export const ALLOWED_IMPORT_PACKAGES = new Set([
@@ -11,6 +15,7 @@ export const ALLOWED_IMPORT_PACKAGES = new Set([
   "dayjs",
   "lodash",
 ]);
+
 
 const CODE_START_RE =
   /^\s*(import|export|const\s+GeneratedScreen|function\s+GeneratedScreen|type\s+|interface\s+|class\s+)/;
@@ -215,8 +220,201 @@ function removeStatements(text: string, statements: ts.ImportDeclaration[]) {
   return next;
 }
 
+function isPascalCaseName(name: string): boolean {
+  return /^[A-Z][A-Za-z0-9]*$/.test(name);
+}
+
+function collectLocalNames(sourceFile: ts.SourceFile): Set<string> {
+  const locals = new Set<string>();
+
+  const visit = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      locals.add(node.name.text);
+    }
+    if (ts.isClassDeclaration(node) && node.name) {
+      locals.add(node.name.text);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      locals.add(node.name.text);
+    }
+    if (
+      (ts.isParameter(node) || ts.isBindingElement(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      locals.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return locals;
+}
+
+function collectComponentUsages(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) ||
+        ts.isJsxSelfClosingElement(node) ||
+        ts.isJsxClosingElement(node)) &&
+      ts.isIdentifier(node.tagName) &&
+      isPascalCaseName(node.tagName.text)
+    ) {
+      names.add(node.tagName.text);
+    }
+
+    if (ts.isIdentifier(node) && isPascalCaseName(node.text)) {
+      const parent = node.parent;
+      const usedAsValue =
+        (ts.isJsxExpression(parent) && parent.expression === node) ||
+        (ts.isPropertyAssignment(parent) && parent.initializer === node) ||
+        (ts.isCallExpression(parent) &&
+          parent.arguments.some((arg) => arg === node)) ||
+        (ts.isBinaryExpression(parent) && parent.right === node) ||
+        (ts.isVariableDeclaration(parent) && parent.initializer === node);
+
+      if (usedAsValue) {
+        names.add(node.text);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return names;
+}
+
+function rewriteIdentifierReferences(
+  text: string,
+  from: string,
+  to: string,
+): string {
+  if (from === to) return text;
+  const pattern = new RegExp(`\\b${from}\\b`, "g");
+  return text.replace(pattern, to);
+}
+
+/**
+ * Usage-based Lucide reconciliation for single-file sandbox:
+ * - allowlisted icons used in JSX/value → ensure imported
+ * - unknown / invented icons → rewrite all refs to Circle and import Circle
+ * - rebuild one clean lucide-react import from the final set
+ */
+function reconcileLucideUsage(text: string): string {
+  const sourceFile = ts.createSourceFile(
+    "generated-screen.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const locals = collectLocalNames(sourceFile);
+  const usages = collectComponentUsages(sourceFile);
+
+  const existingLucideLocals = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const moduleSpecifier = statement.moduleSpecifier;
+    if (!ts.isStringLiteral(moduleSpecifier)) continue;
+
+    if (moduleSpecifier.text === "lucide-react") {
+      for (const binding of getImportBindings(statement)) {
+        existingLucideLocals.add(binding);
+      }
+    }
+  }
+
+  const rewriteMap = new Map<string, string>();
+  const neededIcons = new Set<string>();
+
+  const importedFromOtherPackage = (name: string): boolean =>
+    sourceFile.statements.some((statement) => {
+      if (!ts.isImportDeclaration(statement)) return false;
+      const mod = statement.moduleSpecifier;
+      if (!ts.isStringLiteral(mod) || mod.text === "lucide-react") return false;
+      return getImportBindings(statement).includes(name);
+    });
+
+  // Invalid icons already imported from lucide → remap usages
+  for (const localName of existingLucideLocals) {
+    if (!ALLOWED_LUCIDE_ICON_SET.has(localName)) {
+      rewriteMap.set(localName, LUCIDE_FALLBACK_ICON);
+      neededIcons.add(LUCIDE_FALLBACK_ICON);
+    }
+  }
+
+  for (const name of usages) {
+    if (locals.has(name)) continue;
+    if (JSX_TAG_FALLBACKS[name]) continue;
+    if (importedFromOtherPackage(name)) continue;
+
+    if (ALLOWED_LUCIDE_ICON_SET.has(name)) {
+      neededIcons.add(name);
+      continue;
+    }
+
+    // Unbound / invented PascalCase component — treat as bad Lucide icon
+    rewriteMap.set(name, LUCIDE_FALLBACK_ICON);
+    neededIcons.add(LUCIDE_FALLBACK_ICON);
+  }
+
+  let next = text;
+
+  for (const [from, to] of rewriteMap) {
+    next = rewriteIdentifierReferences(next, from, to);
+  }
+
+  // Drop existing lucide imports, then insert a single clean one if needed.
+  const afterParse = ts.createSourceFile(
+    "generated-screen.tsx",
+    next,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const lucideDecls: ts.ImportDeclaration[] = [];
+  for (const statement of afterParse.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const mod = statement.moduleSpecifier;
+    if (ts.isStringLiteral(mod) && mod.text === "lucide-react") {
+      lucideDecls.push(statement);
+    }
+  }
+
+  for (const decl of [...lucideDecls].sort(
+    (a, b) => b.getFullStart() - a.getFullStart(),
+  )) {
+    next =
+      next.slice(0, decl.getFullStart()) + next.slice(decl.getEnd());
+  }
+
+  next = next.replace(/^\s*\n/, "");
+
+  if (neededIcons.size > 0) {
+    const icons = [...neededIcons].sort((a, b) => a.localeCompare(b));
+    const importLine = `import { ${icons.join(", ")} } from "lucide-react";\n`;
+
+    const reactImportMatch = next.match(
+      /^\s*import\s+[\s\S]*?from\s+["']react["'];?\s*\n?/,
+    );
+    if (reactImportMatch && reactImportMatch.index !== undefined) {
+      const insertAt = reactImportMatch.index + reactImportMatch[0].length;
+      next = next.slice(0, insertAt) + importLine + next.slice(insertAt);
+    } else {
+      next = `${importLine}${next}`;
+    }
+  }
+
+  return next;
+}
+
 function sanitizeImports(text: string): string {
-  let workingText = text;
+  let workingText = reconcileLucideUsage(text);
 
   for (let pass = 0; pass < 2; pass++) {
     const sourceFile = ts.createSourceFile(

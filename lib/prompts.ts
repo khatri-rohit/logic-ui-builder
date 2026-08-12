@@ -1,4 +1,6 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
+import type { DesignContract } from "@/lib/designContract";
+import { formatDesignContractForPrompt } from "@/lib/designContract";
 
 export const GENERATED_SCREEN_LIMITS = {
   web: 4,
@@ -40,113 +42,9 @@ const IMPORT_ALLOWLIST = [
   "lodash",
 ].join(", ");
 
-const LUCIDE_REACT_SYMBOLS = [
-  "Activity",
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "BarChart2",
-  "BarChart3",
-  "BarChart4",
-  "Bell",
-  "Bookmark",
-  "Calendar",
-  "Check",
-  "CheckCircle",
-  "ChevronDown",
-  "ChevronLeft",
-  "ChevronRight",
-  "ChevronUp",
-  "Clock",
-  "Copy",
-  "CreditCard",
-  "DollarSign",
-  "Download",
-  "Edit",
-  "Eye",
-  "EyeOff",
-  "File",
-  "FileText",
-  "Filter",
-  "Flag",
-  "Folder",
-  "Globe",
-  "Heart",
-  "HelpCircle",
-  "Home",
-  "Image",
-  "Inbox",
-  "Info",
-  "Layers",
-  "Layout",
-  "Link",
-  "List",
-  "Lock",
-  "LogIn",
-  "LogOut",
-  "Mail",
-  "Map",
-  "MapPin",
-  "Maximize",
-  "Menu",
-  "MessageCircle",
-  "MessageSquare",
-  "Minimize",
-  "Moon",
-  "MoreHorizontal",
-  "MoreVertical",
-  "Move",
-  "Music",
-  "Package",
-  "Paperclip",
-  "Phone",
-  "Play",
-  "Plus",
-  "Power",
-  "Printer",
-  "Radio",
-  "RefreshCw",
-  "RotateCcw",
-  "Save",
-  "Search",
-  "Settings",
-  "Share",
-  "Share2",
-  "Shield",
-  "ShoppingBag",
-  "ShoppingCart",
-  "Shuffle",
-  "Sidebar",
-  "Sliders",
-  "Smartphone",
-  "Star",
-  "Sun",
-  "Table",
-  "Tag",
-  "Target",
-  "Terminal",
-  "ThumbsUp",
-  "Trash",
-  "Trash2",
-  "TrendingDown",
-  "TrendingUp",
-  "Truck",
-  "Upload",
-  "User",
-  "UserCheck",
-  "UserPlus",
-  "Users",
-  "Video",
-  "Volume",
-  "Wallet",
-  "Wifi",
-  "X",
-  "XCircle",
-  "Zap",
-  "ZoomIn",
-  "ZoomOut",
-].join(", ");
+import { ALLOWED_LUCIDE_ICONS } from "@/lib/lucideAllowlist";
+
+const LUCIDE_REACT_SYMBOLS = ALLOWED_LUCIDE_ICONS.join(", ");
 
 const RECHARTS_SYMBOLS = [
   "Area",
@@ -492,6 +390,14 @@ CRITICAL: Never use hardcoded values. Use design tokens properly.
 - NO emojis as icons - use Lucide React only
 - Output MUST be TSX code with zero markdown
 - PRIMARY BUTTON MUST HAVE CONTRAST: text-white or text-black based on primaryColor brightness
+
+## SANDBOX RUNTIME CONTRACT (SINGLE-FILE FRAME)
+Each frame runs alone in Sandpack as one file. There is no multi-file app.
+- One component file only (GeneratedScreen). No ./ ../ @/ or cross-file imports.
+- Allowed packages only: react, react-dom, lucide-react, recharts, clsx, tailwind-merge, date-fns, dayjs, lodash.
+- Every JSX component used must be imported or defined in THIS file.
+- Lucide: import only real icon names from the allowlist. Never invent icons (e.g. no fake names).
+- Shared visual language across screens means re-implement the same tokens/patterns/chrome in each file — never import siblings.
 
 ## STITCH-LEVEL QUALITY DIRECTIVES
 Generate designs that would look at home next to Linear, Stripe, Vercel, and Notion.
@@ -1198,6 +1104,8 @@ export function buildScreenPrompt(
   designContext?: DesignContext,
   referenceScreenCode?: string,
   viewport?: { w: number; h: number },
+  designContract?: DesignContract,
+  visualFingerprint?: string,
 ): string {
   const node = tree.find((n) => n.screen === screen) as
     | (ComponentTreeNode & {
@@ -1264,28 +1172,37 @@ ${(
 `
       : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
-  const crossScreenConsistency = referenceScreenCode
-    ? `
-CROSS-SCREEN CONSISTENCY REFERENCE:
-Your screen MUST match the first screen's visual language — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy.
-
-${sanitizeReferenceScreenCode(referenceScreenCode)}
-
-RULES:
-- Preserve the exact primary/accent color usage patterns seen in the reference.
-- Match the card elevation style (shadow-sm/shadow-md/shadow-lg usage).
-- Match the border radius scale (rounded-md/rounded-lg/rounded-xl choices).
-- Match the spacing rhythm (gap sizes, padding sizes).
-- Match the typography hierarchy (heading sizes, body sizes, weight patterns).
-- Do NOT introduce new colors, new spacing scales, or new component styles.
-`.trim()
+  const lockedContract = designContract
+    ? formatDesignContractForPrompt(designContract)
     : "";
+
+  const isAuthLike = /\b(login|signin|sign-up|signup|register|auth|forgot|otp)\b/i.test(
+    screen,
+  );
+
+  const crossScreenConsistency =
+    referenceScreenCode && !isAuthLike
+      ? `
+CROSS-SCREEN CONSISTENCY GUIDANCE:
+Stay in the same visual family as the reference screen (colors, radius, spacing, type). Match nav/chrome when this screen is part of the same app shell. Do not copy unrelated page structure.
+
+${visualFingerprint?.trim() ? `${visualFingerprint.trim()}\n` : ""}
+${sanitizeReferenceScreenCode(referenceScreenCode)}
+`.trim()
+      : referenceScreenCode && isAuthLike
+        ? `
+AUTH SCREEN NOTE:
+Reuse the generation's colors/tokens from the design direction. Do not force app-shell chrome (sidebar/top nav) onto this auth screen.
+`.trim()
+        : "";
 
   return `
 Generate a complete, production-quality React component for screen: "${screen}".
 
 USER INTENT:
 ${userPrompt}
+
+${lockedContract}
 
 ${designBrief}
 
@@ -1299,8 +1216,11 @@ ${crossScreenConsistency}
 
 SYNTAX REMINDER:
 - Component name: GeneratedScreen.
-- Final line: export default GeneratedScreen;
+- Final line: export default GeneratedScreen.
 - Output code only.
+- Single-file sandbox: every icon/component must be imported in this file.
+- Only import real lucide-react icon names (e.g. Search, Plus, Settings, LayoutDashboard, GitPullRequest). Never invent icon names.
 `.trim();
 }
+
 

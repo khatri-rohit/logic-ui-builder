@@ -42,6 +42,8 @@ import {
   STAGE1_MODELS,
   STAGE2_MODELS,
   STAGE3_MODELS,
+  getStageDecoding,
+  type GenerationDecodingStage,
 } from "@/lib/execution/modelDefaults";
 
 import {
@@ -64,6 +66,7 @@ import {
   runScreenGeneration,
 } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
+import { buildDesignContract } from "@/lib/designContract";
 
 export const runtime = "nodejs";
 
@@ -269,6 +272,7 @@ async function generateTextWithFallback({
   system,
   prompt,
   abortSignal,
+  decodingStage,
 }: {
   stage: string;
   models: string[];
@@ -276,16 +280,22 @@ async function generateTextWithFallback({
   system: string;
   prompt: string;
   abortSignal?: AbortSignal;
+  decodingStage: GenerationDecodingStage;
 }) {
   let lastError: unknown = null;
+  const decoding = getStageDecoding(decodingStage);
 
   for (const model of models) {
     try {
-      logger.info(`${stage} via model: ${model}`);
+      logger.info(
+        `${stage} via model: ${model} (temp=${decoding.temperature})`,
+      );
       return await generateText({
         model: ollama(model),
         system,
         prompt,
+        temperature: decoding.temperature,
+        maxOutputTokens: decoding.maxOutputTokens,
         abortSignal,
       });
     } catch (error) {
@@ -820,6 +830,7 @@ export async function POST(req: NextRequest) {
             system: STAGE1_SYSTEM,
             prompt: `User prompt: ${prompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
             abortSignal: abortController.signal,
+            decodingStage: "stage1",
           });
 
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
@@ -844,6 +855,8 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        const designContract = buildDesignContract(spec, designContext);
+
         logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
 
         await prisma.generation.update({
@@ -864,6 +877,7 @@ export async function POST(req: NextRequest) {
             system: STAGE2_SYSTEM,
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
             abortSignal: abortController.signal,
+            decodingStage: "stage2",
           });
         let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         if (!isValidComponentTree(tree, spec.screens)) {
@@ -954,6 +968,7 @@ export async function POST(req: NextRequest) {
           write,
           systemPrompt: buildSystemPrompt(spec, designContext),
           generationId,
+          designContract,
         };
 
         const screenJobs = frameAssignments.map((a) => ({

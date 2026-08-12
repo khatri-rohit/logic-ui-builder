@@ -15,6 +15,7 @@ export async function executeModel(
     system,
     prompt,
     temperature,
+    maxOutputTokens,
     abortController,
     modelTimeoutMs = DEFAULT_MODEL_TIMEOUT_MS,
   } = options;
@@ -26,6 +27,9 @@ export async function executeModel(
       system,
       prompt,
       temperature,
+      ...(typeof maxOutputTokens === "number"
+        ? { maxOutputTokens }
+        : {}),
       abortSignal: modelSignal,
     });
 

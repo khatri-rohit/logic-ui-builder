@@ -2,17 +2,14 @@ import { RefObject, useCallback, useEffect, useRef } from "react";
 import * as d3Selection from "d3-selection";
 import * as d3Zoom from "d3-zoom";
 
+import type { FrameRect } from "@/components/canvas/types";
+
+export type { FrameRect };
+
 export interface Transform {
   x: number;
   y: number;
   k: number;
-}
-
-export interface FrameRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface CanvasTransformHandle {

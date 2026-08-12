@@ -12,7 +12,7 @@ const paramsSchema = z.object({
 });
 
 const POLL_INTERVAL_MS = 1500;
-const TERMINAL_GRACE_MS = 10_000;
+const TERMINAL_GRACE_MS = 1_500;
 
 export async function GET(
   req: NextRequest,

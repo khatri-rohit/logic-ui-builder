@@ -1,3 +1,12 @@
+/**
+ * POST /api/generate
+ *
+ * Called by ProjectStudioClient.handleGenerate for:
+ * - Full multi-screen generation (Stage 1 → 2 → 3)
+ * - G-mode + selected frame: createNewFrame sibling (Stage 3 only)
+ *
+ * In-place frame regenerate is POST /api/generate/[frameId] (handleFrame).
+ */
 import {
   GenerationPlatform as PrismaGenerationPlatform,
   Prisma,
@@ -28,6 +37,13 @@ import {
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
+import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
+import {
+  STAGE1_MODELS,
+  STAGE2_MODELS,
+  STAGE3_MODELS,
+} from "@/lib/execution/modelDefaults";
+
 import {
   getGenerationLayout,
   getInitialDimensionsForPlatform,
@@ -50,19 +66,6 @@ import {
 import type { PipelineContext } from "@/lib/execution/types";
 
 export const runtime = "nodejs";
-
-const STAGE1_MODELS = [
-  "deepseek-v4-flash:cloud",
-  "glm-5.2:cloud",
-  "gemma4:31b",
-];
-const STAGE2_MODELS = ["deepseek-v4-flash:cloud"];
-const STAGE3_MODELS = [
-  "glm-5.2:cloud",
-  "deepseek-v4-flash:cloud",
-  "gemma4:31b",
-  "gpt-oss:120b-cloud",
-];
 
 const generationBodySchema = generationRequestBodySchema;
 
@@ -420,13 +423,24 @@ export async function POST(req: NextRequest) {
     }
 
     const hasFrameContext = !!body.frameId && !!body.generationId;
-    const isFrameRegeneration = hasFrameContext && !body.createNewFrame;
+    // In-place regenerate belongs on POST /api/generate/[frameId].
+    if (hasFrameContext && !body.createNewFrame) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "USE_FRAME_REGENERATE_ROUTE",
+          message:
+            "In-place frame regeneration must use POST /api/generate/[frameId]. Use createNewFrame for sibling frames.",
+          data: null,
+        },
+        { status: 400 },
+      );
+    }
+
     const createNewFrameWithContext = hasFrameContext && !!body.createNewFrame;
-    const targetFrameId = isFrameRegeneration
-      ? (body.targetFrameId ?? body.frameId)
-      : createNewFrameWithContext
-        ? crypto.randomUUID()
-        : null;
+    const targetFrameId = createNewFrameWithContext
+      ? crypto.randomUUID()
+      : null;
 
     let sourceGeneration: {
       id: string;
@@ -440,7 +454,7 @@ export async function POST(req: NextRequest) {
 
     let sourceFrame: PersistedGenerationScreen | null = null;
 
-    if (isFrameRegeneration || createNewFrameWithContext) {
+    if (createNewFrameWithContext) {
       const generationCandidates = await prisma.generation.findMany({
         where: {
           projectId: project.id,
@@ -507,7 +521,7 @@ export async function POST(req: NextRequest) {
     logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
-      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+      (createNewFrameWithContext) && sourceGeneration
         ? toApiPlatform(sourceGeneration.platform)
         : toApiPlatform(project.platform);
     const prompt = body.prompt.trim();
@@ -517,7 +531,7 @@ export async function POST(req: NextRequest) {
     let designContextText: string;
 
     if (
-      (isFrameRegeneration || createNewFrameWithContext) &&
+      (createNewFrameWithContext) &&
       sourceGeneration
     ) {
       designContext = await buildDesignContext({
@@ -557,7 +571,7 @@ export async function POST(req: NextRequest) {
     );
 
     const requestedModelForPersistence =
-      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+      (createNewFrameWithContext) && sourceGeneration
         ? (preferredModel ?? sourceGeneration.model)
         : (preferredModel ?? stage3ModelPriority[0]);
 
@@ -568,20 +582,20 @@ export async function POST(req: NextRequest) {
       const result = await reserveGenerationWithIdempotency(tx, {
         projectId: project.id,
         prompt:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          (createNewFrameWithContext) && sourceGeneration
             ? prompt || sourceGeneration.prompt
             : prompt,
         model: requestedModelForPersistence,
         platform:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          (createNewFrameWithContext) && sourceGeneration
             ? sourceGeneration.platform
             : toPrismaPlatform(requestedPlatform),
         spec:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          (createNewFrameWithContext) && sourceGeneration
             ? (sourceGeneration.spec as unknown as Prisma.InputJsonValue)
             : ({} as Prisma.InputJsonValue),
         tree:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          (createNewFrameWithContext) && sourceGeneration
             ? (sourceGeneration.tree as Prisma.InputJsonValue | undefined)
             : undefined,
         idempotencyKey,
@@ -628,27 +642,17 @@ export async function POST(req: NextRequest) {
       const persistedScreens: PersistedGenerationScreen[] = [];
 
       try {
-        // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
-        if (
-          (isFrameRegeneration || createNewFrameWithContext) &&
-          sourceGeneration &&
-          sourceFrame
-        ) {
-          logger.info("Frame regeneration: skipping Stage 1 & 2", {
+        // createNewFrame from selected frame context — skip Stage 1 & 2
+        if (createNewFrameWithContext && sourceGeneration && sourceFrame) {
+          logger.info("createNewFrame: skipping Stage 1 & 2", {
             generationId,
             frameId: body.frameId,
-            screenName: sourceFrame!.screenName,
+            screenName: sourceFrame.screenName,
           });
 
-          const regenerationFrameId = targetFrameId ?? body.frameId!;
-
-          // When creating a new frame from context, offset position from source
-          const framePosX = createNewFrameWithContext
-            ? sourceFrame.x + 40
-            : sourceFrame.x;
-          const framePosY = createNewFrameWithContext
-            ? sourceFrame.y + 40
-            : sourceFrame.y;
+          const regenerationFrameId = targetFrameId ?? crypto.randomUUID();
+          const framePosX = sourceFrame.x + 40;
+          const framePosY = sourceFrame.y + 40;
 
           // Pre-populate with an error placeholder so the outer catch handler
           // always writes a valid frame record if the stream is interrupted.
@@ -667,22 +671,20 @@ export async function POST(req: NextRequest) {
 
           await write({ type: "generation_id", generationId });
 
-          if (createNewFrameWithContext) {
-            await write({
-              type: "layout",
-              layout: [
-                {
-                  screen: sourceFrame.screenName,
-                  frameId: regenerationFrameId,
-                  x: framePosX,
-                  y: framePosY,
-                  w: sourceFrame.w,
-                  h: sourceFrame.h,
-                },
-              ],
-              platform: toApiPlatform(sourceGeneration.platform),
-            });
-          }
+          await write({
+            type: "layout",
+            layout: [
+              {
+                screen: sourceFrame.screenName,
+                frameId: regenerationFrameId,
+                x: framePosX,
+                y: framePosY,
+                w: sourceFrame.w,
+                h: sourceFrame.h,
+              },
+            ],
+            platform: toApiPlatform(sourceGeneration.platform),
+          });
 
           const sourcePlatform = toApiPlatform(sourceGeneration.platform);
 
@@ -798,7 +800,7 @@ export async function POST(req: NextRequest) {
             ]);
           }
 
-          logger.info("Frame regeneration complete", {
+          logger.info("createNewFrame complete", {
             generationId,
             frameId: body.frameId,
             screenName: sourceFrame.screenName,

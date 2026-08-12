@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
+import { useCanvasScaleGetter } from "@/components/canvas/CanvasScaleContext";
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { useStudioTheme } from "@/components/canvas/StudioThemeContext";
@@ -46,19 +47,18 @@ type InteractionState =
     };
 
 interface CanvasFrameProps extends CanvasFrameData {
-  scale: number;
+  /** @deprecated Prefer CanvasScaleContext; kept optional for read-only viewers. */
+  scale?: number;
   isActive: boolean;
   isSelected: boolean;
   readOnly?: boolean;
+  isSpacePressed?: () => boolean;
   onSelect: (id: string) => void;
   onActivate: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
   onResize: (id: string, w: number, h: number) => void;
-  /** Discrete content auto-fit — commits history + persist immediately. */
   onAutoFit: (id: string, w: number, h: number) => void;
-  /** Capture pre-gesture geometry before ephemeral move/resize ticks. */
   onInteractionStart: (id: string) => void;
-  /** Called once when a drag/resize gesture finishes and geometry changed. */
   onInteractionEnd: (id: string) => void;
   handleFrame: (id: string) => void;
   handleDelete: (id: string) => void;
@@ -86,8 +86,9 @@ export const CanvasFrame = memo(function CanvasFrame({
   state,
   isActive,
   isSelected,
-  scale,
+  scale: scaleProp,
   readOnly = false,
+  isSpacePressed: isSpacePressedProp,
   onSelect,
   onActivate,
   onMove,
@@ -106,49 +107,59 @@ export const CanvasFrame = memo(function CanvasFrame({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const interactionRef = useRef<InteractionState | null>(null);
-  const contextMenuOpenRef = useRef(false);
-  const isSpacePressedRef = useRef(false);
   const didDragRef = useRef(false);
   const didResizeRef = useRef(false);
-  const autoFitContentKeyRef = useRef<string | null>(null);
-  const userOverrideRef = useRef(false);
-  const contentKeyRef = useRef(editedContent ?? content);
-  const frameGeometryRef = useRef({ w, h, platform });
-  const onAutoFitRef = useRef(onAutoFit);
-  const moveCallbacksRef = useRef({
+
+  const getScaleFromContext = useCanvasScaleGetter();
+  const getScale = useCallback(() => {
+    if (typeof scaleProp === "number") return Math.max(scaleProp, 0.001);
+    return getScaleFromContext();
+  }, [getScaleFromContext, scaleProp]);
+
+  const propsRef = useRef({
     onMove,
     onResize,
+    onAutoFit,
     onInteractionStart,
     onInteractionEnd,
+    onSelect,
     platform,
-    safeScale: Math.max(scale, 0.001),
+    w,
+    h,
+    isSpacePressed: isSpacePressedProp,
+  });
+  propsRef.current = {
+    onMove,
+    onResize,
+    onAutoFit,
+    onInteractionStart,
+    onInteractionEnd,
+    onSelect,
+    platform,
+    w,
+    h,
+    isSpacePressed: isSpacePressedProp,
+  };
+
+  const autoFitRef = useRef({
+    contentKey: editedContent ?? content,
+    latchedKey: null as string | null,
+    userOverride: false,
   });
 
-  useEffect(() => {
-    moveCallbacksRef.current = {
-      onMove,
-      onResize,
-      onInteractionStart,
-      onInteractionEnd,
-      platform,
-      safeScale: Math.max(scale, 0.001),
-    };
-  }, [onMove, onResize, onInteractionStart, onInteractionEnd, platform, scale]);
-
-  useEffect(() => {
-    onAutoFitRef.current = onAutoFit;
-  }, [onAutoFit]);
-
-  useEffect(() => {
-    frameGeometryRef.current = { w, h, platform };
-  }, [w, h, platform]);
+  const [iframeMenu, setIframeMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const activeContent = editedContent ?? content;
 
   useEffect(() => {
-    contentKeyRef.current = activeContent;
-    autoFitContentKeyRef.current = null;
-    userOverrideRef.current = false;
+    autoFitRef.current = {
+      contentKey: activeContent,
+      latchedKey: null,
+      userOverride: false,
+    };
   }, [activeContent]);
 
   useFrameLifecycle({
@@ -158,34 +169,8 @@ export const CanvasFrame = memo(function CanvasFrame({
     iframeRef,
   });
 
-  const openContextMenuAt = useCallback((clientX: number, clientY: number) => {
-    const container = containerRef.current;
-    if (!container || typeof window.MouseEvent !== "function") return;
-
-    container.dispatchEvent(
-      new window.MouseEvent("contextmenu", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        button: 2,
-        buttons: 2,
-        clientX,
-        clientY,
-      }),
-    );
-  }, []);
-
-  const requestCloseContextMenu = useCallback(() => {
-    if (!contextMenuOpenRef.current) return;
-    if (typeof window.KeyboardEvent !== "function") return;
-
-    window.dispatchEvent(
-      new window.KeyboardEvent("keydown", {
-        key: "Escape",
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+  const isSpaceDown = useCallback(() => {
+    return propsRef.current.isSpacePressed?.() ?? false;
   }, []);
 
   const handleWindowPointerMove = useCallback(
@@ -193,9 +178,9 @@ export const CanvasFrame = memo(function CanvasFrame({
       const interaction = interactionRef.current;
       if (!interaction) return;
 
-      const { onMove, onResize, platform, safeScale } =
-        moveCallbacksRef.current;
-
+      const { onMove: move, onResize: resize, platform: plat } =
+        propsRef.current;
+      const safeScale = getScale();
       const deltaX = (event.clientX - interaction.startClientX) / safeScale;
       const deltaY = (event.clientY - interaction.startClientY) / safeScale;
 
@@ -204,34 +189,25 @@ export const CanvasFrame = memo(function CanvasFrame({
           const movedEnough =
             Math.abs(deltaX) >= DRAG_ACTIVATION_THRESHOLD_PX ||
             Math.abs(deltaY) >= DRAG_ACTIVATION_THRESHOLD_PX;
-
-          if (!movedEnough) {
-            return;
-          }
-
-          interactionRef.current = {
-            ...interaction,
-            hasMoved: true,
-          };
+          if (!movedEnough) return;
+          interactionRef.current = { ...interaction, hasMoved: true };
         }
-
         didDragRef.current = true;
-        onMove(id, interaction.startX + deltaX, interaction.startY + deltaY);
+        move(id, interaction.startX + deltaX, interaction.startY + deltaY);
         return;
       }
 
-      const minW = platform === "web" ? MIN_WEB_W : MIN_MOBILE_W;
-      const maxW = platform === "web" ? MAX_WEB_W : MAX_MOBILE_W;
-      const minH = platform === "web" ? MIN_WEB_H : MIN_MOBILE_H;
-      const maxH = platform === "web" ? MAX_WEB_H : MAX_MOBILE_H;
-
+      const minW = plat === "web" ? MIN_WEB_W : MIN_MOBILE_W;
+      const maxW = plat === "web" ? MAX_WEB_W : MAX_MOBILE_W;
+      const minH = plat === "web" ? MIN_WEB_H : MIN_MOBILE_H;
+      const maxH = plat === "web" ? MAX_WEB_H : MAX_MOBILE_H;
       const nextW = clamp(Math.round(interaction.startW + deltaX), minW, maxW);
       const nextH = clamp(Math.round(interaction.startH + deltaY), minH, maxH);
       didResizeRef.current = true;
-      userOverrideRef.current = true;
-      onResize(id, nextW, nextH);
+      autoFitRef.current.userOverride = true;
+      resize(id, nextW, nextH);
     },
-    [id],
+    [getScale, id],
   );
 
   const stopInteraction = useCallback(() => {
@@ -244,48 +220,20 @@ export const CanvasFrame = memo(function CanvasFrame({
     window.removeEventListener("pointermove", handleWindowPointerMove);
 
     if (shouldCommit) {
-      moveCallbacksRef.current.onInteractionEnd(id);
+      propsRef.current.onInteractionEnd(id);
     }
   }, [handleWindowPointerMove, id]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === "Space") {
-        isSpacePressedRef.current = true;
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "Space") {
-        isSpacePressedRef.current = false;
-      }
-    };
-
-    const handleBlur = () => {
-      isSpacePressedRef.current = false;
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (readOnly || isActive || event.button !== 0) return;
-      if (isSpacePressedRef.current) return;
+      if (isSpaceDown()) return;
 
       event.preventDefault();
       event.stopPropagation();
       onSelect(id);
       didDragRef.current = false;
-      moveCallbacksRef.current.onInteractionStart(id);
+      propsRef.current.onInteractionStart(id);
 
       interactionRef.current = {
         kind: "drag",
@@ -306,6 +254,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       handleWindowPointerMove,
       id,
       isActive,
+      isSpaceDown,
       onSelect,
       readOnly,
       stopInteraction,
@@ -317,13 +266,13 @@ export const CanvasFrame = memo(function CanvasFrame({
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
       if (readOnly || isActive || event.button !== 0) return;
-      if (isSpacePressedRef.current) return;
+      if (isSpaceDown()) return;
 
       event.preventDefault();
       event.stopPropagation();
       onSelect(id);
       didResizeRef.current = false;
-      moveCallbacksRef.current.onInteractionStart(id);
+      propsRef.current.onInteractionStart(id);
 
       interactionRef.current = {
         kind: "resize",
@@ -344,6 +293,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       h,
       id,
       isActive,
+      isSpaceDown,
       onSelect,
       readOnly,
       stopInteraction,
@@ -358,7 +308,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       if (event.source !== iframeRef.current?.contentWindow) return;
 
       if (event.data?.type === "frame-pointer-down") {
-        requestCloseContextMenu();
+        setIframeMenu(null);
         return;
       }
 
@@ -370,100 +320,62 @@ export const CanvasFrame = memo(function CanvasFrame({
         const localY = Number(event.data.clientY);
         if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
 
-        onSelect(id);
-        const clientX = iframeBounds.left + localX;
-        const clientY = iframeBounds.top + localY;
-
-        const reopen = () => openContextMenuAt(clientX, clientY);
-        if (contextMenuOpenRef.current) {
-          requestCloseContextMenu();
-          requestAnimationFrame(reopen);
-        } else {
-          reopen();
-        }
+        propsRef.current.onSelect(id);
+        setIframeMenu({
+          x: iframeBounds.left + localX,
+          y: iframeBounds.top + localY,
+        });
         return;
       }
 
       if (event.data?.type !== "frame-dimensions") return;
-
-      // P1: never auto-fit while the user is dragging or resizing.
       if (interactionRef.current) return;
       if (readOnly) return;
 
-      const contentKey = contentKeyRef.current;
-      // P3: one auto-fit per content identity; manual resize wins until content changes.
-      if (userOverrideRef.current) return;
-      if (autoFitContentKeyRef.current === contentKey) return;
+      const latch = autoFitRef.current;
+      if (latch.userOverride) return;
+      if (latch.latchedKey === latch.contentKey) return;
 
       const reportedHeight = Number(event.data.height) || 0;
       if (!reportedHeight) return;
 
-      const { w: frameW, h: frameH, platform: framePlatform } =
-        frameGeometryRef.current;
-
       const chromeHeight =
-        framePlatform === "web"
-          ? WEB_CHROME_H
-          : MOBILE_STATUS_H + MOBILE_HOME_H;
-
-      const nextWidth = frameW; // preserve frame width for both platforms
+        platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H + MOBILE_HOME_H;
 
       const nextHeight =
-        framePlatform === "web"
-          ? clamp(
-              Math.ceil(reportedHeight) + chromeHeight,
-              MIN_WEB_H,
-              MAX_WEB_H,
-            )
+        platform === "web"
+          ? clamp(Math.ceil(reportedHeight) + chromeHeight, MIN_WEB_H, MAX_WEB_H)
           : clamp(
               Math.ceil(reportedHeight) + chromeHeight,
               MIN_MOBILE_H,
               MAX_MOBILE_H,
             );
 
-      const heightDiff = Math.abs(nextHeight - frameH);
+      latch.latchedKey = latch.contentKey;
+      if (Math.abs(nextHeight - h) < 4) return;
 
-      // Latch even when already close so we do not keep re-evaluating.
-      autoFitContentKeyRef.current = contentKey;
-
-      if (heightDiff < 4) return;
-
-      onAutoFitRef.current(id, nextWidth, nextHeight);
+      propsRef.current.onAutoFit(id, w, nextHeight);
     };
 
     window.addEventListener("message", handler);
-    return () => {
-      window.removeEventListener("message", handler);
-    };
-  }, [
-    id,
-    onSelect,
-    openContextMenuAt,
-    readOnly,
-    requestCloseContextMenu,
-    state,
-  ]);
+    return () => window.removeEventListener("message", handler);
+  }, [h, id, platform, readOnly, state, w]);
 
-  // Cleanup on unmount only — keep stable to avoid killing mid-drag.
   useEffect(() => {
-    const currentHandle = handleWindowPointerMove;
+    const moveHandler = handleWindowPointerMove;
     return () => {
-      window.removeEventListener("pointermove", currentHandle);
+      window.removeEventListener("pointermove", moveHandler);
       interactionRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleWindowPointerMove]);
 
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
   const iframeHeight = h - chromeTopHeight - chromeBottomHeight;
 
   return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        contextMenuOpenRef.current = open;
-      }}
-    >
+    <>
+    <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           ref={containerRef}
@@ -506,36 +418,20 @@ export const CanvasFrame = memo(function CanvasFrame({
             )}
 
             {state === "done" && (
-              <>
-                {/* {thumbnail && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={thumbnail}
-                    alt=""
-                    className="absolute left-0 top-0 h-full w-full object-cover object-top"
-                    style={{
-                      top: chromeTopHeight,
-                      height: iframeHeight,
-                      pointerEvents: "none",
-                      zIndex: 1,
-                    }}
-                  />
-                )} */}
-                <iframe
-                  ref={iframeRef}
-                  allow="cross-origin-isolated"
-                  style={{
-                    position: "absolute",
-                    top: chromeTopHeight,
-                    left: 0,
-                    width: "100%",
-                    height: iframeHeight,
-                    border: "none",
-                    zIndex: 2,
-                    pointerEvents: isActive ? "auto" : "none",
-                  }}
-                />
-              </>
+              <iframe
+                ref={iframeRef}
+                allow="cross-origin-isolated"
+                style={{
+                  position: "absolute",
+                  top: chromeTopHeight,
+                  left: 0,
+                  width: "100%",
+                  height: iframeHeight,
+                  border: "none",
+                  zIndex: 2,
+                  pointerEvents: isActive ? "auto" : "none",
+                }}
+              />
             )}
 
             {state === "error" && (
@@ -624,7 +520,6 @@ export const CanvasFrame = memo(function CanvasFrame({
           )}
         </div>
       </ContextMenuTrigger>
-      {/* Context menu content can be added here */}
       {!(state === "skeleton" || state === "streaming") && !readOnly && (
         <ContextMenuContent
           onEscapeKeyDown={(event) => event.stopPropagation()}
@@ -661,6 +556,69 @@ export const CanvasFrame = memo(function CanvasFrame({
         </ContextMenuContent>
       )}
     </ContextMenu>
+    {iframeMenu && !(state === "skeleton" || state === "streaming") && !readOnly && (
+      <div
+        className="fixed inset-0 z-100"
+        onPointerDown={() => setIframeMenu(null)}
+      >
+        <div
+          role="menu"
+          className="absolute z-101 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ left: iframeMenu.x, top: iframeMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {state === "done" && (
+            <button
+              type="button"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onClick={() => {
+                setIframeMenu(null);
+                if (canEditCode) handleEditCode(id);
+                else onLockedAction?.("Edit Code");
+              }}
+            >
+              Edit Code
+              {!canEditCode && <Lock className="ml-auto size-3 text-amber-400" />}
+            </button>
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => {
+              setIframeMenu(null);
+              if (canRegenerate) handleFrame(id);
+              else onLockedAction?.("Regenerate");
+            }}
+          >
+            Regenerate
+            {!canRegenerate && <Lock className="ml-auto size-3 text-amber-400" />}
+          </button>
+          {canRegenerate && onOpenHistory && (
+            <button
+              type="button"
+              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onClick={() => {
+                setIframeMenu(null);
+                onOpenHistory(id);
+              }}
+            >
+              History
+            </button>
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => {
+              setIframeMenu(null);
+              handleDelete(id);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   );
 });
 
@@ -671,9 +629,7 @@ function SkeletonView() {
         <div
           key={index}
           className="h-3 rounded-md bg-foreground/6"
-          style={{
-            width: `${width}%`,
-          }}
+          style={{ width: `${width}%` }}
         >
           <div
             className="h-full w-full animate-shimmer rounded-md"

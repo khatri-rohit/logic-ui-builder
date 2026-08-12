@@ -10,11 +10,11 @@ import {
 } from "react";
 
 import { CanvasGrid } from "@/components/canvas/CanvasGrid";
+import { useCanvasScaleStore } from "@/components/canvas/CanvasScaleContext";
 import { StudioToolbar } from "@/components/canvas/StudioToolbar";
-import { CanvasFrameData } from "@/components/canvas/types";
+import { CanvasFrameData, FrameRect } from "@/components/canvas/types";
 import {
   CanvasTransformHandle,
-  FrameRect,
   Transform,
   useCanvasTransform,
 } from "@/components/canvas/hooks/useCanvasTransform";
@@ -35,6 +35,7 @@ interface InfiniteCanvasProps {
   /** Empty canvas click: exit active if any, then deselect. */
   onCanvasEmptyPointerDown?: () => void;
   className?: string;
+  /** Debounced camera persist / external listeners — not used for per-frame scale. */
   onTransformChange?: (transform: Transform) => void;
 }
 
@@ -64,6 +65,9 @@ export const InfiniteCanvas = forwardRef<
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const scaleStore = useCanvasScaleStore();
+  const onTransformChangeRef = useRef(onTransformChange);
+  onTransformChangeRef.current = onTransformChange;
 
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
@@ -80,7 +84,8 @@ export const InfiniteCanvas = forwardRef<
     (next) => {
       setTransformState(next);
       setZoomPercent(Math.round(next.k * 100));
-      onTransformChange?.(next);
+      scaleStore.setScale(next.k);
+      onTransformChangeRef.current?.(next);
     },
     setIsSpacePressed,
   );

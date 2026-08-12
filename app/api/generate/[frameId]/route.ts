@@ -1,3 +1,9 @@
+/**
+ * POST /api/generate/[frameId]
+ *
+ * Called by ProjectStudioClient.handleFrame / R-mode for in-place frame regenerate.
+ * Full generate and createNewFrame use POST /api/generate.
+ */
 import { Prisma } from "@/app/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -12,9 +18,8 @@ import { buildDesignContext } from "@/lib/designContext";
 import {
   frameRegenerateRequestBodySchema,
   toValidationIssues,
-  webAppSpecSchema,
 } from "@/lib/schemas/studio";
-import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
+import { ComponentTreeNode } from "@/lib/types";
 import { guardFrameRegeneration } from "@/lib/plan-guard";
 import { incrementFrameRegenUsage, releaseFrameRegenUsage } from "@/lib/usage";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
@@ -26,19 +31,13 @@ import {
   buildModelPriority,
   reserveGenerationWithIdempotency,
 } from "@/lib/generation";
-import { runScreenGeneration } from "@/lib/execution/generationPipeline";
+import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
+import { STAGE3_MODELS } from "@/lib/execution/modelDefaults";
+import { runFrameRegeneration } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
 import { buildSystemPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
-
-const STAGE3_MODELS = [
-  "gemma3:27b-cloud",
-  "qwen3-coder:480b-cloud",
-  "kimi-k2.6:cloud",
-  "gpt-oss:120b-cloud",
-  "glm-5.2:cloud",
-];
 
 const frameRouteParamsSchema = z.object({
   frameId: z.union([z.string().cuid(), z.string().uuid()]),
@@ -47,65 +46,6 @@ const frameRouteParamsSchema = z.object({
 const idempotencyHeaderSchema = z.string().trim().min(8).max(128);
 
 const frameRegenerateBodySchema = frameRegenerateRequestBodySchema;
-
-function coerceSpec(
-  rawSpec: Prisma.JsonValue,
-  platform: GenerationPlatform,
-  screenName: string,
-): WebAppSpec {
-  const parsedSpec = webAppSpecSchema.safeParse(rawSpec);
-  if (parsedSpec.success) {
-    if (parsedSpec.data.screens.includes(screenName)) {
-      return parsedSpec.data;
-    }
-
-    return {
-      ...parsedSpec.data,
-      screens: [...parsedSpec.data.screens, screenName],
-    };
-  }
-
-  return {
-    screens: [screenName],
-    navPattern: "none",
-    platform,
-    colorMode: "light",
-    primaryColor: "#2563eb",
-    accentColor: "#f59e0b",
-    stylingLib: "tailwind",
-    layoutDensity: "comfortable",
-    components: [],
-  };
-}
-
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ frameId: string }> },
-) {
-  const parsedParams = frameRouteParamsSchema.safeParse(await context.params);
-  if (!parsedParams.success) {
-    return NextResponse.json(
-      {
-        error: true,
-        code: "VALIDATION_ERROR",
-        message: "Invalid frame route parameters",
-        issues: toValidationIssues(parsedParams.error),
-      },
-      { status: 400 },
-    );
-  }
-
-  return NextResponse.json(
-    {
-      error: true,
-      message: "Frame-based generation endpoint is not implemented",
-      data: {
-        frameId: parsedParams.data.frameId,
-      },
-    },
-    { status: 501 },
-  );
-}
 
 export async function POST(
   req: NextRequest,
@@ -300,7 +240,9 @@ export async function POST(
       );
     }
 
-    const responseFrameId = body.targetFrameId ?? sourceFrame.id;
+    const lockedSourceGeneration = sourceGeneration;
+    const lockedSourceFrame = sourceFrame;
+    const responseFrameId = body.targetFrameId ?? lockedSourceFrame.id;
 
     const idempotencyHeaderResult = idempotencyHeaderSchema.safeParse(
       req.headers.get("Idempotency-Key"),
@@ -309,12 +251,10 @@ export async function POST(
       ? idempotencyHeaderResult.data
       : body.idempotencyKey;
 
-    const idempotencyKey = hasPromptOverride
-      ? `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`
-      : null;
+    const idempotencyKey = `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`;
 
     const sourcePlatform = toApiPlatform(sourceGeneration.platform);
-    const spec = coerceSpec(
+    const spec = coerceWebAppSpec(
       sourceGeneration.spec,
       sourcePlatform,
       sourceFrame.screenName,
@@ -367,7 +307,9 @@ export async function POST(
       prompt: promptOverride ?? sourceGeneration.prompt,
       platform: sourcePlatform,
     });
-    const sourceModel = STAGE3_MODELS.includes(sourceGeneration.model)
+    const sourceModel = (STAGE3_MODELS as readonly string[]).includes(
+      sourceGeneration.model,
+    )
       ? sourceGeneration.model
       : null;
     const preferredModel = body.model ?? sourceModel;
@@ -377,8 +319,30 @@ export async function POST(
     );
     const persistenceModel = body.model ?? sourceGeneration.model;
 
+    // Reject overlapping regenerations on the same project.
+    const projectStatus = await prisma.project.findUnique({
+      where: { id: project.id },
+      select: { status: true },
+    });
+    if (projectStatus?.status === "GENERATING") {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "GENERATION_IN_PROGRESS",
+          message: "A generation is already running for this project.",
+          data: null,
+        },
+        { status: 409 },
+      );
+    }
+
     let generationId = sourceGeneration.id;
     let createdPromptGeneration = false;
+    let usageReserved = false;
+
+    // Charge usage before stream work. Abort keeps the charge; failure releases it.
+    await incrementFrameRegenUsage(usage.usagePeriodId);
+    usageReserved = true;
 
     if (hasPromptOverride) {
       const idempotencyResult = await prisma.$transaction(async (tx) => {
@@ -402,7 +366,9 @@ export async function POST(
       });
 
       if (!idempotencyResult.isNew) {
-        await releaseFrameRegenUsage(usage.usagePeriodId);
+        if (usageReserved) {
+          await releaseFrameRegenUsage(usage.usagePeriodId);
+        }
         return NextResponse.json(
           {
             error: true,
@@ -420,6 +386,11 @@ export async function POST(
 
       generationId = idempotencyResult.generationId;
       createdPromptGeneration = true;
+    } else {
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { status: "GENERATING" },
+      });
     }
 
     const ollama = initializeOllama();
@@ -431,29 +402,20 @@ export async function POST(
 
     (async () => {
       let generatedCode = "";
+      const frame = lockedSourceFrame;
+      const generation = lockedSourceGeneration;
 
       try {
 
         await write({ type: "generation_id", generationId });
-        await write({
-          type: "frame_start",
-          frameId: responseFrameId,
-          screen: sourceFrame.screenName,
-        });
         logger.info(
-          `Starting frame regeneration for frame '${sourceFrame.screenName}' with generation ID ${generationId}`,
+          `Starting frame regeneration for frame '${frame.screenName}' with generation ID ${generationId}`,
         );
-        await incrementFrameRegenUsage(usage.usagePeriodId);
 
-        if (
-          sourceFrame &&
-          sourceGeneration &&
-          sourceFrame.state === "done" &&
-          sourceFrame.content
-        ) {
+        if (frame.state === "done" && frame.content) {
           await prisma.$transaction(async (tx) => {
             const maxVersion = await tx.frameVersion.aggregate({
-              where: { projectId: project.id, frameId: sourceFrame.id },
+              where: { projectId: project.id, frameId: frame.id },
               _max: { versionNumber: true },
             });
             const nextVersion = (maxVersion._max.versionNumber ?? 0) + 1;
@@ -461,23 +423,23 @@ export async function POST(
             await tx.frameVersion.create({
               data: {
                 projectId: project.id,
-                generationId: sourceGeneration.id,
-                frameId: sourceFrame.id,
+                generationId: generation.id,
+                frameId: frame.id,
                 versionNumber: nextVersion,
-                content: sourceFrame.content,
-                editedContent: sourceFrame.editedContent ?? null,
-                prompt: sourceGeneration.prompt,
+                content: frame.content,
+                editedContent: frame.editedContent ?? null,
+                prompt: generation.prompt,
               },
             });
 
             const count = await tx.frameVersion.count({
-              where: { projectId: project.id, frameId: sourceFrame.id },
+              where: { projectId: project.id, frameId: frame.id },
             });
 
             if (count > 50) {
               const removeCount = count - 50;
               const toDelete = await tx.frameVersion.findMany({
-                where: { projectId: project.id, frameId: sourceFrame.id },
+                where: { projectId: project.id, frameId: frame.id },
                 orderBy: { versionNumber: "asc" },
                 select: { id: true },
                 take: removeCount,
@@ -506,24 +468,23 @@ export async function POST(
           generationId,
         };
 
-        const frameResult = await runScreenGeneration(
+        const frameResult = await runFrameRegeneration(
           framePipelineContext,
-          sourceFrame.screenName,
+          frame.screenName,
           responseFrameId,
           regeneratePrompt,
-          "frame",
-          { w: sourceFrame.w, h: sourceFrame.h },
+          { w: frame.w, h: frame.h },
         );
         generatedCode = frameResult.code;
 
         if (!frameResult.success) {
           throw new Error(
-            frameResult.error || `All models failed for frame ${sourceFrame.id}`,
+            frameResult.error || `All models failed for frame ${frame.id}`,
           );
         }
 
         const updatedFrame: PersistedGenerationScreen = {
-          ...sourceFrame,
+          ...frame,
           id: responseFrameId,
           state: "done",
           content: frameResult.code,
@@ -544,7 +505,7 @@ export async function POST(
           });
         } else {
           const nextScreens = sourceScreens.map((screen) =>
-            screen.id === sourceFrame.id ? updatedFrame : screen,
+            screen.id === frame.id ? updatedFrame : screen,
           );
 
           await prisma.generation.update({
@@ -562,10 +523,16 @@ export async function POST(
         await write({
           type: "frame_done",
           frameId: responseFrameId,
-          screen: sourceFrame.screenName,
+          screen: frame.screenName,
           content: generatedCode,
           error: frameResult.success ? null : frameResult.error,
         });
+
+        await prisma.project.update({
+          where: { id: project.id },
+          data: { status: "ACTIVE" },
+        });
+
         await write({ type: "done" });
       } catch (error) {
         const isAbort =
@@ -580,12 +547,12 @@ export async function POST(
 
         if (createdPromptGeneration) {
           const failedFrame: PersistedGenerationScreen = {
-            ...sourceFrame,
+            ...frame,
             id: responseFrameId,
             state: "error",
             content: generatedCode.trim()
               ? sanitizeGeneratedCode(generatedCode)
-              : sourceFrame.content,
+              : frame.content,
             editedContent: null,
             error: message,
           };
@@ -610,7 +577,7 @@ export async function POST(
           data: { status: "ACTIVE" },
         });
 
-        if (!isAbort) {
+        if (!isAbort && usageReserved) {
           await releaseFrameRegenUsage(usage.usagePeriodId);
         }
 

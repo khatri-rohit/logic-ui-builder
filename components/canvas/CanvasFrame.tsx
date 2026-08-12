@@ -54,6 +54,12 @@ interface CanvasFrameProps extends CanvasFrameData {
   onActivate: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
   onResize: (id: string, w: number, h: number) => void;
+  /** Discrete content auto-fit — commits history + persist immediately. */
+  onAutoFit: (id: string, w: number, h: number) => void;
+  /** Capture pre-gesture geometry before ephemeral move/resize ticks. */
+  onInteractionStart: (id: string) => void;
+  /** Called once when a drag/resize gesture finishes and geometry changed. */
+  onInteractionEnd: (id: string) => void;
   handleFrame: (id: string) => void;
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
@@ -86,6 +92,9 @@ export const CanvasFrame = memo(function CanvasFrame({
   onActivate,
   onMove,
   onResize,
+  onAutoFit,
+  onInteractionStart,
+  onInteractionEnd,
   handleFrame,
   handleDelete,
   handleEditCode,
@@ -100,9 +109,17 @@ export const CanvasFrame = memo(function CanvasFrame({
   const contextMenuOpenRef = useRef(false);
   const isSpacePressedRef = useRef(false);
   const didDragRef = useRef(false);
+  const didResizeRef = useRef(false);
+  const autoFitContentKeyRef = useRef<string | null>(null);
+  const userOverrideRef = useRef(false);
+  const contentKeyRef = useRef(editedContent ?? content);
+  const frameGeometryRef = useRef({ w, h, platform });
+  const onAutoFitRef = useRef(onAutoFit);
   const moveCallbacksRef = useRef({
     onMove,
     onResize,
+    onInteractionStart,
+    onInteractionEnd,
     platform,
     safeScale: Math.max(scale, 0.001),
   });
@@ -111,12 +128,28 @@ export const CanvasFrame = memo(function CanvasFrame({
     moveCallbacksRef.current = {
       onMove,
       onResize,
+      onInteractionStart,
+      onInteractionEnd,
       platform,
       safeScale: Math.max(scale, 0.001),
     };
-  }, [onMove, onResize, platform, scale]);
+  }, [onMove, onResize, onInteractionStart, onInteractionEnd, platform, scale]);
+
+  useEffect(() => {
+    onAutoFitRef.current = onAutoFit;
+  }, [onAutoFit]);
+
+  useEffect(() => {
+    frameGeometryRef.current = { w, h, platform };
+  }, [w, h, platform]);
 
   const activeContent = editedContent ?? content;
+
+  useEffect(() => {
+    contentKeyRef.current = activeContent;
+    autoFitContentKeyRef.current = null;
+    userOverrideRef.current = false;
+  }, [activeContent]);
 
   useFrameLifecycle({
     content: activeContent,
@@ -194,15 +227,26 @@ export const CanvasFrame = memo(function CanvasFrame({
 
       const nextW = clamp(Math.round(interaction.startW + deltaX), minW, maxW);
       const nextH = clamp(Math.round(interaction.startH + deltaY), minH, maxH);
+      didResizeRef.current = true;
+      userOverrideRef.current = true;
       onResize(id, nextW, nextH);
     },
     [id],
   );
 
   const stopInteraction = useCallback(() => {
+    const interaction = interactionRef.current;
+    const shouldCommit =
+      (interaction?.kind === "drag" && didDragRef.current) ||
+      (interaction?.kind === "resize" && didResizeRef.current);
+
     interactionRef.current = null;
     window.removeEventListener("pointermove", handleWindowPointerMove);
-  }, [handleWindowPointerMove]);
+
+    if (shouldCommit) {
+      moveCallbacksRef.current.onInteractionEnd(id);
+    }
+  }, [handleWindowPointerMove, id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -241,6 +285,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       event.stopPropagation();
       onSelect(id);
       didDragRef.current = false;
+      moveCallbacksRef.current.onInteractionStart(id);
 
       interactionRef.current = {
         kind: "drag",
@@ -277,6 +322,8 @@ export const CanvasFrame = memo(function CanvasFrame({
       event.preventDefault();
       event.stopPropagation();
       onSelect(id);
+      didResizeRef.current = false;
+      moveCallbacksRef.current.onInteractionStart(id);
 
       interactionRef.current = {
         kind: "resize",
@@ -339,17 +386,30 @@ export const CanvasFrame = memo(function CanvasFrame({
 
       if (event.data?.type !== "frame-dimensions") return;
 
-      const reportedWidth = Number(event.data.width) || 0;
+      // P1: never auto-fit while the user is dragging or resizing.
+      if (interactionRef.current) return;
+      if (readOnly) return;
+
+      const contentKey = contentKeyRef.current;
+      // P3: one auto-fit per content identity; manual resize wins until content changes.
+      if (userOverrideRef.current) return;
+      if (autoFitContentKeyRef.current === contentKey) return;
+
       const reportedHeight = Number(event.data.height) || 0;
-      if (!reportedWidth || !reportedHeight) return;
+      if (!reportedHeight) return;
+
+      const { w: frameW, h: frameH, platform: framePlatform } =
+        frameGeometryRef.current;
 
       const chromeHeight =
-        platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H + MOBILE_HOME_H;
+        framePlatform === "web"
+          ? WEB_CHROME_H
+          : MOBILE_STATUS_H + MOBILE_HOME_H;
 
-      const nextWidth = w; // preserve frame width for both platforms
+      const nextWidth = frameW; // preserve frame width for both platforms
 
       const nextHeight =
-        platform === "web"
+        framePlatform === "web"
           ? clamp(
               Math.ceil(reportedHeight) + chromeHeight,
               MIN_WEB_H,
@@ -361,11 +421,14 @@ export const CanvasFrame = memo(function CanvasFrame({
               MAX_MOBILE_H,
             );
 
-      const heightDiff = Math.abs(nextHeight - h);
+      const heightDiff = Math.abs(nextHeight - frameH);
+
+      // Latch even when already close so we do not keep re-evaluating.
+      autoFitContentKeyRef.current = contentKey;
 
       if (heightDiff < 4) return;
 
-      onResize(id, nextWidth, nextHeight);
+      onAutoFitRef.current(id, nextWidth, nextHeight);
     };
 
     window.addEventListener("message", handler);
@@ -373,15 +436,12 @@ export const CanvasFrame = memo(function CanvasFrame({
       window.removeEventListener("message", handler);
     };
   }, [
-    h,
     id,
-    onResize,
     onSelect,
     openContextMenuAt,
-    platform,
+    readOnly,
     requestCloseContextMenu,
     state,
-    w,
   ]);
 
   // Cleanup on unmount only — keep stable to avoid killing mid-drag.

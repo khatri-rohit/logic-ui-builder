@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable @typescript-eslint/no-unused-vars */
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1697,14 +1697,34 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           y: normalizedY,
         });
         return next;
-      });
-
-      scheduleSnapshotPersist();
+      }, true);
     },
-    [applyFrames, scheduleSnapshotPersist],
+    [applyFrames],
   );
 
   const handleResizeFrame = useCallback(
+    (id: string, nextW: number, nextH: number) => {
+      applyFrames((current) => {
+        const frame = current.get(id);
+        if (!frame) return current;
+
+        if (frame.w === nextW && frame.h === nextH) {
+          return current;
+        }
+
+        const next = new Map(current);
+        next.set(id, {
+          ...frame,
+          w: nextW,
+          h: nextH,
+        });
+        return next;
+      }, true);
+    },
+    [applyFrames],
+  );
+
+  const handleAutoFitFrame = useCallback(
     (id: string, nextW: number, nextH: number) => {
       applyFrames((current) => {
         const frame = current.get(id);
@@ -1726,6 +1746,34 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       scheduleSnapshotPersist();
     },
     [applyFrames, scheduleSnapshotPersist],
+  );
+
+  const gestureBaselineRef = useRef<Map<string, CanvasFrameData> | null>(null);
+
+  const handleInteractionStart = useCallback(() => {
+    gestureBaselineRef.current = new Map(framesRef.current);
+  }, []);
+
+  const handleInteractionEnd = useCallback(() => {
+      const baseline = gestureBaselineRef.current;
+      const finalFrames = new Map(framesRef.current);
+      gestureBaselineRef.current = null;
+
+      setHistory((prev) => {
+        const truncated = prev.slice(0, historyIndex + 1);
+        const next =
+          truncated.length === 0 && baseline
+            ? [baseline, finalFrames]
+            : [...truncated, finalFrames];
+        const capped =
+          next.length > 50 ? next.slice(next.length - 50) : next;
+        setHistoryIndex(capped.length - 1);
+        return capped;
+      });
+
+      scheduleSnapshotPersist();
+    },
+    [historyIndex, scheduleSnapshotPersist],
   );
 
   const handleTransformChange = useCallback(
@@ -2849,6 +2897,9 @@ npm run dev
                   }}
                   onMove={handleMoveFrame}
                   onResize={handleResizeFrame}
+                  onAutoFit={handleAutoFitFrame}
+                  onInteractionStart={handleInteractionStart}
+                  onInteractionEnd={handleInteractionEnd}
                   handleFrame={handleFrame}
                   handleDelete={handleDelete}
                   handleEditCode={handleOpenCodeEditor}
@@ -3190,6 +3241,7 @@ npm run dev
         }}
         onLockedAction={handleLockedAction}
         canRegenerate={canRegenerate}
+        activeStreamingScreen={activeStreamingScreen}
       />
     </StudioShell>
   );

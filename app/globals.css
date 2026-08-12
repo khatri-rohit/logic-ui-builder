@@ -251,8 +251,21 @@
   }
 }
 
+@keyframes prompt-pill-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
 .animate-shimmer {
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.animate-prompt-pill-sheen {
+  animation: prompt-pill-sheen 2.4s ease-in-out infinite;
 }
 
 .animate-streaming-dot {

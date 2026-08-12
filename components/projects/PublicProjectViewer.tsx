@@ -101,6 +101,18 @@ export default function PublicProjectViewer({
     // No-op: read-only
   }, []);
 
+  const handleAutoFitFrame = useCallback(() => {
+    // No-op: read-only — preserve shared snapshot dimensions
+  }, []);
+
+  const handleInteractionStart = useCallback(() => {
+    // No-op: read-only
+  }, []);
+
+  const handleInteractionEnd = useCallback(() => {
+    // No-op: read-only
+  }, []);
+
   const handleFrameAction = useCallback(() => {
     // No-op: read-only
   }, []);
@@ -179,6 +191,9 @@ export default function PublicProjectViewer({
                   }}
                   onMove={handleMoveFrame}
                   onResize={handleResizeFrame}
+                  onAutoFit={handleAutoFitFrame}
+                  onInteractionStart={handleInteractionStart}
+                  onInteractionEnd={handleInteractionEnd}
                   handleFrame={handleFrameAction}
                   handleDelete={handleDeleteFrame}
                   handleEditCode={handleEditCode}

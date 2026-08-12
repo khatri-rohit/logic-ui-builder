@@ -242,6 +242,7 @@ const SideBar = ({
                             width={64}
                             height={64}
                             className="h-full w-full object-cover"
+                            loading="eager"
                           />
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col justify-center">

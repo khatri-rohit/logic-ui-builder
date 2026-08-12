@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { cn, revealAnimation } from "@/lib/utils";
 import styles from "./page.module.css";
-import { useRouter } from "next/navigation";
 
 type PlanId = "FREE" | "STANDARD" | "PRO";
 
@@ -18,6 +18,7 @@ const LANDING_PLANS = [
     features: [
       "10 generations / month",
       "3 projects",
+      "1 model",
       "Community support",
     ],
     cta: "Start for free",
@@ -32,6 +33,7 @@ const LANDING_PLANS = [
     features: [
       "100 generations / month",
       "Unlimited projects",
+      "4 models",
       "Frame regeneration",
       "Canvas export",
       "Email support",
@@ -48,16 +50,15 @@ const LANDING_PLANS = [
     features: [
       "Unlimited generations",
       "Unlimited projects",
-      "Frame regeneration",
-      "Canvas export",
+      "All models",
       "Up to 5 team seats",
+      "Canvas export",
       "Priority support",
     ],
     cta: "Get Pro",
   },
 ];
 
-// Feature rows for the comparison table
 const FEATURE_ROWS = [
   { label: "Price", key: "price" as const },
   { label: "Generations", key: "gen" as const },
@@ -67,31 +68,58 @@ const FEATURE_ROWS = [
 ];
 
 const PLAN_FEATURES: Record<PlanId, Record<string, string>> = {
-  FREE: { price: "₹0", gen: "10 / mo", projects: "3", models: "1", support: "Community" },
-  STANDARD: { price: "₹1,499", gen: "100 / mo", projects: "∞", models: "4", support: "Email" },
-  PRO: { price: "₹3,999", gen: "∞", projects: "∞", models: "All", support: "Priority" },
+  FREE: {
+    price: "₹0",
+    gen: "10 / mo",
+    projects: "3",
+    models: "1",
+    support: "Community",
+  },
+  STANDARD: {
+    price: "₹1,499",
+    gen: "100 / mo",
+    projects: "∞",
+    models: "4",
+    support: "Email",
+  },
+  PRO: {
+    price: "₹3,999",
+    gen: "∞",
+    projects: "∞",
+    models: "All",
+    support: "Priority",
+  },
 };
 
+function planHref(planId: PlanId) {
+  if (planId === "FREE") {
+    return "/sign-up";
+  }
+
+  return `/sign-up?plan=${planId}`;
+}
+
+function stashPendingPlan(planId: PlanId) {
+  if (planId === "FREE" || typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem("pendingPlanId", planId);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function PricingSection() {
-  const router = useRouter();
   const shouldReduceMotion = useReducedMotion();
   const reveal = (delay = 0) => revealAnimation(shouldReduceMotion, delay);
 
-  const handleLandingPlanCta = (planId: PlanId) => {
-    if (planId === "FREE") {
-      router.push("/sign-up");
-      return;
-    }
-    try {
-      sessionStorage.setItem("pendingPlanId", planId);
-    } catch {
-      /* ignore */
-    }
-    router.push("/sign-up");
-  };
-
   return (
-    <section className="border-t border-(--logic-border-soft) bg-(--logic-surface) py-32">
+    <section
+      id="pricing"
+      className="scroll-mt-20 border-t border-(--logic-border-soft) bg-(--logic-surface) py-32"
+    >
       <div className="mx-auto max-w-7xl px-8 lg:px-24">
         <motion.div className="mx-auto mb-20 max-w-2xl" {...reveal()}>
           <p className="logic-mono mb-4 text-center text-xs font-semibold uppercase tracking-[0.15em] text-(--logic-accent)">
@@ -107,7 +135,6 @@ export function PricingSection() {
           </p>
         </motion.div>
 
-        {/* Comparison Table — Desktop */}
         <motion.div className="hidden overflow-x-auto lg:block" {...reveal(0.08)}>
           <table className={styles.pricingTable}>
             <thead>
@@ -147,7 +174,6 @@ export function PricingSection() {
                   ))}
                 </tr>
               ))}
-              {/* CTA row */}
               <tr>
                 <td />
                 {LANDING_PLANS.map((plan) => (
@@ -158,18 +184,18 @@ export function PricingSection() {
                       "border-b-0 pt-6",
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleLandingPlanCta(plan.id)}
+                    <Link
+                      href={planHref(plan.id)}
+                      onClick={() => stashPendingPlan(plan.id)}
                       className={cn(
-                        "logic-body w-full border py-3 text-sm font-bold transition-colors",
+                        "logic-body inline-flex w-full items-center justify-center border py-3 text-sm font-bold transition-colors",
                         plan.highlight
                           ? "border-(--logic-accent) bg-(--logic-accent) text-white hover:bg-(--logic-accent-deep)"
                           : "border-(--logic-border) bg-transparent text-(--logic-on-surface) hover:border-(--logic-on-surface)",
                       )}
                     >
                       {plan.cta}
-                    </button>
+                    </Link>
                   </td>
                 ))}
               </tr>
@@ -177,7 +203,6 @@ export function PricingSection() {
           </table>
         </motion.div>
 
-        {/* Stacked Cards — Mobile */}
         <motion.div className="flex flex-col gap-6 lg:hidden" {...reveal(0.08)}>
           {LANDING_PLANS.map((plan) => (
             <div
@@ -185,7 +210,7 @@ export function PricingSection() {
               className={cn(
                 "border p-6",
                 plan.highlight
-                  ? "border-l-4 border-l-(--logic-accent) border-(--logic-border) bg-(--logic-accent-muted)"
+                  ? "border-(--logic-border) border-l-4 border-l-(--logic-accent) bg-(--logic-accent-muted)"
                   : "border-(--logic-border) bg-(--logic-surface-container-lowest)",
               )}
             >
@@ -196,29 +221,37 @@ export function PricingSection() {
                 <span className="text-3xl font-bold text-(--logic-on-surface)">
                   {plan.price}
                 </span>
-                <span className="text-sm text-(--logic-secondary)">
-                  {plan.period}
-                </span>
+                {plan.period ? (
+                  <span className="text-sm text-(--logic-secondary)">
+                    {plan.period}
+                  </span>
+                ) : null}
               </div>
               <p className="logic-body mt-1 text-sm text-(--logic-secondary)">
                 {plan.description}
               </p>
-              <div className="mt-4 text-sm text-(--logic-secondary)">
-                {PLAN_FEATURES[plan.id].gen} generations &bull;{" "}
-                {PLAN_FEATURES[plan.id].projects} projects
-              </div>
-              <button
-                type="button"
-                onClick={() => handleLandingPlanCta(plan.id)}
+              <ul className="logic-body mt-4 space-y-2 text-sm text-(--logic-on-surface)">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex gap-2">
+                    <span className="text-(--logic-accent)" aria-hidden>
+                      —
+                    </span>
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={planHref(plan.id)}
+                onClick={() => stashPendingPlan(plan.id)}
                 className={cn(
-                  "logic-body mt-4 w-full border py-3 text-sm font-bold transition-colors",
+                  "logic-body mt-5 inline-flex w-full items-center justify-center border py-3 text-sm font-bold transition-colors",
                   plan.highlight
-                    ? "border-(--logic-accent) bg-(--logic-accent) text-white"
-                    : "border-(--logic-border) text-(--logic-on-surface)",
+                    ? "border-(--logic-accent) bg-(--logic-accent) text-white hover:bg-(--logic-accent-deep)"
+                    : "border-(--logic-border) text-(--logic-on-surface) hover:border-(--logic-on-surface)",
                 )}
               >
                 {plan.cta}
-              </button>
+              </Link>
             </div>
           ))}
         </motion.div>

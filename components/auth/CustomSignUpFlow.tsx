@@ -243,10 +243,13 @@ export default function CustomSignUpFlow() {
     if (!signUp || !isSignedIn || postAuthHandledRef.current) return;
     postAuthHandledRef.current = true;
 
-    const pendingPlanId = sessionStorage.getItem("pendingPlanId") as
-      | "STANDARD"
-      | "PRO"
-      | null;
+    const planFromQuery = new URLSearchParams(window.location.search).get(
+      "plan",
+    );
+    const planFromStorage = sessionStorage.getItem("pendingPlanId");
+    const rawPlan = planFromStorage || planFromQuery;
+    const pendingPlanId =
+      rawPlan === "STANDARD" || rawPlan === "PRO" ? rawPlan : null;
     const inviteToken =
       new URLSearchParams(window.location.search).get("invite_token") ||
       sessionStorage.getItem("pendingInviteToken");

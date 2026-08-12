@@ -6,8 +6,8 @@ import { revealAnimation } from "@/lib/utils";
 import styles from "./page.module.css";
 
 const TYPESCALE = [
-  { label: "Display", size: "4rem", weight: "900", font: "logic-display" },
-  { label: "Headline", size: "2.5rem", weight: "800", font: "logic-display" },
+  { label: "Display", size: "4rem", weight: "400", font: "logic-display" },
+  { label: "Headline", size: "2.5rem", weight: "400", font: "logic-display" },
   { label: "Title", size: "1.5rem", weight: "700", font: "logic-body" },
   { label: "Body", size: "1rem", weight: "400", font: "logic-body" },
   { label: "Label", size: "0.75rem", weight: "600", font: "logic-mono" },
@@ -42,7 +42,6 @@ export function DetailSection() {
           </p>
         </motion.div>
 
-        {/* Typography specimen */}
         <motion.div
           className="border border-(--logic-border) bg-(--logic-surface) p-8 lg:p-12"
           {...reveal(0.08)}
@@ -52,9 +51,20 @@ export function DetailSection() {
           </p>
 
           <div className="space-y-0">
-            {TYPESCALE.map((item) => (
+            {TYPESCALE.map((item, index) => (
               <div key={item.label} className={styles.specimenRow}>
-                <div className={`${styles.specimenBar} line-fill`} />
+                <motion.div
+                  className={styles.specimenBar}
+                  aria-hidden
+                  initial={shouldReduceMotion ? false : { scaleY: 0 }}
+                  whileInView={{ scaleY: 1 }}
+                  viewport={{ once: true, amount: 0.6 }}
+                  transition={{
+                    duration: 0.45,
+                    delay: index * 0.06,
+                    ease: [0.25, 1, 0.5, 1],
+                  }}
+                />
                 <div className={styles.specimenSample}>
                   <span
                     className={`${item.font} block`}
@@ -75,7 +85,6 @@ export function DetailSection() {
           </div>
         </motion.div>
 
-        {/* Quality checks */}
         <motion.div className="mt-12" {...reveal(0.12)}>
           <div className="flex flex-wrap gap-6">
             {QUALITY_CHECKS.map((item) => (

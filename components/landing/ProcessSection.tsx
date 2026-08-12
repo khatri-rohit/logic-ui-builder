@@ -36,7 +36,7 @@ export function ProcessSection() {
   const reveal = (delay = 0) => revealAnimation(shouldReduceMotion, delay);
 
   return (
-    <section className="bg-(--logic-surface) py-32">
+    <section id="process" className="scroll-mt-20 bg-(--logic-surface) py-32">
       <div className="mx-auto max-w-7xl px-8 lg:px-24">
         <motion.div className="mb-20 max-w-2xl" {...reveal()}>
           <p className="logic-mono mb-4 text-xs font-semibold uppercase tracking-[0.15em] text-(--logic-accent)">
@@ -53,18 +53,25 @@ export function ProcessSection() {
           </p>
         </motion.div>
 
-        {/* Horizontal timeline */}
-        <div className="flex flex-col gap-16 lg:flex-row lg:items-start lg:gap-0">
+        <div className="grid gap-12 lg:grid-cols-3 lg:gap-0">
           {PROCESS_STEPS.map((step, index) => (
             <motion.div
               key={step.step}
-              className="scroll-item flex flex-1 flex-col lg:px-6"
+              className="relative flex flex-col lg:px-6"
               {...reveal(index * 0.1)}
             >
-              {/* Connector line */}
-              {index > 0 && (
-                <div className={`${styles.processLine} hidden lg:block`}>
-                  <div className={`${styles.processLineFill} line-fill`} />
+              {index < PROCESS_STEPS.length - 1 && (
+                <div
+                  className={`${styles.processConnector} hidden lg:block`}
+                  aria-hidden
+                >
+                  <motion.div
+                    className={styles.processConnectorFill}
+                    initial={shouldReduceMotion ? false : { scaleX: 0 }}
+                    whileInView={{ scaleX: 1 }}
+                    viewport={{ once: true, amount: 0.4 }}
+                    transition={{ duration: 0.8, delay: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                  />
                 </div>
               )}
 
@@ -79,13 +86,6 @@ export function ProcessSection() {
               <p className="logic-body mt-3 max-w-[30ch] leading-relaxed text-(--logic-secondary)">
                 {step.description}
               </p>
-
-              {/* Mobile connector */}
-              {index < PROCESS_STEPS.length - 1 && (
-                <div className={`${styles.processLine} ml-0.5 mt-8 w-12 lg:hidden`}>
-                  <div className={`${styles.processLineFill} line-fill`} />
-                </div>
-              )}
             </motion.div>
           ))}
         </div>

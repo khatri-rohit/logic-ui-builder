@@ -33,11 +33,9 @@ const LandingPage = () => {
       className={`${styles.logicRoot} ${displayFont.variable} ${bodyFont.variable} ${monoFont.variable} selection:bg-(--logic-accent) selection:text-white`}
     >
       <Header />
+      <div className={styles.decorativeLine} aria-hidden />
 
-      <div className={styles.progressBar} data-progress-bar />
-      <div className={styles.decorativeLine} />
-
-      <main className="overflow-hidden pt-[56px]">
+      <main className="overflow-hidden pt-14">
         <HeroSection />
         <ProcessSection />
         <DetailSection />
@@ -49,6 +47,7 @@ const LandingPage = () => {
 
       <div
         className={`${styles.canvasNoise} pointer-events-none fixed inset-0`}
+        aria-hidden
       />
     </div>
   );

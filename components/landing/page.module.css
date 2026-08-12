@@ -1,208 +1,134 @@
 /* stylelint-disable selector-pseudo-class-no-unknown */
 
 .logicRoot {
-  --logic-bg: #f7f9fb;
-  --logic-surface: #f7f9fb;
-  --logic-surface-bright: #f7f9fb;
-  --logic-surface-container-low: #f0f4f7;
-  --logic-surface-container: #e8eff3;
-  --logic-surface-container-high: #e1e9ee;
-  --logic-surface-container-highest: #d9e4ea;
+  --logic-bg: #fafafa;
+  --logic-surface: #ffffff;
+  --logic-surface-bright: #ffffff;
+  --logic-surface-container-low: #f5f5f5;
+  --logic-surface-container: #f0f0f0;
+  --logic-surface-container-high: #e6e6e6;
+  --logic-surface-container-highest: #d6d6d6;
   --logic-surface-container-lowest: #ffffff;
-  --logic-on-surface: #2a3439;
-  --logic-on-surface-variant: #566166;
-  --logic-secondary: #575f75;
-  --logic-primary: #4d44e3;
-  --logic-primary-fixed: #124af0;
-  --logic-primary-deep: #002ca3;
-  --logic-outline-variant: #a9b4b9;
-  --logic-border: #a9b4b9;
-  --logic-border-soft: #c8d2d8;
-  --logic-surface-muted: #edf2f6;
-  --logic-surface-subtle: #e7edf2;
-  --logic-muted: #67737d;
+  --logic-on-surface: #0a0a0a;
+  --logic-on-surface-variant: #3d3d3d;
+  --logic-secondary: #6b6b6b;
+  --logic-accent: #ff6d00;
+  --logic-accent-deep: #cc5800;
+  --logic-accent-muted: rgba(255, 109, 0, 0.12);
+  --logic-outline-variant: #a0a0a0;
+  --logic-border: #e0e0e0;
+  --logic-border-soft: #ebebeb;
+  --logic-surface-muted: #ededed;
+  --logic-surface-subtle: #f0f0f0;
+  --logic-muted: #8a8a8a;
 
   background: var(--logic-bg);
   color: var(--logic-on-surface);
 }
 
 :global(.dark) .logicRoot {
-  --logic-bg: #060a10;
-  --logic-surface: #070e15;
-  --logic-surface-bright: #0b121b;
-  --logic-surface-container-low: #101b26;
-  --logic-surface-container: #162331;
-  --logic-surface-container-high: #1f3041;
-  --logic-surface-container-highest: #283a4d;
-  --logic-surface-container-lowest: #0b121a;
-  --logic-on-surface: #e9eff7;
-  --logic-on-surface-variant: #b2c0cf;
-  --logic-secondary: #95a8bc;
-  --logic-primary: #8d9eff;
-  --logic-primary-fixed: #7f9dff;
-  --logic-primary-deep: #6088ff;
-  --logic-outline-variant: #3b4c60;
-  --logic-border: #435469;
-  --logic-border-soft: #3a495d;
-  --logic-surface-muted: #111b26;
-  --logic-surface-subtle: #182332;
-  --logic-muted: #9aabbe;
+  --logic-bg: #0a0a0a;
+  --logic-surface: #141414;
+  --logic-surface-bright: #1a1a1a;
+  --logic-surface-container-low: #111111;
+  --logic-surface-container: #1e1e1e;
+  --logic-surface-container-high: #282828;
+  --logic-surface-container-highest: #323232;
+  --logic-surface-container-lowest: #0f0f0f;
+  --logic-on-surface: #f0f0f0;
+  --logic-on-surface-variant: #b0b0b0;
+  --logic-secondary: #8a8a8a;
+  --logic-accent: #ff8a33;
+  --logic-accent-deep: #ff6d00;
+  --logic-accent-muted: rgba(255, 109, 0, 0.15);
+  --logic-outline-variant: #404040;
+  --logic-border: #2a2a2a;
+  --logic-border-soft: #1e1e1e;
+  --logic-surface-muted: #111111;
+  --logic-surface-subtle: #161616;
+  --logic-muted: #6b6b6b;
 
   background: var(--logic-bg);
   color: var(--logic-on-surface);
 }
 
 .logicRoot :global(.logic-body) {
-  font-family: var(--font-logic-body), var(--font-sans), sans-serif;
+  font-family: var(--font-logic-body), sans-serif;
+}
+
+.logicRoot :global(.logic-display) {
+  font-family: var(--font-logic-display), sans-serif;
+}
+
+.logicRoot :global(.logic-mono) {
+  font-family: var(--font-logic-mono), monospace;
 }
 
 .displayText {
-  line-height: 1.1;
-  letter-spacing: -0.04em;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .labelText {
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.gradientText {
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+.accentText {
+  color: var(--logic-accent);
 }
 
 .btnPrimary {
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
-  );
-  box-shadow: 0 8px 16px rgba(18, 74, 240, 0.15);
-  color: #ffffff;
+  background: var(--logic-on-surface);
+  color: var(--logic-surface-container-lowest);
   transition: all 200ms ease-in-out;
+  border-radius: 0;
 }
 
 .btnPrimary:hover {
-  box-shadow: 0 12px 24px rgba(18, 74, 240, 0.25);
-  transform: translateY(-1px);
+  background: var(--logic-accent);
+  color: #ffffff;
 }
 
 .btnSecondary {
-  background: var(--logic-surface-container-highest);
+  background: transparent;
+  border: 1px solid var(--logic-border);
   color: var(--logic-on-surface);
   transition: all 200ms ease-in-out;
+  border-radius: 0;
 }
 
 .btnSecondary:hover {
-  background: var(--logic-surface-container-high);
+  background: var(--logic-on-surface);
+  border-color: var(--logic-on-surface);
+  color: var(--logic-surface-container-lowest);
 }
 
 :global(.dark) .btnSecondary {
-  background: rgba(22, 33, 48, 0.88);
-}
-
-:global(.dark) .btnSecondary:hover {
-  background: rgba(31, 46, 66, 0.92);
-}
-
-.ambientShadow {
-  box-shadow: 0 24px 48px rgba(28, 27, 28, 0.06);
-}
-
-.cardShadow {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05);
-}
-
-.pricingFeaturedCard {
-  transform: translateY(-16px);
-  border-color: color-mix(in srgb, var(--logic-primary-fixed) 34%, transparent);
-  box-shadow: 0 28px 56px rgba(18, 74, 240, 0.16);
-}
-
-.pricingBadge {
-  border: 1px solid
-    color-mix(in srgb, var(--logic-primary-fixed) 50%, transparent);
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
-  );
-  border-radius: 999px;
-  color: #ffffff;
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  padding: 0.35rem 0.8rem;
-  text-transform: uppercase;
-}
-
-.pricingPrimaryCta,
-.pricingSecondaryCta {
-  border-radius: 0.625rem;
-  cursor: pointer;
-  font-size: 0.92rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0.95rem 1.15rem;
-  transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease,
-    border-color 180ms ease;
-  width: 100%;
-}
-
-.pricingPrimaryCta {
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--logic-primary-fixed) 65%, transparent);
-  box-shadow: 0 10px 24px rgba(18, 74, 240, 0.22);
-  color: #ffffff;
-}
-
-.pricingPrimaryCta:hover {
-  box-shadow: 0 14px 30px rgba(18, 74, 240, 0.28);
-  transform: translateY(-1px);
-}
-
-.pricingSecondaryCta {
-  background: var(--logic-surface-container);
-  border: 1px solid var(--logic-border-soft);
-  color: var(--logic-on-surface);
-}
-
-.pricingSecondaryCta:hover {
-  background: var(--logic-surface-container-high);
-  transform: translateY(-1px);
-}
-
-:global(.dark) .pricingFeaturedCard {
-  box-shadow: 0 24px 48px rgba(6, 10, 16, 0.42);
-}
-
-:global(.dark) .pricingPrimaryCta {
-  border-color: color-mix(in srgb, var(--logic-primary-fixed) 54%, transparent);
-}
-
-:global(.dark) .pricingSecondaryCta {
-  background: var(--logic-surface-container-low);
   border-color: var(--logic-border);
   color: var(--logic-on-surface);
 }
 
-:global(.dark) .pricingSecondaryCta:hover {
-  background: var(--logic-surface-container);
+:global(.dark) .btnSecondary:hover {
+  background: var(--logic-on-surface);
+  border-color: var(--logic-on-surface);
+  color: var(--logic-bg);
+}
+
+.ambientShadow {
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.04);
+}
+
+:global(.dark) .ambientShadow {
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+
+.cardShadow {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.03);
+}
+
+:global(.dark) .cardShadow {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
 .canvasNoise {
@@ -212,43 +138,198 @@
     transparent 0
   );
   background-size: 24px 24px;
-  opacity: 0.03;
+  opacity: 0.02;
 }
 
 :global(.dark) .canvasNoise {
   background-image: radial-gradient(
     circle at 1px 1px,
-    rgba(224, 236, 255, 0.42) 1px,
+    rgba(255, 255, 255, 0.3) 1px,
     transparent 0
   );
-  opacity: 0.025;
+  opacity: 0.015;
+}
+
+/* Reading progress bar */
+.progressBar {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: var(--logic-accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+
+/* Geometric grid pattern for hero */
+.heroGrid {
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent 49.8%,
+      var(--logic-border) 49.9%,
+      var(--logic-border) 50.1%,
+      transparent 50.2%
+    );
+  background-size: 60px 60px;
+  opacity: 0.3;
+}
+
+:global(.dark) .heroGrid {
+  opacity: 0.15;
+}
+
+/* Orange decorative vertical line */
+.decorativeLine {
+  position: fixed;
+  left: 10%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--logic-accent);
+  opacity: 0.12;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Hero accent underline */
+.lineSweep {
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lineSweep {
+    animation: logic-line-sweep 0.7s cubic-bezier(0.25, 1, 0.5, 1) 0.45s both;
+  }
+}
+
+@keyframes logic-line-sweep {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Step number in process section */
+.stepNumber {
+  font-size: 6rem;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--logic-accent);
+  letter-spacing: -0.04em;
+}
+
+/* Process connecting line between columns */
+.processConnector {
+  position: absolute;
+  top: 2.75rem;
+  left: calc(50% + 1.5rem);
+  right: -1.5rem;
+  height: 2px;
+  background: var(--logic-border);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.processConnectorFill {
+  height: 100%;
+  width: 100%;
+  background: var(--logic-accent);
+  transform-origin: left center;
+}
+
+/* Typography specimen */
+.specimenRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--logic-border-soft);
+}
+
+.specimenBar {
+  width: 4px;
+  height: 2rem;
+  background: var(--logic-accent);
+  transform-origin: bottom center;
+  flex-shrink: 0;
+}
+
+.specimenSample {
+  flex: 1;
+}
+
+/* Pricing table */
+.pricingTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pricingTable th,
+.pricingTable td {
+  padding: 1rem 1.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--logic-border-soft);
+}
+
+.pricingTable th {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--logic-secondary);
+}
+
+.pricingTable td:first-child,
+.pricingTable th:first-child {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.pricingHighlight {
+  border-left: 4px solid var(--logic-accent);
+  background: var(--logic-accent-muted);
+}
+
+/* CTA section */
+.ctaSection {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+:global(.dark) .ctaSection {
+  background: #0a0a0a;
+}
+
+@media (max-width: 767px) {
+  .pricingTable th,
+  .pricingTable td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .stepNumber {
+    font-size: 3rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .btnPrimary,
-  .btnSecondary,
-  .pricingPrimaryCta,
-  .pricingSecondaryCta {
+  .btnSecondary {
     transition: none;
   }
 
   .btnPrimary:hover {
-    box-shadow: 0 8px 16px rgba(18, 74, 240, 0.15);
-    transform: none;
+    background: var(--logic-on-surface);
   }
 
-  .pricingPrimaryCta:hover,
-  .pricingSecondaryCta:hover {
-    transform: none;
-  }
-
-  .pricingFeaturedCard {
-    transform: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .pricingFeaturedCard {
-    transform: none;
+  .btnSecondary:hover {
+    background: transparent;
+    border-color: var(--logic-border);
+    color: var(--logic-on-surface);
   }
 }

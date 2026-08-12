@@ -1,38 +1,33 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
-import { Button } from "@/components/ui/button";
 import { revealAnimation } from "@/lib/utils";
 import styles from "./page.module.css";
 
 export function CTASection() {
-  const router = useRouter();
   const shouldReduceMotion = useReducedMotion();
   const reveal = () => revealAnimation(shouldReduceMotion);
 
-  const startOnboarding = () => {
-    router.push("/sign-up");
-  };
-
   return (
     <motion.section
-      className="flex items-center justify-center bg-(--logic-surface) px-8 py-48 text-center"
+      className={`${styles.ctaSection} flex items-center justify-center px-8 py-48 text-center`}
       {...reveal()}
     >
-      <div className="max-w-3xl">
+      <div className="max-w-4xl">
         <h2
-          className={`${styles.displayText} mb-12 text-5xl font-extrabold text-(--logic-on-surface) lg:text-7xl`}
+          className={`${styles.displayText} logic-display text-[clamp(4rem,12vw,9rem)] font-black leading-[1.05] text-white`}
         >
-          Ready to build?
+          READY TO
+          <br />
+          BUILD?
         </h2>
-        <Button
-          type="button"
-          onClick={startOnboarding}
-          className={`${styles.btnPrimary} logic-body rounded-md px-12 py-8 text-lg font-bold`}
+        <Link
+          href="/sign-up"
+          className="logic-body mt-12 inline-block bg-white px-12 py-4 text-lg font-bold text-[#0a0a0a] transition-colors hover:bg-[#ff6d00] hover:text-white"
         >
           Generate your first UI
-        </Button>
+        </Link>
       </div>
     </motion.section>
   );

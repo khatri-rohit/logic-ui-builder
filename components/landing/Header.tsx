@@ -1,21 +1,57 @@
+"use client";
+
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { LandingProgressBar } from "./LandingProgressBar";
+
+const NAV_LINKS = [
+  { href: "#process", label: "Process" },
+  { href: "#pricing", label: "Pricing" },
+] as const;
 
 type LandingHeaderProps = {
   ctaHref?: string;
 };
 
-export function LandingHeader({ ctaHref = "/sign-up" }: LandingHeaderProps) {
+export function Header({ ctaHref = "/sign-up" }: LandingHeaderProps) {
   return (
-    <nav className="logic-nav fixed left-0 top-0 z-50 flex w-full max-w-full items-center justify-between border-b border-(--logic-border-soft) bg-(--logic-bg) px-6 py-4">
-      <div className="text-2xl font-black uppercase tracking-tighter text-black">
-        LOGIC
+    <header className="fixed inset-x-0 top-0 z-50">
+      <div className="flex h-14 w-full items-center gap-4 border-b border-(--logic-border) bg-(--logic-surface)/90 px-6 backdrop-blur-md">
+        <Link href="/" className="flex shrink-0 items-center gap-3">
+          <span className="logic-display text-lg uppercase tracking-tight text-(--logic-on-surface)">
+            LOGIC
+          </span>
+          <span className="logic-mono hidden text-[10px] font-medium uppercase tracking-[0.18em] text-(--logic-secondary) md:inline">
+            Interface Engine
+          </span>
+        </Link>
+
+        <nav
+          className="ml-auto hidden items-center gap-6 sm:flex"
+          aria-label="Landing"
+        >
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="logic-mono text-[10px] font-medium uppercase tracking-[0.14em] text-(--logic-secondary) transition-colors hover:text-(--logic-on-surface)"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-2 sm:ml-4">
+          <ThemeToggle className="border-(--logic-border) bg-transparent text-(--logic-secondary) hover:bg-(--logic-surface-container) hover:text-(--logic-on-surface)" />
+          <Link
+            href={ctaHref}
+            className="logic-body inline-flex h-9 items-center bg-(--logic-on-surface) px-4 text-[11px] font-bold uppercase tracking-[0.08em] text-(--logic-surface-container-lowest) transition-colors hover:bg-(--logic-accent) hover:text-white"
+          >
+            Try Now
+          </Link>
+        </div>
       </div>
-      <Link
-        href={ctaHref}
-        className="inline-flex min-h-11 items-center border border-black bg-black px-5 py-2 text-sm font-bold text-white transition-all duration-100 ease-in-out hover:bg-white hover:text-black active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:ring-offset-(--logic-bg)"
-      >
-        Try Now
-      </Link>
-    </nav>
+      <LandingProgressBar />
+    </header>
   );
 }

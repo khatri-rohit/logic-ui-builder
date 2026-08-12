@@ -120,7 +120,7 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
 
       const perfTargets = Array.from(
         root.querySelectorAll<HTMLElement>(
-          ".hero-canvas, .stagger-card, .scroll-item, .line-fill, .line-sweep",
+          ".scroll-item, .line-fill, .line-sweep, .hero-grid-layer",
         ),
       );
 
@@ -144,17 +144,17 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
       });
 
       const lineSweepStart = 0.95;
-      const lineSweepEnd =
-        lineSweeps.length > 0
-          ? lineSweepStart + 0.6 + 0.08 * (lineSweeps.length - 1)
-          : lineSweepStart + 0.6;
-      const heroCanvasStart = lineSweepEnd - 0.35;
-      const cardStart = heroCanvasStart + 0.5;
 
+      // Reading progress bar
+      const progressBar = root.querySelector<HTMLElement>(
+        "[data-progress-bar]",
+      );
+
+      // Hero page load animations
       trackAnimation(
         animate([
           [
-            ".logic-nav",
+            "header",
             { y: [-24, 0], opacity: [0, 1] },
             { at: 0, duration: 0.45, ease: powerThreeOut },
           ],
@@ -178,24 +178,10 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
               ease: powerTwoOut,
             },
           ],
-          [
-            ".hero-canvas",
-            { y: [40, 0], scale: [0.98, 1], opacity: [0, 1] },
-            { at: heroCanvasStart, duration: 0.8, ease: powerThreeOut },
-          ],
-          [
-            ".stagger-card",
-            { y: [24, 0], opacity: [0, 1] },
-            {
-              at: cardStart,
-              duration: 0.5,
-              delay: stagger(0.08),
-              ease: powerThreeOut,
-            },
-          ],
         ]),
       );
 
+      // Typing animation
       trackAnimation(
         animate(0, typingText.length, {
           duration: 2.6,
@@ -223,8 +209,9 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
         ),
       );
 
+      // Hero grid parallax
       const heroGridLayer = root.querySelector<HTMLElement>(".hero-grid-layer");
-      const heroSection = root.querySelector<HTMLElement>(".hero-section");
+      const heroSection = root.querySelector<HTMLElement>("section");
 
       if (heroGridLayer && heroSection) {
         let parallaxTarget = 0;
@@ -262,6 +249,23 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
         });
       }
 
+      // Reading progress bar
+      if (progressBar) {
+        const updateProgress = () => {
+          const scrollTop = window.scrollY;
+          const docHeight = document.documentElement.scrollHeight;
+          const winHeight = window.innerHeight;
+          const scrollPercent = scrollTop / (docHeight - winHeight);
+          progressBar.style.transform = `scaleX(${Math.min(scrollPercent, 1)})`;
+        };
+
+        window.addEventListener("scroll", updateProgress, { passive: true });
+        cleanupTasks.push(() => {
+          window.removeEventListener("scroll", updateProgress);
+        });
+      }
+
+      // Scroll-triggered reveals
       const revealedItems = new WeakSet<Element>();
       cleanupTasks.push(
         inView(
@@ -286,6 +290,7 @@ export function LandingMotion({ typingText }: LandingMotionProps) {
         ),
       );
 
+      // Scroll-triggered line fills
       const filledLines = new WeakSet<Element>();
       cleanupTasks.push(
         inView(

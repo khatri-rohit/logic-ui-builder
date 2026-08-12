@@ -1,8 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, PlayCircle, Sparkles } from "lucide-react";
+import { ArrowRight, PlayCircle } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { heroVisualRevealAnimation, revealAnimation } from "@/lib/utils";
@@ -24,7 +23,7 @@ export function HeroSection() {
 
   return (
     <motion.section
-      className="relative mx-auto md:m-0 flex min-h-screen w-full flex-col items-center gap-16 overflow-hidden px-6 py-20 lg:flex-row lg:gap-24 lg:px-8 xl:px-12 lg:py-0"
+      className="relative mx-auto flex min-h-screen w-full flex-col items-center overflow-hidden px-8 pt-24 lg:flex-row lg:px-16 xl:px-24"
       {...reveal()}
     >
       <VideoModal
@@ -32,40 +31,43 @@ export function HeroSection() {
         onOpenChange={setOpen}
         videoUrl="/Logic_ui-builder-final.mp4"
       />
+
+      {/* Geometric grid background */}
+      <div className={`${styles.heroGrid} pointer-events-none absolute inset-0 hero-grid-layer`} />
+
+      {/* Left: Editorial headline */}
       <motion.div
-        className="z-10 flex w-full flex-col justify-center space-y-10 pt-12 lg:w-1/2 lg:flex-1 lg:pt-0 lg:px-15 xl:px-24"
+        className="z-10 flex w-full flex-col justify-center pt-12 lg:w-3/5 lg:pt-0"
         {...reveal(0.08)}
       >
-        <div className="inline-flex w-max items-center space-x-2 rounded-full bg-(--logic-surface-container-low) px-4 py-2">
-          <Sparkles
-            className="h-4 w-4 text-(--logic-primary-fixed)"
-            aria-hidden
-          />
-          <span
-            className={`${styles.labelText} logic-body text-xs font-bold text-(--logic-secondary)`}
-          >
-            AI-Powered Design
-          </span>
+        <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-(--logic-secondary)">
+          <span className="inline-block h-3 w-3 bg-(--logic-accent)" />
+          <span className="logic-mono">v2.0 — Precision Interface Engine</span>
         </div>
 
         <h1
-          className={`${styles.displayText} text-5xl font-extrabold text-(--logic-on-surface) lg:text-5xl xl:text-6xl 2xl:text-7xl`}
+          className={`${styles.displayText} logic-display mt-6 text-[clamp(3.5rem,10vw,8rem)] font-black leading-[1.05] text-(--logic-on-surface)`}
         >
-          Turn ideas into <br />
-          <span className={styles.gradientText}>production-ready</span> <br />
-          UI instantly.
+          TURN IDEAS
+          <br />
+          <span className={styles.accentText}>INTO UI</span>
+          <br />
+          INSTANTLY.
         </h1>
 
-        <p className="logic-body max-w-lg text-lg leading-relaxed text-(--logic-secondary) lg:text-base xl:text-xl">
+        {/* Animated orange underline */}
+        <div className="line-sweep mt-2 h-[8px] w-full max-w-[400px] bg-(--logic-accent)" />
+
+        <p className="logic-body mt-8 max-w-lg text-lg leading-relaxed text-(--logic-secondary)">
           Skip the boilerplate. Describe your vision, and our engine generates
           modular, responsive components ready for your codebase.
         </p>
 
-        <div className="flex flex-col items-start gap-6 pt-4 sm:flex-row sm:items-center">
+        <div className="mt-10 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
           <Button
             type="button"
             onClick={startOnboarding}
-            className={`${styles.btnPrimary} logic-body inline-flex items-center gap-2 rounded-md px-8 py-6.5 text-base font-semibold cursor-pointer`}
+            className={`${styles.btnPrimary} logic-body inline-flex items-center gap-2 px-8 py-6 text-base font-semibold`}
           >
             <span>Build your first UI free</span>
             <ArrowRight className="h-4 w-4" aria-hidden />
@@ -73,7 +75,7 @@ export function HeroSection() {
           <Button
             type="button"
             onClick={() => setOpen(true)}
-            className="logic-body bg-transparent inline-flex items-center gap-2 font-medium text-(--logic-secondary) transition-colors duration-200 hover:bg-transparent hover:text-(--logic-on-surface) cursor-pointer"
+            className="logic-body inline-flex cursor-pointer items-center gap-2 bg-transparent font-medium text-(--logic-secondary) transition-colors duration-200 hover:bg-transparent hover:text-(--logic-on-surface)"
           >
             <PlayCircle className="h-5 w-5" aria-hidden />
             <span>Watch Demo</span>
@@ -81,28 +83,58 @@ export function HeroSection() {
         </div>
       </motion.div>
 
+      {/* Right: Editorial mockup */}
       <motion.div
-        className={`relative flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-2xl bg-(--logic-surface-container-low) p-4 sm:p-6 md:p-8 lg:w-10/12 lg:flex-1 ${styles.ambientShadow}`}
+        className="relative mt-16 w-full overflow-hidden lg:mt-0 lg:w-2/5 lg:pl-12"
         {...heroVisualReveal}
       >
-        <div className="absolute inset-0 bg-linear-to-br from-[rgba(133,130,255,0.2)] to-transparent mix-blend-multiply" />
-        <div
-          className={`relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-(--logic-surface-container-lowest) ${styles.cardShadow}`}
-        >
-          <div className="flex h-10 items-center gap-2 border-b border-[rgba(169,180,185,0.25)] bg-(--logic-surface-container-low) px-4">
-            <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
-            <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
-            <div className="h-2.5 w-2.5 rounded-full bg-[rgba(169,180,185,0.5)]" />
+        <div className="relative flex aspect-[4/5] w-full flex-col border border-(--logic-border) bg-(--logic-surface-container-low)">
+          {/* Editorial composition header */}
+          <div className="flex items-center justify-between border-b border-(--logic-border-soft) px-5 py-3">
+            <span className="logic-mono text-[10px] uppercase tracking-widest text-(--logic-secondary)">
+              Preview
+            </span>
+            <span className="logic-mono text-[10px] text-(--logic-accent)">
+              v2.0.1
+            </span>
           </div>
-          <div className="relative min-h-0 flex-1 w-full">
-            <Image
-              fill
-              priority
-              sizes="(min-width: 1280px) 42vw, (min-width: 1024px) 46vw, (min-width: 640px) 88vw, 92vw"
-              src="/hero-section.png"
-              alt="Production UI preview with layered interface panels"
-              className="object-cover object-center"
-            />
+
+          {/* Abstract editorial layout */}
+          <div className="flex flex-1 flex-col gap-4 p-5">
+            <div className="flex gap-4">
+              <div className="h-16 w-16 bg-(--logic-accent)" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-3/4 bg-(--logic-on-surface)" />
+                <div className="h-3 w-1/2 bg-(--logic-border)" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="aspect-square bg-(--logic-border)" />
+              <div className="aspect-square bg-(--logic-on-surface)" />
+              <div className="aspect-square bg-(--logic-accent-muted)" />
+            </div>
+
+            <div className="mt-auto space-y-2">
+              <div className="h-2 w-full bg-(--logic-border)" />
+              <div className="h-2 w-3/4 bg-(--logic-border-soft)" />
+              <div className="flex gap-2 pt-2">
+                <div className="h-6 flex-1 border border-(--logic-border)" />
+                <div className="h-6 w-16 bg-(--logic-accent)" />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="flex items-center justify-between border-t border-(--logic-border-soft) px-5 py-2">
+            <div className="flex gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-(--logic-accent)" />
+              <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
+              <div className="h-2 w-2 rounded-full bg-(--logic-border)" />
+            </div>
+            <span className="logic-mono text-[9px] uppercase tracking-widest text-(--logic-secondary)">
+              Editorial
+            </span>
           </div>
         </div>
       </motion.div>

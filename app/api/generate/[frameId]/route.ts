@@ -512,6 +512,7 @@ export async function POST(
           responseFrameId,
           regeneratePrompt,
           "frame",
+          { w: sourceFrame.w, h: sourceFrame.h },
         );
         generatedCode = frameResult.code;
 

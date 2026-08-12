@@ -754,6 +754,8 @@ export async function POST(req: NextRequest) {
             sourceFrame.screenName,
             regenerationFrameId,
             stage3Prompt,
+            "screen",
+            { w: sourceFrame.w, h: sourceFrame.h },
           );
 
           persistedScreens[0] = {
@@ -971,6 +973,7 @@ export async function POST(req: NextRequest) {
             const qualityCheck = performDesignQualityCheck(
               finalResult.code,
               spec,
+              assignment.w,
             );
 
             if (!qualityCheck.passed) {
@@ -1134,7 +1137,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
+const performDesignQualityCheck = (
+  code: string,
+  spec: WebAppSpec,
+  viewportWidth?: number,
+) => {
   const syntaxValidation = validateGeneratedTSX(code);
   const issues: string[] = [];
   let score = 10;
@@ -1145,8 +1152,9 @@ const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
     score -= syntaxValidation.issues.length * 2;
   }
 
-  // Major functional layout issue: web designs looking like mobile
-  if (spec.platform === "web") {
+  // Major functional layout issue: web designs looking like mobile on wide artboards
+  const artboardW = viewportWidth ?? (spec.platform === "web" ? 1280 : 390);
+  if (spec.platform === "web" && artboardW >= 1024) {
     const hasNarrowContainer =
       /max-w-sm|max-w-md|max-w-xs|max-w-\[400px\]|max-w-\[500px\]|max-w-\[600px\]|w-96|w-80|w-72/.test(
         code,

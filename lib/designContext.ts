@@ -80,7 +80,7 @@ const BIAS_CORRECTIONS = [
   "NO 3-COLUMN CARDS: Avoid the generic 3-equal-card feature row. Use asymmetric grids or zig-zags.",
   "NO PURE BLACK: Never use #000000. Use Off-Black, Zinc-950, or Charcoal.",
   "NO EQUAL-WEIGHT KPI CARDS: Vary KPI card sizes to create visual hierarchy. Don't make all cards the same size.",
-  "NO NARROW CENTERED COLUMNS: On desktop, use full viewport width. Never trap content in a narrow centered container.",
+  "NO NARROW CENTERED COLUMNS: On wide artboards (≥1024), use full artboard width. Never trap content in a narrow centered container.",
   "NO TEXT-GRAY-500: Use text-[var(--text-secondary)] or text-[var(--text-tertiary)] for secondary text.",
   "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested. Keep surfaces flat.",
   "NO GENERIC EMPTY STATES: Empty states need specific copy, a compact visual element, and one clear action.",

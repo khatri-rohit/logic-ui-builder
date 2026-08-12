@@ -5,6 +5,9 @@ export const GENERATED_SCREEN_LIMITS = {
   mobile: 3,
 } as const;
 
+/** Fallback artboard width when callers omit viewport (should be rare). */
+const WEB_VIEWPORT_FALLBACK_W = 1280;
+
 export const MAX_PROMPT_LENGTH = 5000;
 
 export function truncatePrompt(prompt: string): string {
@@ -425,14 +428,16 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Premium font pairings: use Geist, Satoshi, or Cabinet Grotesk for creative/editorial designs. Default to Inter for utilitarian UIs. NEVER use serif fonts for dashboards or software UIs.
 
 3. Width & Container Standards (CRITICAL - affects all screens)
-- Web screens MUST use at least 90% of available viewport width on desktop
-- Root container: max-w-[1280px] centered or full-bleed for landing/dashboard screens
-- For content/utility screens, use max-w-[1024px] centered for readability
-- NEVER create narrow "card-only" layouts - use full available width
-- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on desktop web layouts
-- If the prompt specifies "dashboard", "admin", "landing" - use full viewport width
-- Forms and lists should use full width with proper max-width constraints
+- Design for the exact artboard width provided in the screen brief — do not assume 1280 or 390 unless that is the stated width
+- Web screens MUST use at least 90% of the provided artboard width
+- Root container: full artboard width, or max-w matching the artboard (e.g. max-w-[1280px] only when artboard is ≥1280)
+- For content/utility screens on wide artboards, max-w-[1024px] centered is OK when artboard is ≥1024
+- NEVER create narrow "card-only" layouts on wide artboards — use full available width
+- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on wide desktop web layouts (artboard ≥1024)
+- If the prompt specifies "dashboard", "admin", "landing" - use full artboard width
+- Forms and lists should use the artboard width with proper max-width constraints
 - Mobile: full-width with 16px horizontal padding
+- Do NOT render a fake OS status bar, notch, or home-indicator — the canvas already provides device chrome
 
 4. Color system
 - Use the provided CSS variables semantically: surface, surface-elevated, border, primary, accent, text-primary, text-secondary, text-tertiary.
@@ -454,10 +459,12 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Loading states must mirror the final layout shape.
 - Asymmetric grids over equal-width cards: use 2fr 1fr 1fr or zig-zag layouts instead of generic 3-equal-card rows.
 
-7. Responsive design
+7. Responsive design & artboard height
 - Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px).
 - Use responsive prefixes (sm:, md:, lg:, xl:) for grid columns, typography scaling, and spacing adjustments.
-- NEVER use h-screen for full-height Hero sections. Use min-h-[100dvh] to prevent layout jumping on mobile browsers.
+- NEVER use h-screen, min-h-screen, min-h-[100vh], or min-h-[100dvh] on the page root / outermost wrapper.
+- min-h-[100dvh] is allowed only on a single intentional hero section — never on the component root that wraps the whole screen.
+- Prefer content-sized roots so the canvas can auto-fit height to the page.
 
 8. React and runtime constraints
 - Client-rendered React only. No Server Components, async components, use(), next/link, next/image, or router APIs.
@@ -514,8 +521,9 @@ Generate designs that would look at home next to Linear, Stripe, Vercel, and Not
 - Use fluid typography with clamp() for headlines: e.g., className="text-[clamp(2rem,5vw,4rem)]"
 - Use responsive grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
 - Use responsive spacing: p-4 md:p-8 lg:p-12
-- NEVER trap content in narrow centered columns on desktop (min-w-full on containers).
-- Use min-h-[100dvh] instead of h-screen for hero sections.
+- NEVER trap content in narrow centered columns on wide artboards (min-w-full on containers).
+- NEVER put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root. Content-size the root; allow min-h-[100dvh] only on one intentional hero section.
+- Match layout to the provided artboard width from the design brief.
 
 ## ACCESSIBILITY-FIRST REQUIREMENTS
 - Semantic HTML: use nav, main, section, article, header, footer appropriately.
@@ -637,7 +645,7 @@ ${DESIGN_VOCABULARY_DIRECTIVE}
 - Default export: export default GeneratedScreen;
 - Uses design tokens (var(--surface), var(--primary), etc.) instead of hardcoded colors
 - Minimum 4 mock data items per list/grid/table component
-- Responsive: works at specified viewport width (1024px-1280px for web)
+- Responsive: works at the exact artboard viewport width provided in the design brief
 `.trim();
 
 
@@ -982,10 +990,12 @@ Define these as inline CSS variables on the root element and use them semantical
 - Container: max-w-full md:max-w-[1024px] lg:max-w-[1280px] mx-auto
 
 ## 11. WIDTH STANDARDS:
-- Landing/Dashboard: max-w-[1280px] centered, use full viewport
-- Content/Utility: max-w-[1024px] centered
-- Forms: max-w-[640px] centered
-- NEVER trap content in narrow centered column on desktop
+- Match the artboard width from the screen brief (do not invent a different viewport)
+- Landing/Dashboard on ≥1280 artboards: full width or max-w-[1280px] centered
+- Content/Utility on ≥1024 artboards: max-w-[1024px] centered is OK
+- Forms on ~640 artboards: use the full artboard width (max-w-[640px] centered)
+- NEVER trap content in a narrow centered column on wide desktop artboards
+- Mobile: do not draw fake OS status bars or home indicators — canvas chrome already exists
 
 ## KEY TAKEAWAY:
 - Use bg-[var(--surface)] for page backgrounds
@@ -1107,7 +1117,8 @@ ANTI-PATTERNS TO AVOID:
 - p-4 on every element. Follow the spacing contract.
 - Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
 - Dashboard content trapped in a narrow centered column. Use the available width.
-- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96) on artboards ≥1024. Wide artboards require full-width or an appropriate max-w matching the artboard.
+- Fake mobile OS chrome (status bar clock, notch, home indicator pill) — the canvas already provides that chrome.
 `.trim();
 
   const generationContract = buildGenerationDesignContract(spec, designContext);
@@ -1186,6 +1197,7 @@ export function buildScreenPrompt(
   userPrompt: string,
   designContext?: DesignContext,
   referenceScreenCode?: string,
+  viewport?: { w: number; h: number },
 ): string {
   const node = tree.find((n) => n.screen === screen) as
     | (ComponentTreeNode & {
@@ -1198,6 +1210,11 @@ export function buildScreenPrompt(
   const componentIntents = node?.componentIntents ?? [];
 
   const isMobile = spec.platform === "mobile";
+  const viewportW =
+    viewport?.w ?? (isMobile ? 390 : WEB_VIEWPORT_FALLBACK_W);
+  const platformViewportLabel = isMobile
+    ? `mobile, ${viewportW}px viewport artboard, touch-first`
+    : `web, ${viewportW}px viewport artboard, design for that width`;
 
   const layoutDirective = layoutArch
     ? `
@@ -1219,7 +1236,8 @@ DESIGN BRIEF:
 - Typography authority: ${spec.typographyAuthority || "body-balanced"}
 - Spacing philosophy: ${spec.spacingPhilosophy || "balanced"}
 - Density: ${spec.contentDensityScore || 3}/5
-- Platform: ${isMobile ? "mobile, 390px viewport, touch-first" : "web, desktop-first, 1280px and wider"}
+- Platform: ${platformViewportLabel}
+- Artboard width: ${viewportW}px (CRITICAL — layout must fit this exact width; do not assume a different desktop or phone size)
 - Navigation directive: ${buildNavDirective(spec.navPattern)}
 - Interaction directive: ${buildInteractionDirective(spec.primaryInteraction)}
 `.trim();

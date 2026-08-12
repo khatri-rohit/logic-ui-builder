@@ -101,12 +101,16 @@ const PLATFORM_RULES: Record<GenerationPlatform, string[]> = {
     "If the requested UI is long or section-heavy, split it into multiple mobile screens instead of one very tall screen.",
     "Name split screens with clear ordered suffixes (for example: Home - 1, Home - 2).",
     "Touch targets minimum 44x44px, use gap-3 (12px) for comfortable spacing",
+    "Do NOT render a fake OS status bar, notch, or home-indicator pill — the canvas already provides device chrome.",
+    "Match layout to the exact artboard width from the screen brief (typically ~390px).",
+    "Do not put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root.",
   ],
   web: [
     "Target desktop web layout with natural full-page vertical flow.",
     "Allow content sections to stack with realistic page height.",
-    "Use full viewport width on desktop (90%+), not narrow centered columns",
-    "NEVER use max-w-sm, max-w-md, w-96, w-80 on web — those are mobile-only widths",
+    "Use at least 90% of the provided artboard width — do not assume 1280px unless that is the artboard width.",
+    "NEVER use max-w-sm, max-w-md, w-96, w-80 on wide web artboards (≥1024) — those are mobile-only widths",
+    "Do not put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root; content-size the root.",
   ],
 };
 
@@ -137,7 +141,10 @@ export function buildEnhancedPrompt({
 
   return [
     "## PROMPT Framework",
-    "- P — Platform: " + (platform === "mobile" ? "mobile (touch-first, 390px viewport)" : "web (desktop-first, 1280px+)"),
+    "- P — Platform: " +
+      (platform === "mobile"
+        ? "mobile (touch-first; match the artboard width from the screen brief, typically ~390px)"
+        : "web (desktop-first; match the artboard width from the screen brief)"),
     "- R — Role & User: Who is the target user, what is their goal with this UI",
     "- O — Output: Screen type, key elements, specific content to display",
     "- M — Mood & Style: Design style, emotional feeling to convey",

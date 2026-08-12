@@ -45,6 +45,7 @@ export async function runScreenGeneration(
   frameId: string,
   basePrompt: string,
   eventPrefix: "screen" | "frame" = "screen",
+  viewport?: { w: number; h: number },
 ): Promise<ScreenResult> {
   const {
     ollama,
@@ -131,6 +132,7 @@ export async function runScreenGeneration(
         promptWithFixes,
         designContext,
         context.referenceScreenCode,
+        viewport,
       ),
       temperature: 0.2,
       abortController,
@@ -319,6 +321,8 @@ export async function runFullGeneration(
       firstJob.screen,
       firstJob.frameId,
       basePrompt,
+      "screen",
+      firstJob.dimensions,
     );
     results[0] = firstResult;
     await onScreenComplete?.(0, firstResult);
@@ -333,12 +337,17 @@ export async function runFullGeneration(
     const chunk = screens.slice(i, i + MAX_CONCURRENT_SCREENS);
 
     const promises = chunk.map((job, chunkIdx) =>
-      runScreenGeneration(context, job.screen, job.frameId, basePrompt).then(
-        async (result) => {
-          results[i + chunkIdx] = result;
-          await onScreenComplete?.(i + chunkIdx, result);
-        },
-      ),
+      runScreenGeneration(
+        context,
+        job.screen,
+        job.frameId,
+        basePrompt,
+        "screen",
+        job.dimensions,
+      ).then(async (result) => {
+        results[i + chunkIdx] = result;
+        await onScreenComplete?.(i + chunkIdx, result);
+      }),
     );
 
     await Promise.all(promises);
@@ -352,6 +361,7 @@ export async function runFrameRegeneration(
   screen: string,
   frameId: string,
   basePrompt: string,
+  viewport?: { w: number; h: number },
 ): Promise<ScreenResult> {
   await context.write({
     type: "frame_start",
@@ -359,5 +369,12 @@ export async function runFrameRegeneration(
     frameId,
   });
 
-  return runScreenGeneration(context, screen, frameId, basePrompt, "frame");
+  return runScreenGeneration(
+    context,
+    screen,
+    frameId,
+    basePrompt,
+    "frame",
+    viewport,
+  );
 }

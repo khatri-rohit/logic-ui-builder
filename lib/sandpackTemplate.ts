@@ -67,8 +67,8 @@ export const SANDBOX_HTML = `<!DOCTYPE html>
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
     }
-    body { min-height: 100vh; }
-    #root { width: 100%; min-height: 100vh; }
+    body { min-height: 0; }
+    #root { width: 100%; min-height: 0; }
 
     /* Light mode design system tokens (default) */
     :root {
@@ -283,9 +283,8 @@ export function buildSandpackFiles(
 ): Record<string, { code: string }> {
   const { dependencies } = extractDependencies(code);
   const origin =
-    parentOrigin || typeof window !== "undefined"
-      ? window.location.origin
-      : "*";
+    parentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : "*");
 
   return {
     "/package.json": {

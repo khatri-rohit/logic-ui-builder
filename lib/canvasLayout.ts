@@ -7,6 +7,7 @@ export const WEB_VIEWPORT_STANDARDS = {
   standard: 1280,
   max: 1440,
   wide: 1920,
+  form: 640,
 } as const;
 
 interface ExistingFrameBounds {
@@ -14,6 +15,16 @@ interface ExistingFrameBounds {
   y: number;
   w: number;
   h: number;
+}
+
+export function getViewportLabel(
+  platform: GenerationPlatform,
+  width: number,
+): string {
+  if (platform === "mobile") {
+    return `mobile ${width}px viewport artboard, touch-first`;
+  }
+  return `web ${width}px viewport artboard, design for that width`;
 }
 
 export function getGenerationLayout(
@@ -26,13 +37,9 @@ export function getGenerationLayout(
       : Math.max(...existingFrames.map((frame) => frame.y + frame.h));
   const startY = lowestEdge + (existingFrames.length > 0 ? H_GAP : 0);
 
-  // Position each screen with its actual width
+  // New generation always starts a fresh left-aligned row below existing frames.
+  const startX = 0;
   let currentX = 0;
-
-  const startX =
-    existingFrames.length === 0
-      ? 0
-      : Math.max(...existingFrames.map((frame) => frame.x + frame.w)) + H_GAP;
 
   return screens.map((screen) => {
     const x = startX + currentX;
@@ -78,9 +85,10 @@ export function getInitialDimensionsForPlatform(
   const type = screenType.toLowerCase();
 
   if (platform === "mobile") {
-    if (type.includes("tablet")) return { w: 768, h: 1024 };
-    if (type.includes("modal") || type.includes("dialog"))
+    // Phone-scale only — tablet widths conflict with phone chrome and MAX_MOBILE_W.
+    if (type.includes("modal") || type.includes("dialog")) {
       return { w: 360, h: 640 };
+    }
     return { w: 390, h: 844 };
   }
 
@@ -90,7 +98,11 @@ export function getInitialDimensionsForPlatform(
   if (type.includes("dashboard") || type.includes("admin"))
     return { w: WEB_VIEWPORT_STANDARDS.standard, h: 900 };
 
-  if (type.includes("settings") || type.includes("profile") || type.includes("account"))
+  if (
+    type.includes("settings") ||
+    type.includes("profile") ||
+    type.includes("account")
+  )
     return { w: WEB_VIEWPORT_STANDARDS.min, h: 700 };
 
   if (type.includes("modal") || type.includes("dialog"))
@@ -99,14 +111,23 @@ export function getInitialDimensionsForPlatform(
   if (type.includes("article") || type.includes("blog") || type.includes("post"))
     return { w: 768, h: 900 };
 
-  if (type.includes("pricing") || type.includes("features") || type.includes("about"))
+  if (
+    type.includes("pricing") ||
+    type.includes("features") ||
+    type.includes("about")
+  )
     return { w: WEB_VIEWPORT_STANDARDS.standard, h: 700 };
 
   if (type.includes("contact") || type.includes("faq") || type.includes("terms"))
     return { w: WEB_VIEWPORT_STANDARDS.min, h: 600 };
 
-  if (type.includes("login") || type.includes("signin") || type.includes("signup") || type.includes("register"))
-    return { w: 480, h: 600 };
+  if (
+    type.includes("login") ||
+    type.includes("signin") ||
+    type.includes("signup") ||
+    type.includes("register")
+  )
+    return { w: WEB_VIEWPORT_STANDARDS.form, h: 600 };
 
   return { w: WEB_VIEWPORT_STANDARDS.min, h: 700 };
 }

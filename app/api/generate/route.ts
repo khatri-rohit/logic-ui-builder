@@ -52,21 +52,16 @@ import type { PipelineContext } from "@/lib/execution/types";
 export const runtime = "nodejs";
 
 const STAGE1_MODELS = [
-  "qwen3-coder-next:cloud",
-  "mistral-large-3:675b-cloud",
+  "deepseek-v4-flash:cloud",
+  "glm-5.2:cloud",
   "gemma4:31b",
 ];
-const STAGE2_MODELS = [
-  "qwen3-coder-next:cloud",
-  "glm-5:cloud",
-  "mistral-large-3:675b-cloud",
-];
+const STAGE2_MODELS = ["deepseek-v4-flash:cloud"];
 const STAGE3_MODELS = [
-  "kimi-k2.6:cloud",
-  "qwen3-coder:480b-cloud",
+  "glm-5.2:cloud",
+  "deepseek-v4-flash:cloud",
   "gemma4:31b",
   "gpt-oss:120b-cloud",
-  "mistral-large-3:675b-cloud",
 ];
 
 const generationBodySchema = generationRequestBodySchema;
@@ -521,7 +516,10 @@ export async function POST(req: NextRequest) {
     let stage3Prompt: string;
     let designContextText: string;
 
-    if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration) {
+    if (
+      (isFrameRegeneration || createNewFrameWithContext) &&
+      sourceGeneration
+    ) {
       designContext = await buildDesignContext({
         prompt: sourceGeneration.prompt,
         platform: toApiPlatform(sourceGeneration.platform),
@@ -631,7 +629,11 @@ export async function POST(req: NextRequest) {
 
       try {
         // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
-        if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration && sourceFrame) {
+        if (
+          (isFrameRegeneration || createNewFrameWithContext) &&
+          sourceGeneration &&
+          sourceFrame
+        ) {
           logger.info("Frame regeneration: skipping Stage 1 & 2", {
             generationId,
             frameId: body.frameId,
@@ -641,8 +643,12 @@ export async function POST(req: NextRequest) {
           const regenerationFrameId = targetFrameId ?? body.frameId!;
 
           // When creating a new frame from context, offset position from source
-          const framePosX = createNewFrameWithContext ? sourceFrame.x + 40 : sourceFrame.x;
-          const framePosY = createNewFrameWithContext ? sourceFrame.y + 40 : sourceFrame.y;
+          const framePosX = createNewFrameWithContext
+            ? sourceFrame.x + 40
+            : sourceFrame.x;
+          const framePosY = createNewFrameWithContext
+            ? sourceFrame.y + 40
+            : sourceFrame.y;
 
           // Pre-populate with an error placeholder so the outer catch handler
           // always writes a valid frame record if the stream is interrupted.
@@ -664,14 +670,16 @@ export async function POST(req: NextRequest) {
           if (createNewFrameWithContext) {
             await write({
               type: "layout",
-              layout: [{
-                screen: sourceFrame.screenName,
-                frameId: regenerationFrameId,
-                x: framePosX,
-                y: framePosY,
-                w: sourceFrame.w,
-                h: sourceFrame.h,
-              }],
+              layout: [
+                {
+                  screen: sourceFrame.screenName,
+                  frameId: regenerationFrameId,
+                  x: framePosX,
+                  y: framePosY,
+                  w: sourceFrame.w,
+                  h: sourceFrame.h,
+                },
+              ],
               platform: toApiPlatform(sourceGeneration.platform),
             });
           }
@@ -882,7 +890,12 @@ export async function POST(req: NextRequest) {
           where: { projectId: project.id },
           select: { screens: true },
         });
-        const existingFrameBounds: Array<{ x: number; y: number; w: number; h: number }> = [];
+        const existingFrameBounds: Array<{
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+        }> = [];
         for (const gen of existingGenerations) {
           const screens = parseGenerationScreens(gen.screens);
           for (const s of screens) {
@@ -890,7 +903,10 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const positions = getGenerationLayout(existingFrameBounds, screensWithDims);
+        const positions = getGenerationLayout(
+          existingFrameBounds,
+          screensWithDims,
+        );
 
         const frameAssignments = screensWithDims.map((screen, index) => ({
           screen: screen.name,

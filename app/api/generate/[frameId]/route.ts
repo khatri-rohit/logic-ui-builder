@@ -35,9 +35,9 @@ export const runtime = "nodejs";
 const STAGE3_MODELS = [
   "gemma3:27b-cloud",
   "qwen3-coder:480b-cloud",
-  "mistral-large-3:675b-cloud",
   "kimi-k2.6:cloud",
   "gpt-oss:120b-cloud",
+  "glm-5.2:cloud",
 ];
 
 const frameRouteParamsSchema = z.object({

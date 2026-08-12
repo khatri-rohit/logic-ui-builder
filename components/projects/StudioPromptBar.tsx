@@ -103,9 +103,7 @@ export function StudioPromptBar({
   React.useEffect(() => {
     if (isGenerating) {
       if (!wasGeneratingRef.current) {
-        setCollapsedPromptHeadline(
-          toHeadline(prompt) || "Generating your UI…",
-        );
+        setCollapsedPromptHeadline(toHeadline(prompt) || "Generating your UI…");
       }
       wasGeneratingRef.current = true;
       setPhase("generating");
@@ -211,7 +209,7 @@ export function StudioPromptBar({
                   : { opacity: 0, y: 8, scale: 0.98 }
               }
               transition={motionTransition}
-              className="w-full max-w-xl"
+              className="w-full max-w-md"
             >
               <div
                 className={cn(

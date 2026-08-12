@@ -492,13 +492,22 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const {
     activeFrameId,
     selectedFrameId,
-    setActiveFrameId,
     setSelectedFrameId,
     enterFrame,
     exitFrame,
+    deselect,
     openEditor,
     closeEditor,
   } = usePointerMode();
+
+  const handleCanvasEmptyPointerDown = useCallback(() => {
+    if (activeFrameId) {
+      exitFrame();
+    }
+    deselect();
+    activeFrameIdRef.current = null;
+    selectedFrameIdRef.current = null;
+  }, [activeFrameId, deselect, exitFrame]);
 
   const canGenerate = !!prompt.trim() && !isGenerating;
   const canRegenerate = usage?.frameRegenerationEnabled ?? false;
@@ -1243,14 +1252,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         current === event.screen ? null : current,
       );
 
-      // Focus canvas on regenerated frame
+      // Focus canvas on regenerated frame (select + zoom; do not auto-enter preview)
       if (regenFrameIdRef.current && frameId === regenFrameIdRef.current) {
         const regenFrame = framesRef.current.get(regenFrameIdRef.current);
         if (regenFrame) {
           setSelectedFrameId(frameId);
           selectedFrameIdRef.current = frameId;
-          enterFrame(frameId);
-          activeFrameIdRef.current = frameId;
+          exitFrame();
+          activeFrameIdRef.current = null;
 
           requestAnimationFrame(() => {
             canvasRef.current?.zoomToRect(
@@ -1281,8 +1290,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         if (focusFrame) {
           setSelectedFrameId(focusFrame.id);
           selectedFrameIdRef.current = focusFrame.id;
-          enterFrame(focusFrame.id);
-          activeFrameIdRef.current = focusFrame.id;
+          exitFrame();
+          activeFrameIdRef.current = null;
 
           requestAnimationFrame(() => {
             canvasRef.current?.zoomToRect(
@@ -2564,7 +2573,9 @@ npm run dev
         // Still allow Escape in inputs
         if (event.key === "Escape") {
           target.blur();
-          setSelectedFrameId(null);
+          deselect();
+          activeFrameIdRef.current = null;
+          selectedFrameIdRef.current = null;
           setPrompt("");
         }
         return;
@@ -2584,12 +2595,8 @@ npm run dev
         }
       }
 
-      // Escape to deselect
-      if (event.key === "Escape") {
-        setSelectedFrameId(null);
-        setActiveFrameId(null);
-        exitFrame();
-      }
+      // Escape in canvas is handled by usePointerMode (exit → then deselect).
+      // Do not clear selection here — that fights the Esc ladder.
 
       // Ctrl/Cmd + Enter to generate
       if (
@@ -2626,7 +2633,7 @@ npm run dev
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo]);
+  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo, deselect, handleDelete]);
 
   useEffect(() => {
     if (!generationRecoveryPrompt) return;
@@ -2865,6 +2872,7 @@ npm run dev
               activeFrameId={activeFrameId}
               selectedFrameId={selectedFrameId}
               onFrameExit={exitFrame}
+              onCanvasEmptyPointerDown={handleCanvasEmptyPointerDown}
               onTransformChange={handleTransformChange}
             >
               {/* <SandpackProvider> */}
@@ -3237,7 +3245,9 @@ npm run dev
         monoClassName={mono.className}
         onEscape={() => {
           setPrompt("");
-          setSelectedFrameId(null);
+          deselect();
+          activeFrameIdRef.current = null;
+          selectedFrameIdRef.current = null;
         }}
         onLockedAction={handleLockedAction}
         canRegenerate={canRegenerate}

@@ -467,6 +467,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       <ContextMenuTrigger asChild>
         <div
           ref={containerRef}
+          data-canvas-frame={id}
           className="absolute"
           style={{
             left: x,
@@ -489,8 +490,7 @@ export const CanvasFrame = memo(function CanvasFrame({
                 : isSelected
                   ? "0 0 0 1.5px var(--studio-accent-glow), 0 16px 48px rgba(0,0,0,0.30)"
                   : "0 4px 24px rgba(0,0,0,0.20)",
-              transition: "box-shadow 0.2s ease, transform 0.2s ease",
-              transform: isSelected ? "scale(1.005)" : "scale(1)",
+              transition: "box-shadow 0.2s ease",
             }}
           >
             {platform === "web" && <BrowserChrome screenName={screenName} />}
@@ -587,14 +587,14 @@ export const CanvasFrame = memo(function CanvasFrame({
               onPointerDown={startDrag}
               onClick={(event) => {
                 event.stopPropagation();
-                onSelect(id);
-                if (state === "done" && !didDragRef.current) {
-                  onActivate(id);
+                if (!didDragRef.current) {
+                  onSelect(id);
                 }
                 didDragRef.current = false;
               }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
+                onSelect(id);
                 if (state === "done") {
                   onActivate(id);
                 }

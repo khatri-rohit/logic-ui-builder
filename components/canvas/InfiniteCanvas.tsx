@@ -30,9 +30,19 @@ interface InfiniteCanvasProps {
   frameData?: CanvasFrameData[];
   activeFrameId: string | null;
   selectedFrameId?: string | null;
+  /** Exit active preview only (keep selection). */
   onFrameExit: () => void;
+  /** Empty canvas click: exit active if any, then deselect. */
+  onCanvasEmptyPointerDown?: () => void;
   className?: string;
   onTransformChange?: (transform: Transform) => void;
+}
+
+function isEmptyCanvasTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest("[data-canvas-frame]")) return false;
+  if (target.closest("[data-canvas-toolbar]")) return false;
+  return true;
 }
 
 export const InfiniteCanvas = forwardRef<
@@ -46,6 +56,7 @@ export const InfiniteCanvas = forwardRef<
     activeFrameId,
     selectedFrameId,
     onFrameExit,
+    onCanvasEmptyPointerDown,
     className,
     onTransformChange,
   },
@@ -55,6 +66,7 @@ export const InfiniteCanvas = forwardRef<
   const worldRef = useRef<HTMLDivElement>(null);
 
   const [zoomPercent, setZoomPercent] = useState(100);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [transform, setTransformState] = useState<Transform>({
     x: 0,
     y: 0,
@@ -70,15 +82,22 @@ export const InfiniteCanvas = forwardRef<
       setZoomPercent(Math.round(next.k * 100));
       onTransformChange?.(next);
     },
+    setIsSpacePressed,
   );
 
   const handleContainerPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.target === containerRef.current) {
+      if (event.button !== 0) return;
+      if (isSpacePressed) return;
+      if (!isEmptyCanvasTarget(event.target)) return;
+
+      if (onCanvasEmptyPointerDown) {
+        onCanvasEmptyPointerDown();
+      } else {
         onFrameExit();
       }
     },
-    [onFrameExit],
+    [isSpacePressed, onCanvasEmptyPointerDown, onFrameExit],
   );
 
   const selectedFrameRect = useMemo(() => {
@@ -105,12 +124,14 @@ export const InfiniteCanvas = forwardRef<
   );
 
   const cursor = useMemo(() => {
+    if (isSpacePressed) return "grab";
     return activeFrameId ? "default" : "grab";
-  }, [activeFrameId]);
+  }, [activeFrameId, isSpacePressed]);
 
   return (
     <div
       ref={containerRef}
+      data-canvas-empty="true"
       className={`relative h-full w-full overflow-hidden select-none ${className ?? ""}`}
       style={{ cursor }}
       onPointerDown={handleContainerPointerDown}
@@ -120,20 +141,23 @@ export const InfiniteCanvas = forwardRef<
       <div
         ref={worldRef}
         data-canvas-capture="world"
+        data-canvas-empty="true"
         className="absolute left-0 top-0 z-10 origin-top-left will-change-transform"
         style={{ transformOrigin: "0 0" }}
       >
         {children}
       </div>
 
-      <StudioToolbar
-        zoomPercent={zoomPercent}
-        onZoomIn={transformApi.zoomIn}
-        onZoomOut={transformApi.zoomOut}
-        onFit={() => transformApi.zoomToFit(frames)}
-        onFitSelected={handleFitSelected}
-        hasSelectedFrame={!!selectedFrameId}
-      />
+      <div data-canvas-toolbar="true">
+        <StudioToolbar
+          zoomPercent={zoomPercent}
+          onZoomIn={transformApi.zoomIn}
+          onZoomOut={transformApi.zoomOut}
+          onFit={() => transformApi.zoomToFit(frames)}
+          onFitSelected={handleFitSelected}
+          hasSelectedFrame={!!selectedFrameId}
+        />
+      </div>
     </div>
   );
 });

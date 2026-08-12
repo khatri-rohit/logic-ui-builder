@@ -15,22 +15,31 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
     (frameId: string) => {
       setMode("frame-active");
       setActiveFrameId(frameId);
+      setSelectedFrameId(frameId);
       onModeChange?.("frame-active");
     },
     [onModeChange],
   );
 
+  /** Exit preview interaction; keep the frame selected. */
   const exitFrame = useCallback(() => {
     setMode("canvas");
     setActiveFrameId(null);
     onModeChange?.("canvas");
+  }, [onModeChange]);
+
+  const deselect = useCallback(() => {
     setSelectedFrameId(null);
+    setActiveFrameId(null);
+    setMode("canvas");
+    onModeChange?.("canvas");
   }, [onModeChange]);
 
   const openEditor = useCallback(
     (frameId: string) => {
       setMode("editor");
       setActiveFrameId(frameId);
+      setSelectedFrameId(frameId);
       onModeChange?.("editor");
     },
     [onModeChange],
@@ -40,7 +49,6 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
     setMode("canvas");
     setActiveFrameId(null);
     onModeChange?.("canvas");
-    setSelectedFrameId(null);
   }, [onModeChange]);
 
   useEffect(() => {
@@ -49,14 +57,22 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
 
       if (mode === "frame-active") {
         exitFrame();
-      } else if (mode === "editor") {
+        return;
+      }
+
+      if (mode === "editor") {
         closeEditor();
+        return;
+      }
+
+      if (selectedFrameId) {
+        deselect();
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeEditor, exitFrame, mode]);
+  }, [closeEditor, deselect, exitFrame, mode, selectedFrameId]);
 
   return {
     mode,
@@ -66,6 +82,7 @@ export function usePointerMode({ onModeChange }: UsePointerModeOptions = {}) {
     setActiveFrameId,
     enterFrame,
     exitFrame,
+    deselect,
     openEditor,
     closeEditor,
   };

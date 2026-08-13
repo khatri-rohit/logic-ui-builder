@@ -1,164 +1,129 @@
 /* stylelint-disable selector-pseudo-class-no-unknown */
 
 .authRoot {
-  --logic-bg: #f7f9fb;
-  --logic-surface: #f7f9fb;
-  --logic-surface-bright: #f7f9fb;
-  --logic-surface-container-low: #f0f4f7;
-  --logic-surface-container: #e8eff3;
-  --logic-surface-container-high: #e1e9ee;
-  --logic-surface-container-highest: #d9e4ea;
+  --logic-bg: #fafafa;
+  --logic-surface: #ffffff;
+  --logic-surface-bright: #ffffff;
+  --logic-surface-container-low: #f5f5f5;
+  --logic-surface-container: #f0f0f0;
+  --logic-surface-container-high: #e6e6e6;
+  --logic-surface-container-highest: #d6d6d6;
   --logic-surface-container-lowest: #ffffff;
-  --logic-on-surface: #2a3439;
-  --logic-on-surface-variant: #566166;
-  --logic-secondary: #575f75;
-  --logic-primary: #4d44e3;
-  --logic-primary-fixed: #124af0;
-  --logic-primary-deep: #002ca3;
-  --logic-outline-variant: #a9b4b9;
-  --logic-border: #a9b4b9;
-  --logic-border-soft: #c8d2d8;
-  --logic-muted: #66727a;
+  --logic-on-surface: #0a0a0a;
+  --logic-on-surface-variant: #3d3d3d;
+  --logic-secondary: #6b6b6b;
+  --logic-accent: #ff6d00;
+  --logic-accent-deep: #cc5800;
+  --logic-accent-muted: rgba(255, 109, 0, 0.12);
+  --logic-outline-variant: #a0a0a0;
+  --logic-border: #e0e0e0;
+  --logic-border-soft: #ebebeb;
+  --logic-muted: #8a8a8a;
 
-  background:
-    radial-gradient(
-      circle at 18% 20%,
-      rgba(18, 74, 240, 0.08),
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 84% 78%,
-      rgba(77, 68, 227, 0.08),
-      transparent 30%
-    ),
-    var(--logic-bg);
+  /* Back-compat aliases used by older class hooks */
+  --logic-primary: var(--logic-accent);
+  --logic-primary-fixed: var(--logic-accent);
+  --logic-primary-deep: var(--logic-accent-deep);
+
+  background: var(--logic-bg);
   color: var(--logic-on-surface);
 }
 
 :global(.dark) .authRoot {
-  --logic-bg: #060a0f;
-  --logic-surface: #070d14;
-  --logic-surface-bright: #0b1119;
-  --logic-surface-container-low: #101824;
-  --logic-surface-container: #15202d;
-  --logic-surface-container-high: #1c2b3b;
-  --logic-surface-container-highest: #243649;
-  --logic-surface-container-lowest: #0b1018;
-  --logic-on-surface: #e8eef6;
-  --logic-on-surface-variant: #b2c0cf;
-  --logic-secondary: #94a7bc;
-  --logic-primary: #8b9dff;
-  --logic-primary-fixed: #7e9dff;
-  --logic-primary-deep: #5f87ff;
-  --logic-outline-variant: #3b4b5e;
-  --logic-border: #435368;
-  --logic-border-soft: #3a485a;
-  --logic-muted: #95a7bb;
+  --logic-bg: #0a0a0a;
+  --logic-surface: #141414;
+  --logic-surface-bright: #1a1a1a;
+  --logic-surface-container-low: #111111;
+  --logic-surface-container: #1e1e1e;
+  --logic-surface-container-high: #282828;
+  --logic-surface-container-highest: #323232;
+  --logic-surface-container-lowest: #0f0f0f;
+  --logic-on-surface: #f0f0f0;
+  --logic-on-surface-variant: #b0b0b0;
+  --logic-secondary: #8a8a8a;
+  --logic-accent: #ff8a33;
+  --logic-accent-deep: #ff6d00;
+  --logic-accent-muted: rgba(255, 109, 0, 0.15);
+  --logic-outline-variant: #404040;
+  --logic-border: #2a2a2a;
+  --logic-border-soft: #1e1e1e;
+  --logic-muted: #6b6b6b;
 
-  background:
-    radial-gradient(
-      circle at 18% 20%,
-      rgba(88, 130, 255, 0.16),
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 84% 78%,
-      rgba(133, 105, 255, 0.14),
-      transparent 30%
-    ),
-    var(--logic-bg);
+  --logic-primary: var(--logic-accent);
+  --logic-primary-fixed: var(--logic-accent);
+  --logic-primary-deep: var(--logic-accent-deep);
+
+  background: var(--logic-bg);
   color: var(--logic-on-surface);
 }
 
-.authRoot :global(.logic-auth-body) {
-  font-family: var(--font-logic-body), var(--font-sans), sans-serif;
+.authRoot :global(.logic-auth-body),
+.authRoot :global(.logic-body) {
+  font-family: var(--font-logic-body), sans-serif;
 }
 
-.authRoot :global(.logic-auth-display) {
-  font-family: var(--font-logic-display), var(--font-sans), sans-serif;
+.authRoot :global(.logic-auth-display),
+.authRoot :global(.logic-display) {
+  font-family: var(--font-logic-display), sans-serif;
+}
+
+.authRoot :global(.logic-mono) {
+  font-family: var(--font-logic-mono), monospace;
 }
 
 .displayText {
-  line-height: 1.02;
-  letter-spacing: -0.04em;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .labelText {
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.gradientText {
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
+.accentText {
+  color: var(--logic-accent);
+}
+
+.heroGrid {
+  background-image: linear-gradient(
+    45deg,
+    transparent 49.8%,
+    var(--logic-border) 49.9%,
+    var(--logic-border) 50.1%,
+    transparent 50.2%
   );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background-size: 60px 60px;
+  opacity: 0.28;
 }
 
-.gridLayer {
-  background-image:
-    linear-gradient(to right, rgba(169, 180, 185, 0.24) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(169, 180, 185, 0.24) 1px, transparent 1px);
-  background-size: 44px 44px;
-  opacity: 0.45;
+:global(.dark) .heroGrid {
+  opacity: 0.14;
 }
 
-.glowLayer {
-  background:
-    radial-gradient(
-      circle at 14% 16%,
-      rgba(18, 74, 240, 0.18),
-      transparent 24%
-    ),
-    radial-gradient(circle at 84% 78%, rgba(77, 68, 227, 0.16), transparent 28%);
+.decorativeLine {
+  position: absolute;
+  left: 10%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--logic-accent);
+  opacity: 0.12;
+  pointer-events: none;
 }
 
 .shellSurface {
-  border: 1px solid rgba(169, 180, 185, 0.42);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 24px 48px rgba(28, 27, 28, 0.08);
+  border: 1px solid var(--logic-border);
+  border-radius: 0;
+  background: var(--logic-surface);
 }
 
 .leftPanelSurface {
-  background: linear-gradient(
-    180deg,
-    rgba(240, 244, 247, 0.84) 0%,
-    rgba(232, 239, 243, 0.9) 100%
-  );
+  background: var(--logic-surface-container-low);
 }
 
 .rightPanelSurface {
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.accentChip {
-  border: 1px solid rgba(169, 180, 185, 0.34);
-  border-radius: 999px;
-  background: rgba(240, 244, 247, 0.8);
-}
-
-.statCard {
-  border: 1px solid rgba(169, 180, 185, 0.3);
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
-}
-
-.securityStrip {
-  border: 1px solid rgba(169, 180, 185, 0.3);
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.iconBadge {
-  border: 1px solid rgba(169, 180, 185, 0.32);
-  border-radius: 0.5rem;
-  background: rgba(240, 244, 247, 0.72);
+  background: var(--logic-surface);
 }
 
 .formLabel {
@@ -172,8 +137,8 @@
 .formInput {
   height: 2.75rem;
   width: 100%;
-  border: 1px solid rgba(169, 180, 185, 0.45);
-  border-radius: 0.625rem;
+  border: 1px solid var(--logic-border);
+  border-radius: 0;
   background: var(--logic-surface-container-lowest);
   padding: 0 0.875rem;
   color: var(--logic-on-surface);
@@ -185,76 +150,70 @@
 }
 
 .formInput::placeholder {
-  color: #7f8a96;
+  color: var(--logic-muted);
 }
 
 .formInput:focus-visible {
-  border-color: var(--logic-primary-fixed);
-  box-shadow: 0 0 0 3px rgba(18, 74, 240, 0.16);
+  border-color: var(--logic-accent);
+  box-shadow: 0 0 0 3px var(--logic-accent-muted);
 }
 
 .formPrimaryButton {
   height: 2.75rem;
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 0.625rem;
-  background: linear-gradient(
-    135deg,
-    var(--logic-primary-fixed),
-    var(--logic-primary-deep)
-  );
-  color: #ffffff;
+  border-radius: 0;
+  background: var(--logic-on-surface);
+  color: var(--logic-surface-container-lowest);
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
     opacity 180ms ease;
-  box-shadow: 0 8px 16px rgba(18, 74, 240, 0.18);
 }
 
 .formPrimaryButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(18, 74, 240, 0.28);
+  background: var(--logic-accent);
+  color: #ffffff;
 }
 
 .formPrimaryButton:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .formSecondaryButton {
-  border: 1px solid rgba(169, 180, 185, 0.45);
-  border-radius: 0.625rem;
-  background: var(--logic-surface-container-lowest);
+  border: 1px solid var(--logic-border);
+  border-radius: 0;
+  background: transparent;
   color: var(--logic-on-surface);
   font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   transition:
     border-color 180ms ease,
-    color 180ms ease,
-    background 180ms ease;
+    background 180ms ease,
+    color 180ms ease;
 }
 
 .formSecondaryButton:hover:not(:disabled) {
-  border-color: rgba(18, 74, 240, 0.55);
-  color: var(--logic-primary-deep);
-  background: rgba(240, 244, 247, 0.72);
+  border-color: var(--logic-on-surface);
+  background: var(--logic-surface-container-low);
 }
 
 .formSecondaryButton:disabled {
   cursor: not-allowed;
-  opacity: 0.62;
+  opacity: 0.55;
 }
 
 .formDividerLine {
   height: 1px;
   flex: 1;
-  background: rgba(169, 180, 185, 0.4);
+  background: var(--logic-border);
 }
 
 .formDividerText {
@@ -265,9 +224,9 @@
 }
 
 .statusMessage {
-  border: 1px solid rgba(169, 180, 185, 0.45);
-  border-radius: 0.625rem;
-  background: rgba(240, 244, 247, 0.72);
+  border: 1px solid var(--logic-border);
+  border-radius: 0;
+  background: var(--logic-surface-container-low);
   padding: 0.625rem 0.75rem;
   color: var(--logic-on-surface-variant);
   font-size: 0.75rem;
@@ -275,129 +234,52 @@
 
 .errorList {
   border: 1px solid rgba(186, 26, 26, 0.36);
-  border-radius: 0.625rem;
+  border-radius: 0;
   background: rgba(186, 26, 26, 0.08);
   padding: 0.625rem 0.75rem;
   color: #8f1515;
   font-size: 0.75rem;
 }
 
+.formError {
+  color: #8f1515;
+  font-size: 0.75rem;
+}
+
 .supportText {
-  color: #6a7388;
-  font-size: 0.688rem;
+  color: var(--logic-secondary);
+  font-size: 0.75rem;
 }
 
 .supportLink {
-  color: var(--logic-primary-deep);
-  letter-spacing: 0.14em;
+  color: var(--logic-on-surface);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-size: 0.65rem;
 }
 
 .supportLink:hover {
+  color: var(--logic-accent);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 
 .callbackCard {
-  border: 1px solid rgba(169, 180, 185, 0.4);
-  border-radius: 0.875rem;
-  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--logic-border);
+  border-radius: 0;
+  background: var(--logic-surface);
   padding: 1rem;
 }
 
 .canvasNoise {
   background-image: radial-gradient(
     circle at 1px 1px,
-    rgba(42, 52, 57, 0.65) 1px,
+    #000000 1px,
     transparent 0
   );
   background-size: 24px 24px;
-  opacity: 0.04;
-}
-
-:global(.dark) .gridLayer {
-  background-image:
-    linear-gradient(to right, rgba(80, 98, 117, 0.28) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(80, 98, 117, 0.28) 1px, transparent 1px);
-  opacity: 0.36;
-}
-
-:global(.dark) .glowLayer {
-  background:
-    radial-gradient(
-      circle at 14% 16%,
-      rgba(105, 142, 255, 0.24),
-      transparent 24%
-    ),
-    radial-gradient(
-      circle at 84% 78%,
-      rgba(152, 123, 255, 0.2),
-      transparent 28%
-    );
-}
-
-:global(.dark) .shellSurface {
-  border: 1px solid rgba(92, 108, 126, 0.5);
-  background: rgba(10, 15, 22, 0.84);
-  box-shadow: 0 26px 52px rgba(0, 0, 0, 0.42);
-}
-
-:global(.dark) .leftPanelSurface {
-  background: linear-gradient(
-    180deg,
-    rgba(14, 21, 30, 0.88) 0%,
-    rgba(11, 17, 25, 0.94) 100%
-  );
-}
-
-:global(.dark) .rightPanelSurface {
-  background: rgba(9, 14, 21, 0.9);
-}
-
-:global(.dark) .accentChip,
-:global(.dark) .statCard,
-:global(.dark) .securityStrip,
-:global(.dark) .iconBadge,
-:global(.dark) .callbackCard {
-  border-color: rgba(97, 112, 130, 0.5);
-  background: rgba(17, 25, 36, 0.76);
-}
-
-:global(.dark) .formInput {
-  border-color: rgba(97, 112, 130, 0.6);
-  background: rgba(10, 15, 24, 0.85);
-  color: var(--logic-on-surface);
-}
-
-:global(.dark) .formInput::placeholder {
-  color: #94a6bb;
-}
-
-:global(.dark) .formInput:focus-visible {
-  border-color: var(--logic-primary-fixed);
-  box-shadow: 0 0 0 3px rgba(126, 157, 255, 0.28);
-}
-
-:global(.dark) .formSecondaryButton {
-  border-color: rgba(97, 112, 130, 0.58);
-  background: rgba(12, 18, 26, 0.86);
-  color: var(--logic-on-surface);
-}
-
-:global(.dark) .formSecondaryButton:hover:not(:disabled) {
-  border-color: rgba(126, 157, 255, 0.72);
-  color: #d7e3ff;
-  background: rgba(26, 38, 55, 0.78);
-}
-
-:global(.dark) .formDividerLine {
-  background: rgba(103, 118, 137, 0.52);
-}
-
-:global(.dark) .statusMessage {
-  border-color: rgba(97, 112, 130, 0.56);
-  background: rgba(18, 27, 39, 0.8);
-  color: #c8d5e5;
+  opacity: 0.02;
 }
 
 :global(.dark) .errorList {
@@ -406,17 +288,17 @@
   color: #ffc8c8;
 }
 
-:global(.dark) .supportText {
-  color: #9db0c6;
+:global(.dark) .formError {
+  color: #ffc8c8;
 }
 
 :global(.dark) .canvasNoise {
   background-image: radial-gradient(
     circle at 1px 1px,
-    rgba(203, 220, 239, 0.38) 1px,
+    rgba(255, 255, 255, 0.3) 1px,
     transparent 0
   );
-  opacity: 0.03;
+  opacity: 0.015;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -424,10 +306,5 @@
   .formSecondaryButton,
   .formInput {
     transition: none;
-  }
-
-  .formPrimaryButton:hover:not(:disabled) {
-    transform: none;
-    box-shadow: 0 8px 16px rgba(18, 74, 240, 0.18);
   }
 }

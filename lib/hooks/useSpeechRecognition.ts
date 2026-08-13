@@ -60,6 +60,18 @@ export interface SpeechRecognitionHookActions {
   onTranscriptReady: (callback: (transcript: string) => void) => void;
 }
 
+const RESTART_DELAY_MS = 200;
+const START_RETRY_DELAY_MS = 500;
+
+const FATAL_ERRORS = new Set([
+  "not-allowed",
+  "service-not-allowed",
+  "audio-capture",
+  "network",
+]);
+
+const NON_FATAL_ERRORS = new Set(["no-speech", "aborted"]);
+
 const getSpeechRecognitionConstructor = () => {
   if (typeof window === "undefined") {
     return null;
@@ -75,8 +87,6 @@ const getSpeechRecognitionConstructor = () => {
 
 const getErrorMessage = (error: string) => {
   switch (error) {
-    case "no-speech":
-      return "No speech was detected. Please try again.";
     case "audio-capture":
       return "No microphone was found or it is unavailable.";
     case "not-allowed":
@@ -84,8 +94,6 @@ const getErrorMessage = (error: string) => {
       return "Microphone access was denied. Please allow it in your browser settings.";
     case "network":
       return "Speech recognition network error. Please try again.";
-    case "aborted":
-      return "Speech recognition was stopped.";
     default:
       return "Speech recognition failed. Please try again.";
   }
@@ -98,8 +106,15 @@ export function useSpeechRecognition(
     ((transcript: string) => void) | null
   >(null);
   const finalTranscriptRef = useRef("");
-  const stoppedByUserRef = useRef(false);
+  const interimTranscriptRef = useRef("");
+  const wantListeningRef = useRef(false);
+  const lastErrorWasFatalRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const beginRecognitionRef = useRef<(() => void) | null>(null);
 
   const [isSupported] = useState(() =>
     Boolean(getSpeechRecognitionConstructor()),
@@ -109,26 +124,43 @@ export function useSpeechRecognition(
   const [interimTranscript, setInterimTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const startListening = useCallback(() => {
-    const SpeechRecognition = getSpeechRecognitionConstructor();
-    if (!SpeechRecognition) {
-      setError("Speech recognition is not supported in this browser.");
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current !== null) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
+
+  const clearStartRetryTimer = useCallback(() => {
+    if (startRetryTimerRef.current !== null) {
+      clearTimeout(startRetryTimerRef.current);
+      startRetryTimerRef.current = null;
+    }
+  }, []);
+
+  const rescueInterim = useCallback(() => {
+    const pendingInterim = interimTranscriptRef.current.trim();
+    if (!pendingInterim) {
+      interimTranscriptRef.current = "";
+      setInterimTranscript("");
       return;
     }
 
-    // Abort any previous instance to avoid conflicts
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch {
-        // ignore
-      }
-      recognitionRef.current = null;
+    finalTranscriptRef.current =
+      `${finalTranscriptRef.current} ${pendingInterim}`.trim();
+    interimTranscriptRef.current = "";
+    setTranscript(finalTranscriptRef.current);
+    setInterimTranscript("");
+  }, []);
+
+  const beginRecognition = useCallback(() => {
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (!SpeechRecognition || !wantListeningRef.current) {
+      return;
     }
 
-    stoppedByUserRef.current = false;
-    setError(null);
-    setInterimTranscript("");
+    clearRestartTimer();
+    clearStartRetryTimer();
 
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
@@ -138,10 +170,18 @@ export function useSpeechRecognition(
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
+      lastErrorWasFatalRef.current = false;
       setIsListening(true);
     };
 
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
+
       let interimText = "";
       let finalText = "";
 
@@ -161,64 +201,180 @@ export function useSpeechRecognition(
       }
 
       if (finalText) {
-        finalTranscriptRef.current = `${finalTranscriptRef.current} ${finalText}`.trim();
+        finalTranscriptRef.current =
+          `${finalTranscriptRef.current} ${finalText}`.trim();
         setTranscript(finalTranscriptRef.current);
       }
 
-      setInterimTranscript(interimText.trim());
+      interimTranscriptRef.current = interimText.trim();
+      setInterimTranscript(interimTranscriptRef.current);
     };
 
     recognition.onerror = (event) => {
-      setError(getErrorMessage(event.error));
-      setInterimTranscript("");
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
 
-      if (
-        event.error === "not-allowed" ||
-        event.error === "service-not-allowed" ||
-        event.error === "audio-capture"
-      ) {
+      if (NON_FATAL_ERRORS.has(event.error)) {
+        return;
+      }
+
+      if (FATAL_ERRORS.has(event.error)) {
+        lastErrorWasFatalRef.current = true;
+        wantListeningRef.current = false;
+        clearRestartTimer();
+        clearStartRetryTimer();
+        setError(getErrorMessage(event.error));
         setIsListening(false);
+        interimTranscriptRef.current = "";
+        setInterimTranscript("");
+        if (recognitionRef.current === recognition) {
+          recognitionRef.current = null;
+        }
+        return;
+      }
+
+      lastErrorWasFatalRef.current = true;
+      wantListeningRef.current = false;
+      clearRestartTimer();
+      clearStartRetryTimer();
+      setError(getErrorMessage(event.error));
+      setIsListening(false);
+      interimTranscriptRef.current = "";
+      setInterimTranscript("");
+      if (recognitionRef.current === recognition) {
         recognitionRef.current = null;
       }
     };
 
     recognition.onend = () => {
-      setIsListening(false);
-      setInterimTranscript("");
-
-      const completedTranscript = finalTranscriptRef.current.trim();
-      if (completedTranscript && stoppedByUserRef.current) {
-        transcriptReadyCallbackRef.current?.(completedTranscript);
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
       }
 
-      recognitionRef.current = null;
+      rescueInterim();
+
+      if (!wantListeningRef.current || lastErrorWasFatalRef.current) {
+        setIsListening(false);
+        const completedTranscript = finalTranscriptRef.current.trim();
+        if (completedTranscript) {
+          transcriptReadyCallbackRef.current?.(completedTranscript);
+        }
+        return;
+      }
+
+      // Keep isListening true across Chrome auto-ends; restart shortly.
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        beginRecognitionRef.current?.();
+      }, RESTART_DELAY_MS);
     };
 
     try {
       recognition.start();
     } catch {
-      setError("Unable to start speech recognition.");
-      setIsListening(false);
-      recognitionRef.current = null;
-    }
-  }, [lang]);
+      if (!wantListeningRef.current) {
+        setIsListening(false);
+        if (recognitionRef.current === recognition) {
+          recognitionRef.current = null;
+        }
+        return;
+      }
 
-  const stopListening = useCallback(() => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
+      // InvalidStateError / start-too-soon — retry once after a short delay.
+      startRetryTimerRef.current = setTimeout(() => {
+        startRetryTimerRef.current = null;
+        if (!wantListeningRef.current) {
+          return;
+        }
+        try {
+          recognition.start();
+        } catch {
+          wantListeningRef.current = false;
+          setError("Unable to start speech recognition.");
+          setIsListening(false);
+          if (recognitionRef.current === recognition) {
+            recognitionRef.current = null;
+          }
+        }
+      }, START_RETRY_DELAY_MS);
+    }
+  }, [clearRestartTimer, clearStartRetryTimer, lang, rescueInterim]);
+
+  useEffect(() => {
+    beginRecognitionRef.current = beginRecognition;
+  }, [beginRecognition]);
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (!SpeechRecognition) {
+      setError("Speech recognition is not supported in this browser.");
       return;
     }
 
-    stoppedByUserRef.current = true;
+    clearRestartTimer();
+    clearStartRetryTimer();
+
+    // Stop any previous instance without treating it as a user commit race.
+    const previous = recognitionRef.current;
+    if (previous) {
+      try {
+        previous.abort();
+      } catch {
+        // ignore
+      }
+      if (recognitionRef.current === previous) {
+        recognitionRef.current = null;
+      }
+    }
+
+    wantListeningRef.current = true;
+    lastErrorWasFatalRef.current = false;
+    finalTranscriptRef.current = "";
+    interimTranscriptRef.current = "";
+    setTranscript("");
+    setInterimTranscript("");
+    setError(null);
+    setIsListening(true);
+
+    beginRecognition();
+  }, [beginRecognition, clearRestartTimer, clearStartRetryTimer]);
+
+  const stopListening = useCallback(() => {
+    wantListeningRef.current = false;
+    lastErrorWasFatalRef.current = false;
+    clearRestartTimer();
+    clearStartRetryTimer();
+
+    const recognition = recognitionRef.current;
+    if (!recognition) {
+      rescueInterim();
+      setIsListening(false);
+      const completedTranscript = finalTranscriptRef.current.trim();
+      if (completedTranscript) {
+        transcriptReadyCallbackRef.current?.(completedTranscript);
+      }
+      return;
+    }
+
     try {
       recognition.stop();
     } catch {
-      // Already stopped or not started
+      rescueInterim();
+      setIsListening(false);
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+      }
+      const completedTranscript = finalTranscriptRef.current.trim();
+      if (completedTranscript) {
+        transcriptReadyCallbackRef.current?.(completedTranscript);
+      }
     }
-  }, []);
+  }, [clearRestartTimer, clearStartRetryTimer, rescueInterim]);
 
   const clearTranscript = useCallback(() => {
     finalTranscriptRef.current = "";
+    interimTranscriptRef.current = "";
     setTranscript("");
     setInterimTranscript("");
   }, []);
@@ -230,9 +386,11 @@ export function useSpeechRecognition(
     [],
   );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      wantListeningRef.current = false;
+      clearRestartTimer();
+      clearStartRetryTimer();
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -242,7 +400,7 @@ export function useSpeechRecognition(
         recognitionRef.current = null;
       }
     };
-  }, []);
+  }, [clearRestartTimer, clearStartRetryTimer]);
 
   return {
     isListening,

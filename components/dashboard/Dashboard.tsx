@@ -93,18 +93,19 @@ const Dashboard = () => {
 
   const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
   const launcherButtonRef = useRef<HTMLButtonElement | null>(null);
+  const voiceBaseRef = useRef("");
+  const wasListeningRef = useRef(false);
 
   const {
     isListening,
+    transcript,
+    interimTranscript,
     error: speechError,
     isSupported: isSpeechSupported,
     startListening,
     stopListening,
     clearTranscript,
-    onTranscriptReady,
   } = useSpeechRecognition("en-US");
-  // logger.log("Speech recognition support:", isSpeechSupported);
-  // logger.log("Speech recognition speechError:", speechError);
 
   const canSubmit = command.trim().length > 0 && !isCreatingProject;
 
@@ -216,20 +217,31 @@ const Dashboard = () => {
       promptInput.scrollHeight > MAX_PROMPT_HEIGHT ? "auto" : "hidden";
   }, [command]);
 
-  // Show toast error when speech recognition fails
+  // Show toast error when speech recognition fails (fatal errors only)
   useEffect(() => {
     if (speechError) {
       toast.error(speechError);
     }
   }, [speechError]);
 
-  // Set up callback for when speech is ready to be added to command
+  // Stream finalized speech into the prompt; flush once when listening ends
   useEffect(() => {
-    onTranscriptReady((recognizedText: string) => {
-      setCommand((prev) => `${prev.trim()} ${recognizedText}`.trim());
-      clearTranscript();
-    });
-  }, [clearTranscript, onTranscriptReady]);
+    if (isListening) {
+      wasListeningRef.current = true;
+      setCommand(
+        [voiceBaseRef.current, transcript].filter(Boolean).join(" "),
+      );
+      return;
+    }
+
+    if (!wasListeningRef.current) {
+      return;
+    }
+
+    setCommand([voiceBaseRef.current, transcript].filter(Boolean).join(" "));
+    wasListeningRef.current = false;
+    clearTranscript();
+  }, [isListening, transcript, clearTranscript]);
 
   return (
     <div
@@ -465,6 +477,19 @@ const Dashboard = () => {
                   />
 
                   <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+                    <div
+                      id="voice-input-status"
+                      className="sr-only"
+                      aria-live="polite"
+                    >
+                      {isListening
+                        ? interimTranscript
+                          ? `Listening: ${interimTranscript}`
+                          : "Listening…"
+                        : !isSpeechSupported
+                          ? "Speech recognition not supported in your browser"
+                          : ""}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -472,12 +497,14 @@ const Dashboard = () => {
                         isListening ? "Stop recording" : "Start voice input"
                       }
                       aria-pressed={isListening}
+                      aria-describedby="voice-input-status"
                       onClick={() => {
                         if (isListening) {
                           stopListening();
                           return;
                         }
 
+                        voiceBaseRef.current = command.trimEnd();
                         startListening();
                       }}
                       disabled={!isSpeechSupported}

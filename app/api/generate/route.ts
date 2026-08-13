@@ -19,7 +19,7 @@ import {
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
-  buildSystemPrompt,
+  composeStage3SystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -29,6 +29,7 @@ import {
   buildFrameRegeneratePrompt,
 } from "@/lib/promptEnhancer";
 import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
+import { withDesignSystem } from "@/lib/designSystemSnapshot";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
@@ -735,19 +736,21 @@ export async function POST(req: NextRequest) {
           const webAppSpecParsed = webAppSpecSchema.safeParse(
             sourceGeneration.spec,
           );
-          const spec: WebAppSpec = webAppSpecParsed.success
-            ? webAppSpecParsed.data
-            : {
-                screens: [sourceFrame.screenName],
-                navPattern: "none",
-                platform: sourcePlatform,
-                colorMode: "light",
-                primaryColor: "#2563eb",
-                accentColor: "#f59e0b",
-                stylingLib: "tailwind",
-                layoutDensity: "comfortable",
-                components: [],
-              };
+          const spec: WebAppSpec = withDesignSystem(
+            webAppSpecParsed.success
+              ? webAppSpecParsed.data
+              : {
+                  screens: [sourceFrame.screenName],
+                  navPattern: "none",
+                  platform: sourcePlatform,
+                  colorMode: "light",
+                  primaryColor: "#2563eb",
+                  accentColor: "#f59e0b",
+                  stylingLib: "tailwind",
+                  layoutDensity: "comfortable",
+                  components: [],
+                },
+          );
 
           const framePipelineContext: PipelineContext = {
             ollama,
@@ -757,8 +760,9 @@ export async function POST(req: NextRequest) {
             stage3ModelPriority,
             abortController,
             write,
-            systemPrompt: buildSystemPrompt(spec, designContext),
+            systemPrompt: composeStage3SystemPrompt(spec, designContext),
             generationId,
+            designContract: buildDesignContract(spec, designContext),
           };
 
           const frameResult = await runScreenGeneration(
@@ -834,26 +838,13 @@ export async function POST(req: NextRequest) {
           });
 
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
-        const spec = splitMobileScreensIfNeeded(
+        let spec = splitMobileScreensIfNeeded(
           coerceSpec(rawParsedSpec, requestedPlatform),
           prompt,
         );
 
-        // Override generic default colors with design-context palette to avoid monochrome/generic designs
-        if (designContext.palette) {
-          if (
-            spec.primaryColor === "#2563eb" &&
-            designContext.palette.primaryHex
-          ) {
-            spec.primaryColor = designContext.palette.primaryHex;
-          }
-          if (
-            spec.accentColor === "#f59e0b" &&
-            designContext.palette.accentHex
-          ) {
-            spec.accentColor = designContext.palette.accentHex;
-          }
-        }
+        // Lock Design System Snapshot from Stage 1 intent (no mid-pipeline color overrides)
+        spec = withDesignSystem(spec);
 
         const designContract = buildDesignContract(spec, designContext);
 
@@ -966,7 +957,7 @@ export async function POST(req: NextRequest) {
           stage3ModelPriority,
           abortController,
           write,
-          systemPrompt: buildSystemPrompt(spec, designContext),
+          systemPrompt: composeStage3SystemPrompt(spec, designContext),
           generationId,
           designContract,
         };

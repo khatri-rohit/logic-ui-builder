@@ -70,7 +70,9 @@ export const SANDBOX_HTML = `<!DOCTYPE html>
     body { min-height: 0; }
     #root { width: 100%; min-height: 0; }
 
-    /* Light mode design system tokens (default) */
+    /* Light mode design system tokens (fallback only).
+       Generated screens bake locked generation tokens onto the component root;
+       those override these defaults for preview. */
     :root {
       --font-sans: 'Inter', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;

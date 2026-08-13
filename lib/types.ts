@@ -53,6 +53,26 @@ export interface DesignContext {
   };
 }
 
+/** Locked token set for one generation (see lib/designSystemSnapshot.ts). */
+export interface DesignSystemSnapshot {
+  surface: string;
+  surfaceElevated: string;
+  surfaceOverlay: string;
+  border: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  primary: string;
+  primaryMuted: string;
+  accent: string;
+  accentMuted: string;
+  success: string;
+  warning: string;
+  error: string;
+  colorMode: "dark" | "light";
+  tintStrength: "neutral" | "restrained" | "brand";
+}
+
 export interface WebAppSpec {
   screens: string[];
   navPattern: "top-nav" | "sidebar" | "hybrid" | "none";
@@ -88,6 +108,8 @@ export interface WebAppSpec {
   primaryInteraction?: "read" | "navigate" | "input" | "browse" | "monitor";
   keyEmotionalTone?: string;
   contentDensityScore?: number;
+  /** Locked design tokens for this generation — set after Stage 1. */
+  designSystem?: DesignSystemSnapshot;
 }
 
 export interface ComponentTreeNode {

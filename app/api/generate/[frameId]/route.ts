@@ -35,7 +35,9 @@ import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
 import { STAGE3_MODELS } from "@/lib/execution/modelDefaults";
 import { runFrameRegeneration } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
-import { buildSystemPrompt } from "@/lib/prompts";
+import { composeStage3SystemPrompt } from "@/lib/prompts";
+import { withDesignSystem } from "@/lib/designSystemSnapshot";
+import { buildDesignContract } from "@/lib/designContract";
 
 export const runtime = "nodejs";
 
@@ -254,10 +256,12 @@ export async function POST(
     const idempotencyKey = `${authContext.appUserId}:${requestIdempotencyKey ?? crypto.randomUUID()}`;
 
     const sourcePlatform = toApiPlatform(sourceGeneration.platform);
-    const spec = coerceWebAppSpec(
-      sourceGeneration.spec,
-      sourcePlatform,
-      sourceFrame.screenName,
+    const spec = withDesignSystem(
+      coerceWebAppSpec(
+        sourceGeneration.spec,
+        sourcePlatform,
+        sourceFrame.screenName,
+      ),
     );
 
     const storedTree = (() => {
@@ -464,8 +468,9 @@ export async function POST(
           stage3ModelPriority,
           abortController,
           write,
-          systemPrompt: buildSystemPrompt(spec, designContext),
+          systemPrompt: composeStage3SystemPrompt(spec, designContext),
           generationId,
+          designContract: buildDesignContract(spec, designContext),
         };
 
         const frameResult = await runFrameRegeneration(

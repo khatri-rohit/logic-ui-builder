@@ -17,9 +17,13 @@ import prisma from "@/lib/prisma";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
 import {
   buildScreenPrompt,
-  STAGE3_SYSTEM,
+  composeStage3SystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
+import {
+  ensureDesignTokensOnRoot,
+  resolveDesignSystem,
+} from "@/lib/designSystemSnapshot";
 import { validateCompile } from "@/lib/validation/compileValidator";
 import { validateSandboxBindings } from "@/lib/validation/sandboxBindings";
 
@@ -152,7 +156,9 @@ export async function runScreenGeneration(
     const result = await executeModel({
       ollama,
       model: candidateModel,
-      system: context.systemPrompt || STAGE3_SYSTEM,
+      system:
+        context.systemPrompt ||
+        composeStage3SystemPrompt(spec, designContext),
       prompt: buildScreenPrompt(
         spec,
         tree,
@@ -320,9 +326,12 @@ export async function runScreenGeneration(
       screenClass,
     });
 
+    const snapshot = resolveDesignSystem(spec);
+    const baked = ensureDesignTokensOnRoot(sanitized, snapshot);
+
     return {
       success: true,
-      code: sanitized,
+      code: baked,
       error: null,
       iterations,
     };

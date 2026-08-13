@@ -159,6 +159,26 @@ export const webAppSpecSchema = z.object({
     .optional(),
   keyEmotionalTone: z.string().optional(),
   contentDensityScore: z.number().int().min(1).max(5).optional(),
+  designSystem: z
+    .object({
+      surface: z.string().min(1),
+      surfaceElevated: z.string().min(1),
+      surfaceOverlay: z.string().min(1),
+      border: z.string().min(1),
+      textPrimary: z.string().min(1),
+      textSecondary: z.string().min(1),
+      textTertiary: z.string().min(1),
+      primary: z.string().min(1),
+      primaryMuted: z.string().min(1),
+      accent: z.string().min(1),
+      accentMuted: z.string().min(1),
+      success: z.string().min(1),
+      warning: z.string().min(1),
+      error: z.string().min(1),
+      colorMode: z.enum(["dark", "light"]),
+      tintStrength: z.enum(["neutral", "restrained", "brand"]),
+    })
+    .optional(),
 });
 
 export const generationRequestBodySchema = z.object({

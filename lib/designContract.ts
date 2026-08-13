@@ -1,4 +1,5 @@
-import { DesignContext, WebAppSpec } from "@/lib/types";
+import { DesignContext, DesignSystemSnapshot, WebAppSpec } from "@/lib/types";
+import { resolveDesignSystem } from "@/lib/designSystemSnapshot";
 
 export interface DesignContract {
   primaryColor: string;
@@ -19,6 +20,8 @@ export interface DesignContract {
   radiusScale: string;
   shadowScale: string;
   spacingScale: string;
+  /** Locked full token set for this generation. */
+  designSystem: DesignSystemSnapshot;
 }
 
 const WEAK_ANCHOR_RE =
@@ -81,11 +84,12 @@ export function buildDesignContract(
   designContext: DesignContext,
 ): DesignContract {
   const scales = densityDefaults(spec.layoutDensity, spec.spacingPhilosophy);
+  const designSystem = resolveDesignSystem(spec);
 
   return {
-    primaryColor: spec.primaryColor,
-    accentColor: spec.accentColor,
-    colorMode: spec.colorMode,
+    primaryColor: designSystem.primary,
+    accentColor: designSystem.accent,
+    colorMode: designSystem.colorMode,
     navPattern: spec.navPattern,
     layoutDensity: spec.layoutDensity,
     platform: spec.platform,
@@ -98,6 +102,7 @@ export function buildDesignContract(
     styleName: designContext.style.name,
     styleCategory: designContext.style.category,
     paletteName: designContext.palette.name,
+    designSystem,
     ...scales,
   };
 }
@@ -173,10 +178,14 @@ export function formatDesignContractForPrompt(
   contract: DesignContract,
   fingerprint?: string,
 ): string {
+  const ds = contract.designSystem;
   const lines = [
-    "SHARED DESIGN DIRECTION (this generation):",
-    `- Colors: primary ${contract.primaryColor}, accent ${contract.accentColor}, mode ${contract.colorMode}`,
-    `- Style: ${contract.paletteName} / ${contract.styleName}`,
+    "SHARED DESIGN DIRECTION (this generation — LOCKED):",
+    `- Implement this design system faithfully. Do not invent a second palette.`,
+    `- Colors: primary ${ds.primary}, accent ${ds.accent}, mode ${ds.colorMode}, tint ${ds.tintStrength}`,
+    `- Surfaces: surface ${ds.surface}, elevated ${ds.surfaceElevated}, overlay ${ds.surfaceOverlay}, border ${ds.border}`,
+    `- Text: primary ${ds.textPrimary}, secondary ${ds.textSecondary}`,
+    `- Style hint: ${contract.paletteName} / ${contract.styleName}`,
     `- Nav: ${contract.navPattern}; layout ${contract.dominantLayoutPattern}; density ${contract.layoutDensity}`,
     `- Tone: ${contract.visualPersonality}, ${contract.keyEmotionalTone}`,
     `- Prefer ${contract.radiusScale}; ${contract.shadowScale}; ${contract.spacingScale}`,

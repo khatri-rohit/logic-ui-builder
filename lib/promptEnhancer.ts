@@ -10,9 +10,9 @@ const CRITICAL_CONSTRAINTS = [
   "CRITICAL: Never use hardcoded colors - use design tokens only (var(--surface), var(--primary), var(--accent))",
   "CRITICAL: Never use arbitrary spacing - use 8pt grid only (gap-2, gap-4, gap-6, gap-8)",
   "CRITICAL: Never use bg-blue-500, text-gray-500, #hex codes directly - use token system",
-  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested",
+  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless the prompt or locked brief implies them.",
   "NO EMOJIS: Use Lucide React icons only, never emoji characters",
-  "NO PURE BLACK: Never use #000000. Use off-black, zinc-950, or charcoal.",
+  "NO PURE BLACK: Never use #000000. Use locked text/surface tokens.",
   "NO GENERIC AI SLOP: No 3-equal-card rows, no generic names, no filler words, no fake numbers",
 ];
 
@@ -24,9 +24,9 @@ const SKILL_SYSTEM_RULES = [
   "Keep the design faithful to requested scope; never invent unrelated product features.",
   "Apply visual hierarchy: one focal point, then supporting elements, then secondary",
   "Match component selection to content type: Table for data, Grid for cards, List for items",
-  "Reference professional UI patterns: Linear (minimal), Stripe (dense), Vercel (whitespace), Notion (calm)",
+  "Reference professional UI patterns by personality: Linear/Vercel for minimal-utility; Stripe for corporate-precision; expressive chromatic references for expressive-brand — never force one aesthetic on every product",
   "Use asymmetric layouts instead of centered symmetry when DESIGN_VARIANCE > 4",
-  "Desaturate accents to blend with neutrals; max 1 accent color, saturation < 80%",
+  "Faithfully implement the locked primary and accent from the design brief; do not invent a second palette",
   "Use realistic, contextual data: no 'John Doe', 'Acme Corp', '99.99%', or 'Lorem Ipsum'",
   "Implement complete interaction cycles: default, hover, active, focus, disabled for all interactive elements",
 ];

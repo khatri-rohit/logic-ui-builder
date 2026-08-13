@@ -1370,6 +1370,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         throw new Error("Unable to find generation ID for active frame.");
       }
 
+      const canvasFrames = [...getFramesSnapshot().values()].map((frame) => ({
+        id: frame.id,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+      }));
+
+      // Flush pending canvas geometry so DB screens stay closer to live sizes.
+      flushPendingSnapshotPersist();
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
@@ -1381,6 +1392,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           // model,
           prompt: generationPrompt,
           platform,
+          canvasFrames,
           ...(useFrameContext && {
             generationId,
             frameId: sourceFrame!.id,

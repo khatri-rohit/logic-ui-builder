@@ -48,8 +48,10 @@ import {
 } from "@/lib/execution/modelDefaults";
 
 import {
+  collectBoundsFromGenerations,
   getGenerationLayout,
   getInitialDimensionsForPlatform,
+  mergeExistingFrameBounds,
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { parseGenerationScreens } from "@/lib/utils";
@@ -897,20 +899,30 @@ export async function POST(req: NextRequest) {
 
         const existingGenerations = await prisma.generation.findMany({
           where: { projectId: project.id },
-          select: { screens: true },
+          select: { id: true, screens: true },
         });
-        const existingFrameBounds: Array<{
-          x: number;
-          y: number;
-          w: number;
-          h: number;
-        }> = [];
-        for (const gen of existingGenerations) {
-          const screens = parseGenerationScreens(gen.screens);
-          for (const s of screens) {
-            existingFrameBounds.push({ x: s.x, y: s.y, w: s.w, h: s.h });
-          }
-        }
+
+        const dbBounds = collectBoundsFromGenerations(
+          existingGenerations.map((gen) => ({
+            id: gen.id,
+            screens: parseGenerationScreens(gen.screens),
+          })),
+          generationId,
+        );
+
+        const liveBounds = (body.canvasFrames ?? []).map((frame) => ({
+          id: frame.id,
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+        }));
+
+        // Prefer live canvas geometry (auto-fit heights) over stale DB artboard heights.
+        const existingFrameBounds = mergeExistingFrameBounds(
+          dbBounds,
+          liveBounds,
+        );
 
         const positions = getGenerationLayout(
           existingFrameBounds,

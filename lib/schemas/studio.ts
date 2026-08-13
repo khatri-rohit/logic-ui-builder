@@ -192,6 +192,19 @@ export const generationRequestBodySchema = z.object({
   generationId: z.string().cuid().optional(),
   targetFrameId: z.string().optional(),
   createNewFrame: z.boolean().optional(),
+  /** Live canvas frame rects — preferred over stale DB heights for layout. */
+  canvasFrames: z
+    .array(
+      z.object({
+        id: z.string().min(1).optional(),
+        x: z.number().finite(),
+        y: z.number().finite(),
+        w: z.number().finite().positive(),
+        h: z.number().finite().positive(),
+      }),
+    )
+    .max(200)
+    .optional(),
 });
 
 export const frameRegenerateRequestBodySchema = z.object({

@@ -400,6 +400,9 @@ Each frame runs alone in Sandpack as one file. There is no multi-file app.
 - Allowed packages only: react, react-dom, lucide-react, recharts, clsx, tailwind-merge, date-fns, dayjs, lodash.
 - Every JSX component used must be imported or defined in THIS file.
 - Lucide: import only real icon names from the allowlist. Never invent icons (e.g. no fake names).
+- JavaScript builtins are not icons. Leave .filter(Boolean), .map(Number), .map(String), new Map(), new Date(), and new Image() unchanged.
+- If you need Lucide Map, Image, File, History, or Video, import them aliased: import { Map as MapIcon, Image as ImageIcon } from "lucide-react".
+- Avatar initials helpers are encouraged. Keep .filter(Boolean) as the language Boolean function.
 - Shared visual language across screens means re-implement the same tokens/patterns/chrome in each file — never import siblings.
 
 ## STITCH-LEVEL QUALITY DIRECTIVES
@@ -1226,6 +1229,7 @@ SYNTAX REMINDER:
 - Output code only.
 - Single-file sandbox: every icon/component must be imported in this file.
 - Only import real lucide-react icon names (e.g. Search, Plus, Settings, LayoutDashboard, GitPullRequest). Never invent icon names.
+- Do not import Boolean, Number, String, Date, or Map from lucide-react. .filter(Boolean) and new Map() are language APIs.
 `.trim();
 }
 

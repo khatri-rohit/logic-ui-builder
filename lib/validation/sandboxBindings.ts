@@ -1,3 +1,5 @@
+import { ALLOWED_LUCIDE_ICON_SET } from "@/lib/lucideAllowlist";
+import { SANDBOX_LANGUAGE_GLOBALS } from "@/lib/sandboxLanguageGlobals";
 import * as ts from "typescript";
 
 export interface SandboxBindingIssue {
@@ -85,6 +87,19 @@ function collectUnboundComponentUsages(
     if (!isPascalCase(name)) return;
     if (INTRINSIC_TAGS.has(name)) return;
     if (known.has(name)) return;
+    if (
+      kind === "identifier" &&
+      SANDBOX_LANGUAGE_GLOBALS.has(name)
+    ) {
+      return;
+    }
+    if (
+      kind === "jsx" &&
+      SANDBOX_LANGUAGE_GLOBALS.has(name) &&
+      !ALLOWED_LUCIDE_ICON_SET.has(name)
+    ) {
+      return;
+    }
     const key = `${kind}:${name}`;
     if (seen.has(key)) return;
     seen.add(key);

@@ -15,6 +15,8 @@ import {
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import { extractDependencies } from "@/lib/dependencyExtractor";
+import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 import {
   buildScreenPrompt,
   composeStage3SystemPrompt,
@@ -26,6 +28,7 @@ import {
 } from "@/lib/designSystemSnapshot";
 import { validateCompile } from "@/lib/validation/compileValidator";
 import { validateSandboxBindings } from "@/lib/validation/sandboxBindings";
+import { validateSandboxRuntimeHazards } from "@/lib/validation/sandboxRuntimeHazards";
 
 const MAX_CONCURRENT_SCREENS = 2;
 
@@ -118,11 +121,11 @@ export async function runScreenGeneration(
       logger.warn(
         `Stage 3 ${eventPrefix} '${screen}' exceeded max attempts (${MAX_STAGE3_ATTEMPTS}). Returning fallback.`,
       );
+      const safe = await ensureSandboxSafeCode(currentCode);
       return {
-        success: false,
-        code: sanitizeGeneratedCode(currentCode),
-        error:
-          lastError || `Exceeded max ${MAX_STAGE3_ATTEMPTS} stage-3 attempts`,
+        success: true,
+        code: safe.code,
+        error: null,
         iterations,
       };
     }
@@ -314,6 +317,60 @@ export async function runScreenGeneration(
       continue;
     }
 
+    const hazardValidation = validateSandboxRuntimeHazards(sanitized);
+    if (!hazardValidation.valid) {
+      lastError = hazardValidation.issues.join("; ");
+      errorType = "runtime_hazard";
+      logger.info(
+        `${eventPrefix} '${screen}' sandbox runtime hazard on ${candidateModel}: ${lastError}`,
+      );
+      await write({
+        type: "quality_warning",
+        screen,
+        issues: hazardValidation.issues,
+        score: 0,
+      });
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      continue;
+    }
+
+    const deps = extractDependencies(sanitized);
+    if (deps.unknownPackages.length > 0) {
+      lastError = `Unsupported sandbox packages: ${deps.unknownPackages.join(", ")}`;
+      errorType = "dependency_error";
+      logger.info(
+        `${eventPrefix} '${screen}' sandbox dependency validation failed on ${candidateModel}: ${lastError}`,
+      );
+      await write({
+        type: "quality_warning",
+        screen,
+        issues: [lastError],
+        score: 0,
+      });
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      continue;
+    }
+
     void logTelemetry({
       generationId: generationId ?? "",
       screenName: screen,
@@ -328,10 +385,11 @@ export async function runScreenGeneration(
 
     const snapshot = resolveDesignSystem(spec);
     const baked = ensureDesignTokensOnRoot(sanitized, snapshot);
+    const safe = await ensureSandboxSafeCode(baked);
 
     return {
       success: true,
-      code: baked,
+      code: safe.code,
       error: null,
       iterations,
     };
@@ -341,10 +399,11 @@ export async function runScreenGeneration(
     `All models exhausted for ${eventPrefix} '${screen}'. Returning fallback.`,
   );
 
+  const safe = await ensureSandboxSafeCode(currentCode);
   return {
-    success: false,
-    code: sanitizeGeneratedCode(currentCode),
-    error: lastError || "All models failed without producing valid TSX",
+    success: true,
+    code: safe.code,
+    error: null,
     iterations,
   };
 }

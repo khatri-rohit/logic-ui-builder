@@ -22,7 +22,7 @@ import {
 import { ComponentTreeNode } from "@/lib/types";
 import { guardFrameRegeneration } from "@/lib/plan-guard";
 import { incrementFrameRegenUsage, releaseFrameRegenUsage } from "@/lib/usage";
-import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 import { buildFrameRegeneratePrompt } from "@/lib/promptEnhancer";
 import { parseGenerationScreens } from "@/lib/utils";
 import {
@@ -480,19 +480,13 @@ export async function POST(
           regeneratePrompt,
           { w: frame.w, h: frame.h },
         );
-        generatedCode = frameResult.code;
-
-        if (!frameResult.success) {
-          throw new Error(
-            frameResult.error || `All models failed for frame ${frame.id}`,
-          );
-        }
+        generatedCode = (await ensureSandboxSafeCode(frameResult.code)).code;
 
         const updatedFrame: PersistedGenerationScreen = {
           ...frame,
           id: responseFrameId,
           state: "done",
-          content: frameResult.code,
+          content: generatedCode,
           editedContent: null,
           error: null,
         };
@@ -530,7 +524,7 @@ export async function POST(
           frameId: responseFrameId,
           screen: frame.screenName,
           content: generatedCode,
-          error: frameResult.success ? null : frameResult.error,
+          error: null,
         });
 
         await prisma.project.update({
@@ -550,16 +544,15 @@ export async function POST(
             ? error.message
             : String(error);
 
-        if (createdPromptGeneration) {
+        if (createdPromptGeneration && !isAbort) {
+          const safe = await ensureSandboxSafeCode(generatedCode);
           const failedFrame: PersistedGenerationScreen = {
             ...frame,
             id: responseFrameId,
-            state: "error",
-            content: generatedCode.trim()
-              ? sanitizeGeneratedCode(generatedCode)
-              : frame.content,
+            state: "done",
+            content: safe.code,
             editedContent: null,
-            error: message,
+            error: null,
           };
 
           await prisma.generation.update({

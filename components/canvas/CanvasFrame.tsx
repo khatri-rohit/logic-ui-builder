@@ -438,33 +438,16 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--studio-surface)"
+                className="absolute inset-0 bg-(--studio-surface) p-6"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-(--studio-error)/10">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-(--studio-error)"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </div>
-                <div className="max-w-[86%] px-4 text-center">
-                  <span className="font-mono text-[11px] text-(--studio-text-secondary)">
-                    This screen didn&apos;t compile
-                  </span>
-                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-(--studio-text-muted)">
-                    Right-click and select &quot;Regenerate&quot; to try again.
-                  </p>
+                <div className="h-full rounded-xl border border-(--studio-border) bg-(--frame-skeleton-bg) p-6">
+                  <div className="h-3 w-24 rounded bg-(--studio-text-muted)/20" />
+                  <div className="mt-4 h-8 w-2/3 rounded bg-(--studio-text-muted)/15" />
+                  <div className="mt-8 grid grid-cols-2 gap-3">
+                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
+                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
+                  </div>
                 </div>
               </div>
             )}

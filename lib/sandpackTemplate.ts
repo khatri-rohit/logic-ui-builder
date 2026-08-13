@@ -158,8 +158,42 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 
+class PreviewBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <main style={{ minHeight: '640px', padding: '32px 40px', fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--surface, #fbfbfa)', color: 'var(--text-primary, #10100e)' }}>
+          <section style={{ maxWidth: '64rem', margin: '0 auto', padding: '40px', borderRadius: '16px', border: '1px solid var(--border, rgba(15,15,15,0.10))', background: 'var(--surface-elevated, #f4f4f2)' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-tertiary, rgba(16,16,14,0.42))' }}>Canvas preview</p>
+            <h1 style={{ marginTop: 12, fontSize: 28, fontWeight: 600, letterSpacing: '-0.03em' }}>Layout placeholder</h1>
+            <p style={{ marginTop: 12, maxWidth: '36rem', lineHeight: 1.6, color: 'var(--text-secondary, rgba(16,16,14,0.66))' }}>This frame is ready for another pass. Use regenerate to paint the screen with the locked design system.</p>
+            <div style={{ marginTop: 32, display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr' }}>
+              <div style={{ height: 112, borderRadius: 12, background: 'var(--surface-overlay, #ececea)' }} />
+              <div style={{ height: 112, borderRadius: 12, background: 'var(--surface-overlay, #ececea)' }} />
+            </div>
+          </section>
+        </main>
+      )
+    }
+    return this.props.children
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><App /></React.StrictMode>
+  <React.StrictMode>
+    <PreviewBoundary>
+      <App />
+    </PreviewBoundary>
+  </React.StrictMode>
 )
 
 // Auto-dimension reporter — mounted in runtime entry so it works regardless of template internals

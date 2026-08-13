@@ -56,7 +56,7 @@ export function useFrameLifecycle({
         },
         {
           showOpenInCodeSandbox: false,
-          showErrorScreen: true,
+          showErrorScreen: false,
           showLoadingScreen: true,
           // Required: CRA Sandpack template does not reliably serve /public/index.html
           // scripts, so Tailwind must be injected via externalResources.

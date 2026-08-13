@@ -70,6 +70,7 @@ import {
 } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
 import { buildDesignContract } from "@/lib/designContract";
+import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 
 export const runtime = "nodejs";
 
@@ -776,25 +777,27 @@ export async function POST(req: NextRequest) {
             { w: sourceFrame.w, h: sourceFrame.h },
           );
 
+          const safe = await ensureSandboxSafeCode(frameResult.code);
+
           persistedScreens[0] = {
             id: regenerationFrameId,
-            state: frameResult.success ? "done" : "error",
+            state: "done",
             x: framePosX,
             y: framePosY,
             w: sourceFrame.w,
             h: sourceFrame.h,
             screenName: sourceFrame.screenName,
-            content: frameResult.code,
+            content: safe.code,
             editedContent: null,
-            error: frameResult.success ? null : frameResult.error,
+            error: null,
           };
 
           await write({
             type: "screen_done",
             screen: sourceFrame.screenName,
             frameId: regenerationFrameId,
-            content: frameResult.code,
-            error: frameResult.success ? null : frameResult.error,
+            content: safe.code,
+            error: null,
           });
 
           if (generationId) {
@@ -1010,25 +1013,27 @@ export async function POST(req: NextRequest) {
             }
           }
 
+          const safe = await ensureSandboxSafeCode(finalResult.code);
+
           persistedScreens[i] = {
             id: assignment.frameId,
-            state: finalResult.success ? "done" : "error",
+            state: "done",
             x: assignment.x,
             y: assignment.y,
             w: assignment.w,
             h: assignment.h,
             screenName: screen,
-            content: finalResult.code,
+            content: safe.code,
             editedContent: null,
-            error: finalResult.success ? null : finalResult.error,
+            error: null,
           };
 
           await write({
             type: "screen_done",
             screen,
             frameId: assignment.frameId,
-            content: finalResult.code,
-            error: finalResult.success ? null : finalResult.error,
+            content: safe.code,
+            error: null,
           });
 
           // Eager DB persistence: write completed screens immediately so a

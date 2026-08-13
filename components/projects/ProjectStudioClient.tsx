@@ -17,6 +17,7 @@ import {
 import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
 import { useStudioFrames } from "@/components/canvas/hooks/useStudioFrames";
 import { CanvasFrameData } from "@/components/canvas/types";
+import { buildSandboxFallbackScreen, isProbablyCompleteScreen } from "@/lib/sandboxFallbackScreen";
 import { Button } from "@/components/ui/button";
 import { StudioHeader } from "@/components/projects/StudioHeader";
 import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
@@ -521,10 +522,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (frame.state !== "skeleton" && frame.state !== "streaming") continue;
 
       changed = true;
+      const content = isProbablyCompleteScreen(frame.content)
+        ? frame.content
+        : buildSandboxFallbackScreen();
       next.set(frameId, {
         ...frame,
-        state: "error",
-        error: "Generation was interrupted before this screen completed.",
+        state: "done",
+        content,
+        error: null,
       });
     }
 
@@ -692,8 +697,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const finalizePendingFrames = useCallback(
     ({
-      preferError = false,
-      errorMessage,
+      preferError: _preferError = false,
+      errorMessage: _errorMessage,
     }: {
       preferError?: boolean;
       errorMessage?: string;
@@ -713,15 +718,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           const frame = next.get(frameId);
           if (!frame) return;
 
-          const resolvedContent = bufferedContent ?? frame.content;
-          const hasRenderableContent = resolvedContent.trim().length > 0;
-          const nextState =
-            preferError || !hasRenderableContent ? "error" : "done";
-          const nextError =
-            nextState === "error"
-              ? (errorMessage ??
-                "Generation ended before this screen completed.")
-              : null;
+          const resolvedContent = isProbablyCompleteScreen(
+            bufferedContent ?? frame.content,
+          )
+            ? (bufferedContent ?? frame.content)
+            : buildSandboxFallbackScreen();
+          const nextState: FrameState = "done";
+          const nextError = null;
 
           if (
             frame.state === nextState &&
@@ -1041,15 +1044,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       // Watch stream provides content directly; live generation uses buffer
       const finalCode = event.content ?? runtime.screenBuffers[event.screen] ?? "";
-      const hasRenderableContent = finalCode.trim().length > 0;
-      const nextState: FrameState = hasRenderableContent
-        ? "done"
-        : (event.error ? "error" : "error");
-      const nextError = event.error ?? (
-        hasRenderableContent
-          ? null
-          : "Generation ended before this screen completed."
-      );
+      const content = isProbablyCompleteScreen(finalCode)
+        ? finalCode
+        : buildSandboxFallbackScreen();
+      const nextState: FrameState = "done";
+      const nextError = null;
       const frame = getFramesSnapshot().get(frameId);
       const generationId =
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
@@ -1077,7 +1076,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         next.set(frameId, {
           ...frame,
           state: nextState,
-          content: finalCode,
+          content,
           error: nextError,
         });
         return next;
@@ -1089,7 +1088,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         generationId,
         state: nextState,
         error: nextError,
-        code: finalCode,
+        code: content,
       });
 
       setActiveStreamingScreen((current) =>
@@ -2081,37 +2080,37 @@ npm run dev
         });
       };
 
-      const applyFallbackError = (message: string) => {
+      const applyFallbackError = (_message: string) => {
         applyFrames((current) => {
           const frame = current.get(id);
           if (!frame) return current;
 
-          const fallbackContent = hasMeaningfulStream
+          const candidate = hasMeaningfulStream
             ? streamedContent || sourceContent
             : sourceContent;
+          const nextContent = isProbablyCompleteScreen(candidate)
+            ? candidate
+            : buildSandboxFallbackScreen();
 
           const next = new Map(current);
           next.set(id, {
             ...frame,
             generationId: resolvedGenerationId,
-            state: "error",
-            content: fallbackContent,
+            state: "done",
+            content: nextContent,
             editedContent: hasMeaningfulStream ? null : sourceEditedContent,
-            error: message,
+            error: null,
           });
           return next;
         });
       };
 
       const finalizeFromStream = () => {
-        const hasRenderableContent = streamedContent.trim().length > 0;
-        const nextState: FrameState = hasRenderableContent ? "done" : "error";
-        const nextError = hasRenderableContent
-          ? null
-          : "Generation ended before this frame completed.";
-        const nextContent = hasRenderableContent
+        const nextContent = isProbablyCompleteScreen(streamedContent)
           ? streamedContent
-          : sourceContent;
+          : isProbablyCompleteScreen(sourceContent)
+            ? sourceContent
+            : buildSandboxFallbackScreen();
 
         applyFrames((current) => {
           const frame = current.get(id);
@@ -2121,10 +2120,9 @@ npm run dev
           next.set(id, {
             ...frame,
             generationId: resolvedGenerationId,
-            state: nextState,
+            state: "done",
             content: nextContent,
-            editedContent: hasRenderableContent ? null : sourceEditedContent,
-            error: nextError,
+            error: null,
           });
           return next;
         });

@@ -101,17 +101,13 @@ export function useSpeechRecognition(
   const stoppedByUserRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  const [isSupported, setIsSupported] = useState(false);
+  const [isSupported] = useState(() =>
+    Boolean(getSpeechRecognitionConstructor()),
+  );
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  // Detect support once on mount
-  useEffect(() => {
-    const SpeechRecognition = getSpeechRecognitionConstructor();
-    setIsSupported(Boolean(SpeechRecognition));
-  }, []);
 
   const startListening = useCallback(() => {
     const SpeechRecognition = getSpeechRecognitionConstructor();

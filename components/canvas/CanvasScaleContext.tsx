@@ -4,7 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
-  useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -39,13 +39,10 @@ const fallbackStore = createCanvasScaleStore(1);
 const CanvasScaleContext = createContext<CanvasScaleStore | null>(null);
 
 export function CanvasScaleProvider({ children }: { children: ReactNode }) {
-  const storeRef = useRef<CanvasScaleStore | null>(null);
-  if (!storeRef.current) {
-    storeRef.current = createCanvasScaleStore(1);
-  }
+  const [store] = useState(() => createCanvasScaleStore(1));
 
   return (
-    <CanvasScaleContext.Provider value={storeRef.current}>
+    <CanvasScaleContext.Provider value={store}>
       {children}
     </CanvasScaleContext.Provider>
   );

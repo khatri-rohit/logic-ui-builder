@@ -128,18 +128,20 @@ export const CanvasFrame = memo(function CanvasFrame({
     h,
     isSpacePressed: isSpacePressedProp,
   });
-  propsRef.current = {
-    onMove,
-    onResize,
-    onAutoFit,
-    onInteractionStart,
-    onInteractionEnd,
-    onSelect,
-    platform,
-    w,
-    h,
-    isSpacePressed: isSpacePressedProp,
-  };
+  useEffect(() => {
+    propsRef.current = {
+      onMove,
+      onResize,
+      onAutoFit,
+      onInteractionStart,
+      onInteractionEnd,
+      onSelect,
+      platform,
+      w,
+      h,
+      isSpacePressed: isSpacePressedProp,
+    };
+  });
 
   const autoFitRef = useRef({
     contentKey: editedContent ?? content,

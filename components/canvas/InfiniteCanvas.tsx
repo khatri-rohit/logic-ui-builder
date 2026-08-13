@@ -3,6 +3,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -67,7 +68,9 @@ export const InfiniteCanvas = forwardRef<
   const worldRef = useRef<HTMLDivElement>(null);
   const scaleStore = useCanvasScaleStore();
   const onTransformChangeRef = useRef(onTransformChange);
-  onTransformChangeRef.current = onTransformChange;
+  useEffect(() => {
+    onTransformChangeRef.current = onTransformChange;
+  });
 
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isSpacePressed, setIsSpacePressed] = useState(false);

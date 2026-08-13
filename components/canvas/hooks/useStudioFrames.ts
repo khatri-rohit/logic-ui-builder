@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FrameRect } from "@/components/canvas/types";
 import { CanvasFrameData } from "@/components/canvas/types";
@@ -39,8 +39,13 @@ export function useStudioFrames({ onSync }: UseStudioFramesOptions = {}) {
   const gestureBaselineRef = useRef<Map<string, CanvasFrameData> | null>(null);
   const onSyncRef = useRef(onSync);
 
-  onSyncRef.current = onSync;
-  historyIndexRef.current = historyIndex;
+  useEffect(() => {
+    onSyncRef.current = onSync;
+  });
+
+  useEffect(() => {
+    historyIndexRef.current = historyIndex;
+  });
 
   const sync = useCallback((next: Map<string, CanvasFrameData>) => {
     latestFramesRef.current = next;

@@ -13,9 +13,9 @@ export const GENERATED_SCREEN_LIMITS = {
 } as const;
 
 /** Fallback artboard width when callers omit viewport (should be rare). */
-const WEB_VIEWPORT_FALLBACK_W = 1280;
+const WEB_VIEWPORT_FALLBACK_W = 1440;
 
-export const MAX_PROMPT_LENGTH = 5000;
+export const MAX_PROMPT_LENGTH = 8000;
 
 export function truncatePrompt(prompt: string): string {
   if (prompt.length <= MAX_PROMPT_LENGTH) return prompt;
@@ -28,7 +28,6 @@ export { normalizeHexColor };
 
 export type { ValidationResult } from "./validation/engine";
 export { validateGeneratedTSX } from "./validation/engine";
-
 
 const IMPORT_ALLOWLIST = [
   "react",
@@ -329,9 +328,9 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Premium font pairings: use Geist, Satoshi, or Cabinet Grotesk for creative/editorial designs. Default to Inter for utilitarian UIs. NEVER use serif fonts for dashboards or software UIs.
 
 3. Width & Container Standards (CRITICAL - affects all screens)
-- Design for the exact artboard width provided in the screen brief — do not assume 1280 or 390 unless that is the stated width
+- Design for the exact artboard width provided in the screen brief — do not assume 1440 or 390 unless that is the stated width
 - Web screens MUST use at least 90% of the provided artboard width
-- Root container: full artboard width, or max-w matching the artboard (e.g. max-w-[1280px] only when artboard is ≥1280)
+- Root container: full artboard width, or max-w matching the artboard (e.g. max-w-[1440px] only when artboard is ≥1440)
 - For content/utility screens on wide artboards, max-w-[1024px] centered is OK when artboard is ≥1024
 - NEVER create narrow "card-only" layouts on wide artboards — use full available width
 - NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on wide desktop web layouts (artboard ≥1024)
@@ -361,7 +360,7 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Asymmetric grids over equal-width cards: use 2fr 1fr 1fr or zig-zag layouts instead of generic 3-equal-card rows.
 
 7. Responsive design & artboard height
-- Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px).
+- Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1440px).
 - Use responsive prefixes (sm:, md:, lg:, xl:) for grid columns, typography scaling, and spacing adjustments.
 - NEVER use h-screen, min-h-screen, min-h-[100vh], or min-h-[100dvh] on the page root / outermost wrapper.
 - min-h-[100dvh] is allowed only on a single intentional hero section — never on the component root that wraps the whole screen.
@@ -560,7 +559,6 @@ ${DESIGN_VOCABULARY_DIRECTIVE}
 - Minimum 4 mock data items per list/grid/table component
 - Responsive: works at the exact artboard viewport width provided in the design brief
 `.trim();
-
 
 export const WEB_APP_SPEC_SCHEMA = {
   type: "object",
@@ -904,11 +902,11 @@ Tint strength for this generation: ${ds.tintStrength} (derived from visualPerson
 - Grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4
 - Typography scaling: text-3xl md:text-4xl lg:text-5xl
 - Spacing scaling: p-4 md:p-8 lg:p-12
-- Container: max-w-full md:max-w-[1024px] lg:max-w-[1280px] mx-auto
+- Container: max-w-full md:max-w-[1024px] lg:max-w-[1440px] mx-auto
 
 ## 11. WIDTH STANDARDS:
 - Match the artboard width from the screen brief (do not invent a different viewport)
-- Landing/Dashboard on ≥1280 artboards: full width or max-w-[1280px] centered
+- Landing/Dashboard on ≥1440 artboards: full width or max-w-[1440px] centered
 - Content/Utility on ≥1024 artboards: max-w-[1024px] centered is OK
 - Forms on ~640 artboards: use the full artboard width (max-w-[640px] centered)
 - NEVER trap content in a narrow centered column on wide desktop artboards
@@ -1066,10 +1064,7 @@ ${buildSystemPrompt(spec, designContext)}`;
 
 function sanitizeReferenceScreenCode(code: string): string {
   const maxLen = 600;
-  let safe = code
-    .replace(/```/g, "")
-    .replace(/\$\{/g, "")
-    .replace(/`/g, "");
+  let safe = code.replace(/```/g, "").replace(/\$\{/g, "").replace(/`/g, "");
   safe = safe.replace(/^import\s+.*?(?:from\s+['"][^'"]*['"]\s*;?)?$/gm, "");
   safe = safe.replace(/\/\/.*$/gm, "");
   safe = safe.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -1080,14 +1075,19 @@ function sanitizeReferenceScreenCode(code: string): string {
   let m: RegExpExecArray | null;
   while ((m = classRe.exec(safe)) !== null) {
     for (const cls of m[1].split(/\s+/)) {
-      if (/^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(cls)) {
+      if (
+        /^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(
+          cls,
+        )
+      ) {
         classTokens.push(cls);
       }
     }
   }
 
   const styleTokens: string[] = [];
-  const styleRe = /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
+  const styleRe =
+    /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
   while ((m = styleRe.exec(safe)) !== null) {
     styleTokens.push(`${m[1]}: ${m[2].trim()}`);
   }
@@ -1127,8 +1127,7 @@ export function buildScreenPrompt(
   const componentIntents = node?.componentIntents ?? [];
 
   const isMobile = spec.platform === "mobile";
-  const viewportW =
-    viewport?.w ?? (isMobile ? 390 : WEB_VIEWPORT_FALLBACK_W);
+  const viewportW = viewport?.w ?? (isMobile ? 390 : WEB_VIEWPORT_FALLBACK_W);
   const platformViewportLabel = isMobile
     ? `mobile, ${viewportW}px viewport artboard, touch-first`
     : `web, ${viewportW}px viewport artboard, design for that width`;
@@ -1185,9 +1184,8 @@ ${(
     ? formatDesignContractForPrompt(designContract)
     : "";
 
-  const isAuthLike = /\b(login|signin|sign-up|signup|register|auth|forgot|otp)\b/i.test(
-    screen,
-  );
+  const isAuthLike =
+    /\b(login|signin|sign-up|signup|register|auth|forgot|otp)\b/i.test(screen);
 
   const crossScreenConsistency =
     referenceScreenCode && !isAuthLike
@@ -1232,5 +1230,3 @@ SYNTAX REMINDER:
 - Do not import Boolean, Number, String, Date, or Map from lucide-react. .filter(Boolean) and new Map() are language APIs.
 `.trim();
 }
-
-

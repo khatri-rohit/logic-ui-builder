@@ -42,7 +42,7 @@ export async function captureProjectThumbnail(
   url: string,
   options: CaptureProjectThumbnailOptions = {},
 ): Promise<Buffer> {
-  const viewport = options.viewport ?? { width: 1280, height: 720 };
+  const viewport = options.viewport ?? { width: 1440, height: 720 };
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 
   try {

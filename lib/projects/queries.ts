@@ -105,7 +105,7 @@ async function getProject(id: string): Promise<ProjectDetail> {
   return requestApi<ProjectDetail>(`/api/projects/${id}`);
 }
 
-function flattenGenerationFrames(
+export function flattenGenerationFrames(
   generations: ProjectGeneration[],
 ): CanvasFrameSnapshot[] {
   return generations.flatMap((generation) =>
@@ -115,6 +115,37 @@ function flattenGenerationFrames(
       platform: generation.platform,
     })),
   );
+}
+
+/**
+ * Upsert a generation (and its screens) into a ProjectDetail cache entry so
+ * reopen does not see the hollow PENDING snapshot from first open.
+ */
+export function upsertProjectGenerationInDetail(
+  previous: ProjectDetail | undefined,
+  generation: ProjectGeneration,
+  projectStatus?: ProjectStatus,
+): ProjectDetail | undefined {
+  if (!previous) return previous;
+
+  const existingIndex = previous.generations.findIndex(
+    (item) => item.generationId === generation.generationId,
+  );
+
+  let generations: ProjectGeneration[];
+  if (existingIndex === -1) {
+    generations = [...previous.generations, generation];
+  } else {
+    generations = [...previous.generations];
+    generations[existingIndex] = generation;
+  }
+
+  return {
+    ...previous,
+    status: projectStatus ?? previous.status,
+    generations,
+    frames: flattenGenerationFrames(generations),
+  };
 }
 
 function mergePatchedProjectDetail(
@@ -176,8 +207,8 @@ export function projectDetailQueryOptions(id: string) {
     queryKey: ["projects", id] as const,
     queryFn: () => getProject(id),
     enabled: !!id,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 }
 

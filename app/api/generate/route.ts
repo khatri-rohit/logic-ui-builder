@@ -535,7 +535,7 @@ export async function POST(req: NextRequest) {
     logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
-      (createNewFrameWithContext) && sourceGeneration
+      createNewFrameWithContext && sourceGeneration
         ? toApiPlatform(sourceGeneration.platform)
         : toApiPlatform(project.platform);
     const prompt = body.prompt.trim();
@@ -544,10 +544,7 @@ export async function POST(req: NextRequest) {
     let stage3Prompt: string;
     let designContextText: string;
 
-    if (
-      (createNewFrameWithContext) &&
-      sourceGeneration
-    ) {
+    if (createNewFrameWithContext && sourceGeneration) {
       designContext = await buildDesignContext({
         prompt: sourceGeneration.prompt,
         platform: toApiPlatform(sourceGeneration.platform),
@@ -585,7 +582,7 @@ export async function POST(req: NextRequest) {
     );
 
     const requestedModelForPersistence =
-      (createNewFrameWithContext) && sourceGeneration
+      createNewFrameWithContext && sourceGeneration
         ? (preferredModel ?? sourceGeneration.model)
         : (preferredModel ?? stage3ModelPriority[0]);
 
@@ -596,20 +593,20 @@ export async function POST(req: NextRequest) {
       const result = await reserveGenerationWithIdempotency(tx, {
         projectId: project.id,
         prompt:
-          (createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? prompt || sourceGeneration.prompt
             : prompt,
         model: requestedModelForPersistence,
         platform:
-          (createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? sourceGeneration.platform
             : toPrismaPlatform(requestedPlatform),
         spec:
-          (createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? (sourceGeneration.spec as unknown as Prisma.InputJsonValue)
             : ({} as Prisma.InputJsonValue),
         tree:
-          (createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? (sourceGeneration.tree as Prisma.InputJsonValue | undefined)
             : undefined,
         idempotencyKey,
@@ -1178,17 +1175,17 @@ const performDesignQualityCheck = (
   }
 
   // Major functional layout issue: web designs looking like mobile on wide artboards
-  const artboardW = viewportWidth ?? (spec.platform === "web" ? 1280 : 390);
+  const artboardW = viewportWidth ?? (spec.platform === "web" ? 1440 : 390);
   if (spec.platform === "web" && artboardW >= 1024) {
     const hasNarrowContainer =
       /max-w-sm|max-w-md|max-w-xs|max-w-\[400px\]|max-w-\[500px\]|max-w-\[600px\]|w-96|w-80|w-72/.test(
         code,
       );
     const hasFullWidth =
-      /max-w-\[1280px\]|max-w-\[1024px\]|max-w-7xl|max-w-6xl|w-full/.test(code);
+      /max-w-\[1440px\]|max-w-\[1280px\]|max-w-7xl|max-w-6xl|w-full/.test(code);
     if (hasNarrowContainer && !hasFullWidth) {
       issues.push(
-        "Layout: Web design appears mobile-narrow. Desktop layouts should use max-w-[1280px] or full-width.",
+        "Layout: Web design appears mobile-narrow. Desktop layouts should use max-w-[1440px] or full-width.",
       );
       score -= 2;
     }

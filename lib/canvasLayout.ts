@@ -1,13 +1,13 @@
 import { GenerationPlatform } from "./types";
 
-const H_GAP = 100; // gap between screens in same generation
+const H_GAP = 150; // gap between screens in same generation
 /** Vertical gap between generation rows. */
-const ROW_GAP = 100;
+const ROW_GAP = 200;
 
 export const WEB_VIEWPORT_STANDARDS = {
   min: 1024,
-  standard: 1280,
-  max: 1440,
+  standard: 1440,
+  max: 2560,
   wide: 1920,
   form: 640,
 } as const;
@@ -175,7 +175,11 @@ export function getInitialDimensionsForPlatform(
     return { w: 390, h: 844 };
   }
 
-  if (type.includes("landing") || type.includes("home") || type.includes("hero"))
+  if (
+    type.includes("landing") ||
+    type.includes("home") ||
+    type.includes("hero")
+  )
     return { w: WEB_VIEWPORT_STANDARDS.standard, h: 800 };
 
   if (type.includes("dashboard") || type.includes("admin"))
@@ -191,7 +195,11 @@ export function getInitialDimensionsForPlatform(
   if (type.includes("modal") || type.includes("dialog"))
     return { w: 560, h: 480 };
 
-  if (type.includes("article") || type.includes("blog") || type.includes("post"))
+  if (
+    type.includes("article") ||
+    type.includes("blog") ||
+    type.includes("post")
+  )
     return { w: 768, h: 900 };
 
   if (
@@ -201,7 +209,11 @@ export function getInitialDimensionsForPlatform(
   )
     return { w: WEB_VIEWPORT_STANDARDS.standard, h: 700 };
 
-  if (type.includes("contact") || type.includes("faq") || type.includes("terms"))
+  if (
+    type.includes("contact") ||
+    type.includes("faq") ||
+    type.includes("terms")
+  )
     return { w: WEB_VIEWPORT_STANDARDS.min, h: 600 };
 
   if (

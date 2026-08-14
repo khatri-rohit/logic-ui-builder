@@ -23,6 +23,8 @@ import { StudioHeader } from "@/components/projects/StudioHeader";
 import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
 import { StudioStatusBar } from "@/components/projects/StudioStatusBar";
 import {
+  projectKeys,
+  upsertProjectGenerationInDetail,
   useProjectCanvasStateUpdateMutation,
   useProjectDeleteMutation,
   useProjectMetadataUpdateMutation,
@@ -32,6 +34,7 @@ import {
   useProjectThumbnailUpdateMutation,
   useRestoreFrameVersionMutation,
 } from "@/lib/projects/queries";
+import { shouldAutoStartProjectGeneration } from "@/lib/projects/autoStart";
 import { useUsageQuery } from "@/lib/billing/queries";
 import { FrameHistoryPanel } from "@/components/projects/FrameHistoryPanel";
 import {
@@ -41,6 +44,8 @@ import {
 import { Check, Code2, Copy, Link, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProjectStudioRuntimeState } from "@/stores/project-studio";
+import { useQueryClient } from "@tanstack/react-query";
+import type { ProjectGeneration } from "@/lib/api/types";
 
 import { CanvasSnapshotV1, FrameState } from "@/lib/canvas-state";
 import logger from "@/lib/logger";
@@ -258,10 +263,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const {
     data: project,
     isLoading: projectLoading,
+    isFetching: projectFetching,
     isError,
     error: projectError,
     refetch: refetchProject,
   } = useProjectQuery(projectId);
+
+  const queryClient = useQueryClient();
 
   const { data: usage } = useUsageQuery();
 
@@ -538,6 +546,61 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     updateEphemeral(() => next);
     scheduleSnapshotPersist();
   }, [getFramesSnapshot, scheduleSnapshotPersist, updateEphemeral]);
+
+  const syncProjectDetailCache = useCallback(
+    (generationId?: string | null) => {
+      const resolvedGenerationId = resolvePersistGenerationId(
+        generationId ?? undefined,
+      );
+      if (!resolvedGenerationId || !project) return;
+
+      const frames = [...getFramesSnapshot().values()].filter(
+        (frame) => frame.generationId === resolvedGenerationId,
+      );
+      if (frames.length === 0) return;
+
+      const existing = project.generations.find(
+        (generation) => generation.generationId === resolvedGenerationId,
+      );
+
+      const generation: ProjectGeneration = {
+        generationId: resolvedGenerationId,
+        model: existing?.model ?? "unknown",
+        platform: frames[0]?.platform ?? project.platform,
+        spec: existing?.spec ?? null,
+        screens: frames.map((frame) => ({
+          id: frame.id,
+          state: frame.state,
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          screenName: frame.screenName,
+          content: frame.content,
+          editedContent: frame.editedContent,
+          error: frame.error,
+        })),
+        status: "COMPLETED",
+        terminalAt: existing?.terminalAt ?? new Date().toISOString(),
+        errorMessage: null,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData(
+        ["projects", projectId],
+        (prev: typeof project | undefined) =>
+          upsertProjectGenerationInDetail(prev, generation, "ACTIVE"),
+      );
+    },
+    [
+      getFramesSnapshot,
+      project,
+      projectId,
+      queryClient,
+      resolvePersistGenerationId,
+    ],
+  );
 
   const upsertGenerationReviewEntry = useCallback(
     ({
@@ -1124,6 +1187,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       finalizePendingFrames({ preferError: false });
 
       updateProjectStatus({ id: projectId, status: "ACTIVE" });
+      syncProjectDetailCache();
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
 
       const allRects = [...getFramesSnapshot().values()].map((frame) => ({
           x: frame.x,
@@ -1539,6 +1607,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       stopChunkFlusher();
       setActiveStreamingScreen(null);
       setIsGenerating(false);
+
+      if (!streamFailed && !isStaleGeneration()) {
+        syncProjectDetailCache();
+        void queryClient.invalidateQueries({
+          queryKey: ["projects", projectId],
+        });
+        void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+      }
     }
   };
 
@@ -2483,7 +2559,7 @@ npm run dev
   }, [generationRecoveryPrompt]);
 
   useEffect(() => {
-    if (projectLoading || isError) return;
+    if (projectLoading || projectFetching || isError) return;
 
     if (!project) {
       logger.error("Project not found");
@@ -2533,9 +2609,8 @@ npm run dev
     }
 
     if (
-      project.frames.length === 0 &&
       !hasInitiatedGeneration &&
-      project.status !== "ARCHIVED"
+      shouldAutoStartProjectGeneration(project)
     ) {
       setRuntimeInitiatedGeneration(true);
       void handleGenerateRef.current();
@@ -2545,8 +2620,10 @@ npm run dev
     hasInitiatedGeneration,
     hydrateStudioState,
     isError,
+    isGenerating,
     project,
     projectError,
+    projectFetching,
     projectLoading,
     recoverStalledFrames,
     restoreFromSnapshot,

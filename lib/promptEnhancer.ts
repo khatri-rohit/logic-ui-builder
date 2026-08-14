@@ -61,34 +61,56 @@ function inferDesignDials(prompt: string): {
   return { variance, motion, density };
 }
 
-function buildDialDirectives(dials: { variance: number; motion: number; density: number }): string[] {
+function buildDialDirectives(dials: {
+  variance: number;
+  motion: number;
+  density: number;
+}): string[] {
   const directives: string[] = [];
 
   // DESIGN_VARIANCE (1-10)
   if (dials.variance <= 3) {
-    directives.push("Use symmetrical layouts: centered grids, equal spacing, balanced composition.");
+    directives.push(
+      "Use symmetrical layouts: centered grids, equal spacing, balanced composition.",
+    );
   } else if (dials.variance <= 7) {
-    directives.push("Use offset layouts: overlapping elements, varied image aspect ratios, left-aligned headers over centered data.");
+    directives.push(
+      "Use offset layouts: overlapping elements, varied image aspect ratios, left-aligned headers over centered data.",
+    );
   } else {
-    directives.push("Use asymmetric layouts: masonry, CSS Grid with fractional units (2fr 1fr 1fr), massive empty zones (padding-left: 20vw). Must aggressively fall back to single-column below md:.");
+    directives.push(
+      "Use asymmetric layouts: masonry, CSS Grid with fractional units (2fr 1fr 1fr), massive empty zones (padding-left: 20vw). Must aggressively fall back to single-column below md:.",
+    );
   }
 
   // MOTION_INTENSITY (1-10)
   if (dials.motion <= 3) {
-    directives.push("Static UI: CSS :hover and :active states only. No transitions beyond basic color changes.");
+    directives.push(
+      "Static UI: CSS :hover and :active states only. No transitions beyond basic color changes.",
+    );
   } else if (dials.motion <= 7) {
-    directives.push("Fluid CSS: Use transition-all duration-200 ease-out. Hover lift with -translate-y-[1px]. Focus ring animations.");
+    directives.push(
+      "Fluid CSS: Use transition-all duration-200 ease-out. Hover lift with -translate-y-[1px]. Focus ring animations.",
+    );
   } else {
-    directives.push("Advanced choreography: complex scroll-triggered reveals and parallax are NOT available in this static generation. Use static representations of fluid layouts.");
+    directives.push(
+      "Advanced choreography: complex scroll-triggered reveals and parallax are NOT available in this static generation. Use static representations of fluid layouts.",
+    );
   }
 
   // VISUAL_DENSITY (1-10)
   if (dials.density <= 3) {
-    directives.push("Art Gallery Mode: Lots of whitespace. Huge section gaps (gap-20+). Everything feels expensive and clean.");
+    directives.push(
+      "Art Gallery Mode: Lots of whitespace. Huge section gaps (gap-20+). Everything feels expensive and clean.",
+    );
   } else if (dials.density <= 7) {
-    directives.push("Daily App Mode: Normal spacing for standard web apps. gap-6 to gap-8 between sections.");
+    directives.push(
+      "Daily App Mode: Normal spacing for standard web apps. gap-6 to gap-8 between sections.",
+    );
   } else {
-    directives.push("Cockpit Mode: Tiny paddings. No card boxes; use 1px borders (divide-y) to separate data. Monospace for numbers. Maximize information density.");
+    directives.push(
+      "Cockpit Mode: Tiny paddings. No card boxes; use 1px borders (divide-y) to separate data. Monospace for numbers. Maximize information density.",
+    );
   }
 
   return directives;
@@ -108,7 +130,7 @@ const PLATFORM_RULES: Record<GenerationPlatform, string[]> = {
   web: [
     "Target desktop web layout with natural full-page vertical flow.",
     "Allow content sections to stack with realistic page height.",
-    "Use at least 90% of the provided artboard width — do not assume 1280px unless that is the artboard width.",
+    "Use at least 90% of the provided artboard width — do not assume 1440px unless that is the artboard width.",
     "NEVER use max-w-sm, max-w-md, w-96, w-80 on wide web artboards (≥1024) — those are mobile-only widths",
     "Do not put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root; content-size the root.",
   ],
@@ -132,7 +154,9 @@ export function buildEnhancedPrompt({
         "- Prioritize these UX checks:",
         ...designContext.uxPriorities.slice(0, 3).map((line) => `  - ${line}`),
         "- Bias corrections (STRICTLY ENFORCED):",
-        ...designContext.biasCorrections.slice(0, 5).map((line) => `  - ${line}`),
+        ...designContext.biasCorrections
+          .slice(0, 5)
+          .map((line) => `  - ${line}`),
       ]
     : [];
 

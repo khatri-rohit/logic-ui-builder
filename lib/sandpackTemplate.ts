@@ -67,10 +67,12 @@ export const SANDBOX_HTML = `<!DOCTYPE html>
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
     }
-    body { min-height: 100vh; }
-    #root { width: 100%; min-height: 100vh; }
+    body { min-height: 0; }
+    #root { width: 100%; min-height: 0; }
 
-    /* Light mode design system tokens (default) */
+    /* Light mode design system tokens (fallback only).
+       Generated screens bake locked generation tokens onto the component root;
+       those override these defaults for preview. */
     :root {
       --font-sans: 'Inter', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -156,14 +158,54 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 
+class PreviewBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <main style={{ minHeight: '640px', padding: '32px 40px', fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--surface, #fbfbfa)', color: 'var(--text-primary, #10100e)' }}>
+          <section style={{ maxWidth: '64rem', margin: '0 auto', padding: '40px', borderRadius: '16px', border: '1px solid var(--border, rgba(15,15,15,0.10))', background: 'var(--surface-elevated, #f4f4f2)' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-tertiary, rgba(16,16,14,0.42))' }}>Canvas preview</p>
+            <h1 style={{ marginTop: 12, fontSize: 28, fontWeight: 600, letterSpacing: '-0.03em' }}>Layout placeholder</h1>
+            <p style={{ marginTop: 12, maxWidth: '36rem', lineHeight: 1.6, color: 'var(--text-secondary, rgba(16,16,14,0.66))' }}>This frame is ready for another pass. Use regenerate to paint the screen with the locked design system.</p>
+            <div style={{ marginTop: 32, display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr' }}>
+              <div style={{ height: 112, borderRadius: 12, background: 'var(--surface-overlay, #ececea)' }} />
+              <div style={{ height: 112, borderRadius: 12, background: 'var(--surface-overlay, #ececea)' }} />
+            </div>
+          </section>
+        </main>
+      )
+    }
+    return this.props.children
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><App /></React.StrictMode>
+  <React.StrictMode>
+    <PreviewBoundary>
+      <App />
+    </PreviewBoundary>
+  </React.StrictMode>
 )
 
 // Auto-dimension reporter — mounted in runtime entry so it works regardless of template internals
 ;(function () {
   let lastW = 0
   let lastH = 0
+  let debounceTimer = 0
+  let burstCount = 0
+  let burstResetTimer = 0
+  const MAX_BURST = 4
+  const DEBOUNCE_MS = 100
+  const BURST_IDLE_MS = 1500
   const PARENT_ORIGIN = '${parentOrigin}'
 
   const postToParent = (payload) => {
@@ -174,29 +216,31 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     }
   }
 
-  const report = () => {
-    const html = document.documentElement
+  // Content-rooted measurement only — never include html.clientHeight/offsetHeight
+  // (those track the iframe viewport and create 100vh growth feedback loops).
+  const measure = () => {
     const body = document.body
     const root = document.getElementById('root')
     const rootRect = root ? root.getBoundingClientRect() : { width: 0, height: 0 }
 
     const width = Math.max(
-      html.scrollWidth,
-      html.offsetWidth,
-      html.clientWidth,
+      root ? root.scrollWidth : 0,
       body ? body.scrollWidth : 0,
-      body ? body.offsetWidth : 0,
       Math.ceil(rootRect.width)
     )
 
     const height = Math.max(
-      html.scrollHeight,
-      html.offsetHeight,
-      html.clientHeight,
+      root ? root.scrollHeight : 0,
       body ? body.scrollHeight : 0,
-      body ? body.offsetHeight : 0,
       Math.ceil(rootRect.height)
     )
+
+    return { width, height }
+  }
+
+  const report = () => {
+    const { width, height } = measure()
+    if (!width || !height) return
 
     if (Math.abs(width - lastW) < 4 && Math.abs(height - lastH) < 4) return
 
@@ -208,6 +252,22 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       width,
       height,
     })
+  }
+
+  const scheduleSettleReport = () => {
+    if (burstCount >= MAX_BURST) return
+
+    window.clearTimeout(debounceTimer)
+    debounceTimer = window.setTimeout(() => {
+      if (burstCount >= MAX_BURST) return
+      burstCount += 1
+      report()
+
+      window.clearTimeout(burstResetTimer)
+      burstResetTimer = window.setTimeout(() => {
+        burstCount = 0
+      }, BURST_IDLE_MS)
+    }, DEBOUNCE_MS)
   }
 
   window.addEventListener('contextmenu', (event) => {
@@ -234,12 +294,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     setTimeout(report, 1400)
   })
 
-  window.addEventListener('resize', report)
+  const root = document.getElementById('root')
+  const ro = new ResizeObserver(scheduleSettleReport)
+  if (root) {
+    ro.observe(root)
+  } else {
+    ro.observe(document.documentElement)
+  }
 
-  const ro = new ResizeObserver(report)
-  ro.observe(document.documentElement)
-
-  const mo = new MutationObserver(report)
+  const mo = new MutationObserver(scheduleSettleReport)
   mo.observe(document.body || document.documentElement, {
     childList: true,
     subtree: true,
@@ -256,9 +319,8 @@ export function buildSandpackFiles(
 ): Record<string, { code: string }> {
   const { dependencies } = extractDependencies(code);
   const origin =
-    parentOrigin || typeof window !== "undefined"
-      ? window.location.origin
-      : "*";
+    parentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : "*");
 
   return {
     "/package.json": {

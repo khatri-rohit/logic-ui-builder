@@ -163,13 +163,14 @@ function toFramesFromGenerations(
   );
 }
 
-function stripGenerationFrames(
+function groupFramesByGeneration(
   frames: CanvasFrameSnapshot[],
-  generationId: string,
-): PersistedGenerationScreen[] {
-  return frames
-    .filter((frame) => frame.generationId === generationId)
-    .map((frame) => ({
+): Map<string, PersistedGenerationScreen[]> {
+  const byGeneration = new Map<string, PersistedGenerationScreen[]>();
+  for (const frame of frames) {
+    if (!frame.generationId) continue;
+    const list = byGeneration.get(frame.generationId) ?? [];
+    list.push({
       id: frame.id,
       state: frame.state,
       x: frame.x,
@@ -180,7 +181,10 @@ function stripGenerationFrames(
       content: frame.content,
       editedContent: frame.editedContent,
       error: frame.error,
-    }));
+    });
+    byGeneration.set(frame.generationId, list);
+  }
+  return byGeneration;
 }
 
 function mergeGenerationScreens(
@@ -452,16 +456,58 @@ export async function PATCH(
       }
     }
 
-    const generationScreensPayload =
-      generationId && canvasState
-        ? stripGenerationFrames(canvasState.frames, generationId)
-        : undefined;
+    const framesByGeneration =
+      canvasState?.frames && canvasState.frames.length > 0
+        ? groupFramesByGeneration(canvasState.frames)
+        : null;
 
     const { updatedProject, updatedGeneration } = await prisma.$transaction(
       async (tx) => {
         let updatedGenerationRecord: GenerationRecord | null = null;
 
-        if (generationId) {
+        if (framesByGeneration) {
+          const generationIds = [...framesByGeneration.keys()];
+          const existingGenerations = await tx.generation.findMany({
+            where: {
+              projectId: project.id,
+              id: { in: generationIds },
+            },
+            select: generationSelect,
+          });
+          const existingById = new Map(
+            existingGenerations.map((gen) => [gen.id, gen]),
+          );
+
+          for (const [genId, incomingScreens] of framesByGeneration) {
+            const existingGeneration = existingById.get(genId);
+            if (!existingGeneration) continue;
+
+            const existingScreens = parseGenerationScreens(
+              existingGeneration.screens,
+            );
+            const shouldMerge =
+              existingGeneration.status === PrismaGenerationStatus.RUNNING ||
+              existingGeneration.status === PrismaGenerationStatus.PENDING;
+
+            const nextScreens = shouldMerge
+              ? mergeGenerationScreens(existingScreens, incomingScreens)
+              : incomingScreens;
+
+            const updated = (await tx.generation.update({
+              where: { id: genId },
+              data: {
+                screens: nextScreens as unknown as Prisma.InputJsonValue,
+              },
+              select: generationSelect,
+            })) as GenerationRecord;
+
+            if (generationId && genId === generationId) {
+              updatedGenerationRecord = updated;
+            }
+          }
+        }
+
+        if (generationId && !updatedGenerationRecord) {
           const existingGeneration = await tx.generation.findFirst({
             where: {
               id: generationId,
@@ -473,29 +519,7 @@ export async function PATCH(
           if (!existingGeneration) {
             throw new Error(GENERATION_NOT_FOUND);
           }
-
-          if (generationScreensPayload !== undefined) {
-            const existingScreens = parseGenerationScreens(
-              existingGeneration.screens,
-            );
-            const shouldMerge =
-              existingGeneration.status === PrismaGenerationStatus.RUNNING ||
-              existingGeneration.status === PrismaGenerationStatus.PENDING;
-
-            const nextScreens = shouldMerge
-              ? mergeGenerationScreens(existingScreens, generationScreensPayload)
-              : generationScreensPayload;
-
-            updatedGenerationRecord = (await tx.generation.update({
-              where: { id: generationId },
-              data: {
-                screens: nextScreens as unknown as Prisma.InputJsonValue,
-              },
-              select: generationSelect,
-            })) as GenerationRecord;
-          } else {
-            updatedGenerationRecord = existingGeneration as GenerationRecord;
-          }
+          updatedGenerationRecord = existingGeneration as GenerationRecord;
         }
 
         const updateData: Prisma.ProjectUpdateInput = {};

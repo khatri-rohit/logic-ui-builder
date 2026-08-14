@@ -1,16 +1,18 @@
+import {
+  ALLOWED_LUCIDE_ICON_SET,
+  LUCIDE_FALLBACK_ICON,
+} from "@/lib/lucideAllowlist";
+import { buildSandboxFallbackScreen } from "@/lib/sandboxFallbackScreen";
+import {
+  lucideImportSpecifier,
+  lucideRenderName,
+  SANDBOX_LANGUAGE_GLOBALS,
+} from "@/lib/sandboxLanguageGlobals";
+import { ALLOWED_SANDBOX_PACKAGES } from "@/lib/sandboxPackages";
 import * as ts from "typescript";
 
-export const ALLOWED_IMPORT_PACKAGES = new Set([
-  "react",
-  "react-dom",
-  "recharts",
-  "lucide-react",
-  "clsx",
-  "tailwind-merge",
-  "date-fns",
-  "dayjs",
-  "lodash",
-]);
+export const ALLOWED_IMPORT_PACKAGES = ALLOWED_SANDBOX_PACKAGES;
+
 
 const CODE_START_RE =
   /^\s*(import|export|const\s+GeneratedScreen|function\s+GeneratedScreen|type\s+|interface\s+|class\s+)/;
@@ -215,8 +217,351 @@ function removeStatements(text: string, statements: ts.ImportDeclaration[]) {
   return next;
 }
 
+function isPascalCaseName(name: string): boolean {
+  return /^[A-Z][A-Za-z0-9]*$/.test(name);
+}
+
+function collectLocalNames(sourceFile: ts.SourceFile): Set<string> {
+  const locals = new Set<string>();
+
+  const visit = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      locals.add(node.name.text);
+    }
+    if (ts.isClassDeclaration(node) && node.name) {
+      locals.add(node.name.text);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      locals.add(node.name.text);
+    }
+    if (
+      (ts.isParameter(node) || ts.isBindingElement(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      locals.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return locals;
+}
+
+function isInsideImport(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (ts.isImportDeclaration(current)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function isTypePosition(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (
+      ts.isTypeNode(current) ||
+      ts.isTypeAliasDeclaration(current) ||
+      ts.isInterfaceDeclaration(current) ||
+      ts.isTypeParameterDeclaration(current)
+    ) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function isPropertyNamePosition(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return true;
+  if (ts.isPropertyAssignment(parent) && parent.name === node) return true;
+  if (ts.isJsxAttribute(parent) && parent.name === node) return true;
+  return false;
+}
+
+function isElementFactoryCall(node: ts.CallExpression): boolean {
+  const expr = node.expression;
+  if (ts.isIdentifier(expr)) {
+    return expr.text === "createElement" || expr.text === "cloneElement";
+  }
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.name)) {
+    return (
+      expr.name.text === "createElement" || expr.name.text === "cloneElement"
+    );
+  }
+  return false;
+}
+
+function isIconUsageIdentifier(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+
+  if (
+    (ts.isJsxOpeningElement(parent) ||
+      ts.isJsxSelfClosingElement(parent) ||
+      ts.isJsxClosingElement(parent)) &&
+    parent.tagName === node
+  ) {
+    return true;
+  }
+
+  if (ts.isJsxExpression(parent) && parent.expression === node) return true;
+  if (ts.isPropertyAssignment(parent) && parent.initializer === node) return true;
+  if (ts.isVariableDeclaration(parent) && parent.initializer === node) return true;
+  if (ts.isShorthandPropertyAssignment(parent) && parent.name === node) {
+    return true;
+  }
+  if (
+    ts.isCallExpression(parent) &&
+    isElementFactoryCall(parent) &&
+    parent.arguments.some((arg) => arg === node)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function collectLucideImportPairs(
+  sourceFile: ts.SourceFile,
+): Map<string, string> {
+  const pairs = new Map<string, string>();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const mod = statement.moduleSpecifier;
+    if (!ts.isStringLiteral(mod) || mod.text !== "lucide-react") continue;
+
+    const clause = statement.importClause;
+    if (!clause) continue;
+
+    const named = clause.namedBindings;
+    if (!named || !ts.isNamedImports(named)) continue;
+
+    for (const element of named.elements) {
+      const local = element.name.text;
+      const exported = element.propertyName?.text ?? element.name.text;
+      pairs.set(local, exported);
+    }
+  }
+
+  return pairs;
+}
+
+function collectComponentUsages(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) ||
+        ts.isJsxSelfClosingElement(node) ||
+        ts.isJsxClosingElement(node)) &&
+      ts.isIdentifier(node.tagName) &&
+      isPascalCaseName(node.tagName.text)
+    ) {
+      names.add(node.tagName.text);
+    }
+
+    if (ts.isIdentifier(node) && isPascalCaseName(node.text)) {
+      const parent = node.parent;
+      const usedAsIconValue =
+        isIconUsageIdentifier(node) ||
+        (ts.isBinaryExpression(parent) && parent.right === node);
+
+      if (usedAsIconValue) {
+        names.add(node.text);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return names;
+}
+
+function rewriteIdentifiers(
+  text: string,
+  replacements: Map<string, string>,
+  mode: "all-values" | "icon-usages",
+): string {
+  if (replacements.size === 0) return text;
+
+  const sourceFile = ts.createSourceFile(
+    "generated-screen.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const edits: { start: number; end: number; to: string }[] = [];
+
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node)) {
+      const to = replacements.get(node.text);
+      if (to && to !== node.text) {
+        const rewrite =
+          mode === "icon-usages"
+            ? isIconUsageIdentifier(node)
+            : !isInsideImport(node) &&
+              !isPropertyNamePosition(node) &&
+              !isTypePosition(node);
+
+        if (rewrite) {
+          edits.push({
+            start: node.getStart(sourceFile),
+            end: node.getEnd(),
+            to,
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  edits.sort((a, b) => b.start - a.start);
+
+  let next = text;
+  for (const edit of edits) {
+    next = next.slice(0, edit.start) + edit.to + next.slice(edit.end);
+  }
+  return next;
+}
+
+function isLanguageBuiltinOnly(name: string): boolean {
+  return (
+    SANDBOX_LANGUAGE_GLOBALS.has(name) && !ALLOWED_LUCIDE_ICON_SET.has(name)
+  );
+}
+
+/**
+ * Usage-based Lucide reconciliation for single-file sandbox:
+ * - allowlisted icons used in JSX/value → ensure imported
+ * - unknown / invented icons → rewrite all refs to Circle and import Circle
+ * - rebuild one clean lucide-react import from the final set
+ */
+function reconcileLucideUsage(text: string): string {
+  const sourceFile = ts.createSourceFile(
+    "generated-screen.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const locals = collectLocalNames(sourceFile);
+  const usages = collectComponentUsages(sourceFile);
+  const lucideLocalToExported = collectLucideImportPairs(sourceFile);
+
+  const fallbackRewrites = new Map<string, string>();
+  const aliasRewrites = new Map<string, string>();
+  const neededIcons = new Set<string>();
+
+  const importedFromOtherPackage = (name: string): boolean =>
+    sourceFile.statements.some((statement) => {
+      if (!ts.isImportDeclaration(statement)) return false;
+      const mod = statement.moduleSpecifier;
+      if (!ts.isStringLiteral(mod) || mod.text === "lucide-react") return false;
+      return getImportBindings(statement).includes(name);
+    });
+
+  const trackAllowlistedIcon = (icon: string, localName?: string) => {
+    neededIcons.add(icon);
+    const render = lucideRenderName(icon);
+    if (localName && localName !== render) {
+      aliasRewrites.set(localName, render);
+    }
+    if (icon !== render) {
+      aliasRewrites.set(icon, render);
+    }
+  };
+
+  for (const [local, exported] of lucideLocalToExported) {
+    if (ALLOWED_LUCIDE_ICON_SET.has(exported)) {
+      trackAllowlistedIcon(exported, local);
+      continue;
+    }
+    if (isLanguageBuiltinOnly(local) || isLanguageBuiltinOnly(exported)) {
+      continue;
+    }
+    fallbackRewrites.set(local, LUCIDE_FALLBACK_ICON);
+    neededIcons.add(LUCIDE_FALLBACK_ICON);
+  }
+
+  for (const name of usages) {
+    if (locals.has(name)) continue;
+    if (JSX_TAG_FALLBACKS[name]) continue;
+    if (importedFromOtherPackage(name)) continue;
+    if (isLanguageBuiltinOnly(name)) continue;
+
+    const exported = lucideLocalToExported.get(name) ?? name;
+
+    if (ALLOWED_LUCIDE_ICON_SET.has(name)) {
+      trackAllowlistedIcon(name, name);
+      continue;
+    }
+    if (ALLOWED_LUCIDE_ICON_SET.has(exported)) {
+      trackAllowlistedIcon(exported, name);
+      continue;
+    }
+
+    fallbackRewrites.set(name, LUCIDE_FALLBACK_ICON);
+    neededIcons.add(LUCIDE_FALLBACK_ICON);
+  }
+
+  let next = rewriteIdentifiers(text, fallbackRewrites, "all-values");
+  next = rewriteIdentifiers(next, aliasRewrites, "icon-usages");
+
+  const afterParse = ts.createSourceFile(
+    "generated-screen.tsx",
+    next,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const lucideDecls: ts.ImportDeclaration[] = [];
+  for (const statement of afterParse.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const mod = statement.moduleSpecifier;
+    if (ts.isStringLiteral(mod) && mod.text === "lucide-react") {
+      lucideDecls.push(statement);
+    }
+  }
+
+  for (const decl of [...lucideDecls].sort(
+    (a, b) => b.getFullStart() - a.getFullStart(),
+  )) {
+    next = next.slice(0, decl.getFullStart()) + next.slice(decl.getEnd());
+  }
+
+  next = next.replace(/^\s*\n/, "");
+
+  if (neededIcons.size > 0) {
+    const icons = [...neededIcons].sort((a, b) => a.localeCompare(b));
+    const specifiers = icons.map(lucideImportSpecifier).join(", ");
+    const importLine = `import { ${specifiers} } from "lucide-react";\n`;
+
+    const reactImportMatch = next.match(
+      /^\s*import\s+[\s\S]*?from\s+["']react["'];?\s*\n?/,
+    );
+    if (reactImportMatch && reactImportMatch.index !== undefined) {
+      const insertAt = reactImportMatch.index + reactImportMatch[0].length;
+      next = next.slice(0, insertAt) + importLine + next.slice(insertAt);
+    } else {
+      next = `${importLine}${next}`;
+    }
+  }
+
+  return next;
+}
+
 function sanitizeImports(text: string): string {
-  let workingText = text;
+  let workingText = reconcileLucideUsage(text);
 
   for (let pass = 0; pass < 2; pass++) {
     const sourceFile = ts.createSourceFile(
@@ -368,27 +713,6 @@ function ensureDefaultExport(text: string): string {
   return next;
 }
 
-function fallbackStaticScreen(reason = "unsupported imports or invalid TSX"): string {
-  return `import React from "react";
-
-function GeneratedScreen() {
-  return (
-    <main className="w-full min-h-screen bg-slate-950 text-slate-100 p-8 lg:p-12">
-      <section className="w-full max-w-6xl mx-auto border border-slate-800 rounded-2xl bg-slate-900/70 p-6 lg:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Generation needs repair</p>
-        <h1 className="mt-3 text-2xl lg:text-4xl font-semibold tracking-tight">Design Preview</h1>
-        <p className="mt-3 text-slate-300 leading-relaxed">
-          The model output could not be made runnable because it contained ${reason}. Regenerate this frame to request a clean TSX version.
-        </p>
-      </section>
-    </main>
-  );
-}
-
-export default GeneratedScreen;
-`;
-}
-
 export function sanitizeGeneratedCode(raw: string): string {
   let next = raw
     .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, "")
@@ -405,7 +729,7 @@ export function sanitizeGeneratedCode(raw: string): string {
     GENERATED_SCREEN_DEFINITION_RE.test(next) && DEFAULT_EXPORT_RE.test(next);
 
   if (!hasGeneratedScreen || next.length < 40) {
-    return fallbackStaticScreen();
+    return buildSandboxFallbackScreen();
   }
 
   return `${next}\n`;

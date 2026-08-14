@@ -10,9 +10,9 @@ const CRITICAL_CONSTRAINTS = [
   "CRITICAL: Never use hardcoded colors - use design tokens only (var(--surface), var(--primary), var(--accent))",
   "CRITICAL: Never use arbitrary spacing - use 8pt grid only (gap-2, gap-4, gap-6, gap-8)",
   "CRITICAL: Never use bg-blue-500, text-gray-500, #hex codes directly - use token system",
-  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested",
+  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless the prompt or locked brief implies them.",
   "NO EMOJIS: Use Lucide React icons only, never emoji characters",
-  "NO PURE BLACK: Never use #000000. Use off-black, zinc-950, or charcoal.",
+  "NO PURE BLACK: Never use #000000. Use locked text/surface tokens.",
   "NO GENERIC AI SLOP: No 3-equal-card rows, no generic names, no filler words, no fake numbers",
 ];
 
@@ -24,9 +24,9 @@ const SKILL_SYSTEM_RULES = [
   "Keep the design faithful to requested scope; never invent unrelated product features.",
   "Apply visual hierarchy: one focal point, then supporting elements, then secondary",
   "Match component selection to content type: Table for data, Grid for cards, List for items",
-  "Reference professional UI patterns: Linear (minimal), Stripe (dense), Vercel (whitespace), Notion (calm)",
+  "Reference professional UI patterns by personality: Linear/Vercel for minimal-utility; Stripe for corporate-precision; expressive chromatic references for expressive-brand — never force one aesthetic on every product",
   "Use asymmetric layouts instead of centered symmetry when DESIGN_VARIANCE > 4",
-  "Desaturate accents to blend with neutrals; max 1 accent color, saturation < 80%",
+  "Faithfully implement the locked primary and accent from the design brief; do not invent a second palette",
   "Use realistic, contextual data: no 'John Doe', 'Acme Corp', '99.99%', or 'Lorem Ipsum'",
   "Implement complete interaction cycles: default, hover, active, focus, disabled for all interactive elements",
 ];
@@ -61,34 +61,56 @@ function inferDesignDials(prompt: string): {
   return { variance, motion, density };
 }
 
-function buildDialDirectives(dials: { variance: number; motion: number; density: number }): string[] {
+function buildDialDirectives(dials: {
+  variance: number;
+  motion: number;
+  density: number;
+}): string[] {
   const directives: string[] = [];
 
   // DESIGN_VARIANCE (1-10)
   if (dials.variance <= 3) {
-    directives.push("Use symmetrical layouts: centered grids, equal spacing, balanced composition.");
+    directives.push(
+      "Use symmetrical layouts: centered grids, equal spacing, balanced composition.",
+    );
   } else if (dials.variance <= 7) {
-    directives.push("Use offset layouts: overlapping elements, varied image aspect ratios, left-aligned headers over centered data.");
+    directives.push(
+      "Use offset layouts: overlapping elements, varied image aspect ratios, left-aligned headers over centered data.",
+    );
   } else {
-    directives.push("Use asymmetric layouts: masonry, CSS Grid with fractional units (2fr 1fr 1fr), massive empty zones (padding-left: 20vw). Must aggressively fall back to single-column below md:.");
+    directives.push(
+      "Use asymmetric layouts: masonry, CSS Grid with fractional units (2fr 1fr 1fr), massive empty zones (padding-left: 20vw). Must aggressively fall back to single-column below md:.",
+    );
   }
 
   // MOTION_INTENSITY (1-10)
   if (dials.motion <= 3) {
-    directives.push("Static UI: CSS :hover and :active states only. No transitions beyond basic color changes.");
+    directives.push(
+      "Static UI: CSS :hover and :active states only. No transitions beyond basic color changes.",
+    );
   } else if (dials.motion <= 7) {
-    directives.push("Fluid CSS: Use transition-all duration-200 ease-out. Hover lift with -translate-y-[1px]. Focus ring animations.");
+    directives.push(
+      "Fluid CSS: Use transition-all duration-200 ease-out. Hover lift with -translate-y-[1px]. Focus ring animations.",
+    );
   } else {
-    directives.push("Advanced choreography: complex scroll-triggered reveals and parallax are NOT available in this static generation. Use static representations of fluid layouts.");
+    directives.push(
+      "Advanced choreography: complex scroll-triggered reveals and parallax are NOT available in this static generation. Use static representations of fluid layouts.",
+    );
   }
 
   // VISUAL_DENSITY (1-10)
   if (dials.density <= 3) {
-    directives.push("Art Gallery Mode: Lots of whitespace. Huge section gaps (gap-20+). Everything feels expensive and clean.");
+    directives.push(
+      "Art Gallery Mode: Lots of whitespace. Huge section gaps (gap-20+). Everything feels expensive and clean.",
+    );
   } else if (dials.density <= 7) {
-    directives.push("Daily App Mode: Normal spacing for standard web apps. gap-6 to gap-8 between sections.");
+    directives.push(
+      "Daily App Mode: Normal spacing for standard web apps. gap-6 to gap-8 between sections.",
+    );
   } else {
-    directives.push("Cockpit Mode: Tiny paddings. No card boxes; use 1px borders (divide-y) to separate data. Monospace for numbers. Maximize information density.");
+    directives.push(
+      "Cockpit Mode: Tiny paddings. No card boxes; use 1px borders (divide-y) to separate data. Monospace for numbers. Maximize information density.",
+    );
   }
 
   return directives;
@@ -101,12 +123,16 @@ const PLATFORM_RULES: Record<GenerationPlatform, string[]> = {
     "If the requested UI is long or section-heavy, split it into multiple mobile screens instead of one very tall screen.",
     "Name split screens with clear ordered suffixes (for example: Home - 1, Home - 2).",
     "Touch targets minimum 44x44px, use gap-3 (12px) for comfortable spacing",
+    "Do NOT render a fake OS status bar, notch, or home-indicator pill — the canvas already provides device chrome.",
+    "Match layout to the exact artboard width from the screen brief (typically ~390px).",
+    "Do not put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root.",
   ],
   web: [
     "Target desktop web layout with natural full-page vertical flow.",
     "Allow content sections to stack with realistic page height.",
-    "Use full viewport width on desktop (90%+), not narrow centered columns",
-    "NEVER use max-w-sm, max-w-md, w-96, w-80 on web — those are mobile-only widths",
+    "Use at least 90% of the provided artboard width — do not assume 1440px unless that is the artboard width.",
+    "NEVER use max-w-sm, max-w-md, w-96, w-80 on wide web artboards (≥1024) — those are mobile-only widths",
+    "Do not put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root; content-size the root.",
   ],
 };
 
@@ -128,7 +154,9 @@ export function buildEnhancedPrompt({
         "- Prioritize these UX checks:",
         ...designContext.uxPriorities.slice(0, 3).map((line) => `  - ${line}`),
         "- Bias corrections (STRICTLY ENFORCED):",
-        ...designContext.biasCorrections.slice(0, 5).map((line) => `  - ${line}`),
+        ...designContext.biasCorrections
+          .slice(0, 5)
+          .map((line) => `  - ${line}`),
       ]
     : [];
 
@@ -137,7 +165,10 @@ export function buildEnhancedPrompt({
 
   return [
     "## PROMPT Framework",
-    "- P — Platform: " + (platform === "mobile" ? "mobile (touch-first, 390px viewport)" : "web (desktop-first, 1280px+)"),
+    "- P — Platform: " +
+      (platform === "mobile"
+        ? "mobile (touch-first; match the artboard width from the screen brief, typically ~390px)"
+        : "web (desktop-first; match the artboard width from the screen brief)"),
     "- R — Role & User: Who is the target user, what is their goal with this UI",
     "- O — Output: Screen type, key elements, specific content to display",
     "- M — Mood & Style: Design style, emotional feeling to convey",

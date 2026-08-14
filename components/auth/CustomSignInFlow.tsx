@@ -346,7 +346,7 @@ export default function CustomSignInFlow() {
               placeholder="Enter the 6-digit code"
             />
             {codeError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {codeError}
               </p>
             ) : null}
@@ -479,7 +479,7 @@ export default function CustomSignInFlow() {
               placeholder="you@company.com"
             />
             {emailError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {emailError}
               </p>
             ) : null}
@@ -515,7 +515,7 @@ export default function CustomSignInFlow() {
               placeholder="Enter your password"
             />
             {passwordError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {passwordError}
               </p>
             ) : null}

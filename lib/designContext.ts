@@ -25,23 +25,23 @@ let cachedSkillsIndex: SkillsIndex | null = null;
 loadSkillsIndex().catch(() => {});
 
 const FALLBACK_PALETTE: DesignPalette = {
-  name: "Classic Blue Trust",
-  primaryHex: "#003366",
-  secondaryHex: "#0055A4",
-  accentHex: "#FFD700",
-  backgroundHex: "#FFFFFF",
-  textHex: "#1A1A1A",
-  psychology: "Trust reliability professionalism",
+  name: "Stage1 Wins",
+  primaryHex: "",
+  secondaryHex: "",
+  accentHex: "",
+  backgroundHex: "",
+  textHex: "",
+  psychology: "Advisory only — Stage 1 locked designSystem is authoritative",
 };
 
 const FALLBACK_STYLE: DesignStyle = {
-  name: "Minimalist",
+  name: "Intent-Driven",
   category: "General",
-  keywords: "clean, simple, essential, whitespace, geometric, modern",
-  typography: "Sans-serif thin weight",
-  effects: "None, sharp edges, high contrast",
-  bestFor: "Tech startups SaaS apps professional services",
-  avoidFor: "Playful brands children entertainment",
+  keywords: "prompt-driven, coherent, product-fit",
+  typography: "Sans-serif balanced",
+  effects: "Follow locked design system",
+  bestFor: "Any product matching user prompt intent",
+  avoidFor: "N/A",
   complexity: "Low",
 };
 
@@ -70,21 +70,21 @@ const FALLBACK_UX_PRIORITIES = [
 ];
 
 const BIAS_CORRECTIONS = [
-  "CRITICAL: NO HARDCODED COLORS - Use design tokens only. Use var(--primary) and var(--accent) for interactive elements - they are your brand colors from the spec.",
-  "CRITICAL: MUST USE PRIMARY/ACCENT - Primary buttons and links MUST use bg-[var(--primary)] with white/black text. Accent badges use bg-[var(--accent)]. Don't make everything neutral.",
+  "CRITICAL: NO HARDCODED COLORS - Use design tokens only. Use var(--primary) and var(--accent) for interactive elements from the locked design system.",
+  "CRITICAL: MUST USE PRIMARY/ACCENT - Primary buttons and links MUST use bg-[var(--primary)]. Accent badges use bg-[var(--accent)]. Follow the locked snapshot.",
   "CRITICAL: NO ARBITRARY SPACING - Use 8pt grid only (gap-2, gap-4, gap-6, gap-8). Never use p-5, p-7, m-3, m-5.",
   "NO EMOJIS: Replace symbols with high-quality icons (Radix, Phosphor, Lucide) or clean SVG primitives.",
-  "NO AI PURPLE: Avoid the generic 'AI Purple/Blue' aesthetic. Use the SPECIFIED primaryColor and accentColor from the spec - they define your brand identity.",
+  "NO AI PURPLE: Avoid the generic 'AI Purple/Blue' aesthetic unless the locked primary/accent are that palette.",
   "NO SYSTEM DEFAULT: Use the runtime font contract consistently; avoid browser-default serif fallbacks.",
   "NO GENERIC NAMES: Avoid 'John Doe' or 'Acme Corp'. Use realistic, contextual brand and user names.",
   "NO 3-COLUMN CARDS: Avoid the generic 3-equal-card feature row. Use asymmetric grids or zig-zags.",
-  "NO PURE BLACK: Never use #000000. Use Off-Black, Zinc-950, or Charcoal.",
+  "NO PURE BLACK: Never use #000000. Use locked text/surface tokens.",
   "NO EQUAL-WEIGHT KPI CARDS: Vary KPI card sizes to create visual hierarchy. Don't make all cards the same size.",
-  "NO NARROW CENTERED COLUMNS: On desktop, use full viewport width. Never trap content in a narrow centered container.",
+  "NO NARROW CENTERED COLUMNS: On wide artboards (≥1024), use full artboard width. Never trap content in a narrow centered container.",
   "NO TEXT-GRAY-500: Use text-[var(--text-secondary)] or text-[var(--text-tertiary)] for secondary text.",
-  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless explicitly requested. Keep surfaces flat.",
+  "NO EMERGENCY GRADIENTS: Avoid decorative gradients unless the prompt or locked brief implies them.",
   "NO GENERIC EMPTY STATES: Empty states need specific copy, a compact visual element, and one clear action.",
-  "CONTRAST MANDATORY: All buttons must have visible contrast - primary buttons use white/black text on primary background. If primary color is dark, use white text.",
+  "CONTRAST MANDATORY: All buttons must have visible contrast - primary buttons use white/black text on primary background.",
 ];
 
 const SHORT_DESIGN_TOKENS = new Set(["ui", "ux", "ai", "3d", "ar", "vr"]);
@@ -426,9 +426,15 @@ export function toDesignContextText(context: DesignContext): string {
     `- Style keywords: ${context.style.keywords}`,
     `- Typography pairing intent: ${context.style.typography}`,
     `- Visual effects: ${context.style.effects}`,
-    `- Palette: ${context.palette.name}`,
+    `- Palette: ${context.palette.name} (advisory hint — Stage 1 / locked designSystem is authoritative)`,
     `- Color psychology: ${context.palette.psychology}`,
-    `- Color tokens: primary ${context.palette.primaryHex}, secondary ${context.palette.secondaryHex}, accent ${context.palette.accentHex}, background ${context.palette.backgroundHex}, text ${context.palette.textHex}`,
+    ...(context.palette.primaryHex
+      ? [
+          `- Color hint tokens: primary ${context.palette.primaryHex}, secondary ${context.palette.secondaryHex}, accent ${context.palette.accentHex}`,
+        ]
+      : [
+          `- Color tokens: deferred to Stage 1 locked designSystem (no palette CSV override)`,
+        ]),
     `- Preferred layout: ${context.layout.name}`,
     `- Layout structure hint: ${context.layout.cssStructure}`,
     `- Layout treatment: ${context.layout.visualTreatment}`,

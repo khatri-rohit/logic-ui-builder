@@ -1,11 +1,21 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "./types";
+import type { DesignContract } from "@/lib/designContract";
+import { formatDesignContractForPrompt } from "@/lib/designContract";
+import {
+  normalizeHexColor,
+  primaryButtonTextColor,
+  resolveDesignSystem,
+} from "@/lib/designSystemSnapshot";
 
 export const GENERATED_SCREEN_LIMITS = {
   web: 4,
   mobile: 3,
 } as const;
 
-export const MAX_PROMPT_LENGTH = 5000;
+/** Fallback artboard width when callers omit viewport (should be rare). */
+const WEB_VIEWPORT_FALLBACK_W = 1440;
+
+export const MAX_PROMPT_LENGTH = 8000;
 
 export function truncatePrompt(prompt: string): string {
   if (prompt.length <= MAX_PROMPT_LENGTH) return prompt;
@@ -14,16 +24,10 @@ export function truncatePrompt(prompt: string): string {
   return prompt.slice(0, MAX_PROMPT_LENGTH - summary.length) + summary;
 }
 
-export function normalizeHexColor(hex: string): string {
-  if (hex.startsWith("#") && hex.length === 4) {
-    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
-  }
-  return hex;
-}
+export { normalizeHexColor };
 
 export type { ValidationResult } from "./validation/engine";
 export { validateGeneratedTSX } from "./validation/engine";
-
 
 const IMPORT_ALLOWLIST = [
   "react",
@@ -37,113 +41,9 @@ const IMPORT_ALLOWLIST = [
   "lodash",
 ].join(", ");
 
-const LUCIDE_REACT_SYMBOLS = [
-  "Activity",
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "BarChart2",
-  "BarChart3",
-  "BarChart4",
-  "Bell",
-  "Bookmark",
-  "Calendar",
-  "Check",
-  "CheckCircle",
-  "ChevronDown",
-  "ChevronLeft",
-  "ChevronRight",
-  "ChevronUp",
-  "Clock",
-  "Copy",
-  "CreditCard",
-  "DollarSign",
-  "Download",
-  "Edit",
-  "Eye",
-  "EyeOff",
-  "File",
-  "FileText",
-  "Filter",
-  "Flag",
-  "Folder",
-  "Globe",
-  "Heart",
-  "HelpCircle",
-  "Home",
-  "Image",
-  "Inbox",
-  "Info",
-  "Layers",
-  "Layout",
-  "Link",
-  "List",
-  "Lock",
-  "LogIn",
-  "LogOut",
-  "Mail",
-  "Map",
-  "MapPin",
-  "Maximize",
-  "Menu",
-  "MessageCircle",
-  "MessageSquare",
-  "Minimize",
-  "Moon",
-  "MoreHorizontal",
-  "MoreVertical",
-  "Move",
-  "Music",
-  "Package",
-  "Paperclip",
-  "Phone",
-  "Play",
-  "Plus",
-  "Power",
-  "Printer",
-  "Radio",
-  "RefreshCw",
-  "RotateCcw",
-  "Save",
-  "Search",
-  "Settings",
-  "Share",
-  "Share2",
-  "Shield",
-  "ShoppingBag",
-  "ShoppingCart",
-  "Shuffle",
-  "Sidebar",
-  "Sliders",
-  "Smartphone",
-  "Star",
-  "Sun",
-  "Table",
-  "Tag",
-  "Target",
-  "Terminal",
-  "ThumbsUp",
-  "Trash",
-  "Trash2",
-  "TrendingDown",
-  "TrendingUp",
-  "Truck",
-  "Upload",
-  "User",
-  "UserCheck",
-  "UserPlus",
-  "Users",
-  "Video",
-  "Volume",
-  "Wallet",
-  "Wifi",
-  "X",
-  "XCircle",
-  "Zap",
-  "ZoomIn",
-  "ZoomOut",
-].join(", ");
+import { ALLOWED_LUCIDE_ICONS } from "@/lib/lucideAllowlist";
+
+const LUCIDE_REACT_SYMBOLS = ALLOWED_LUCIDE_ICONS.join(", ");
 
 const RECHARTS_SYMBOLS = [
   "Area",
@@ -281,8 +181,11 @@ Extract a compact, implementation-ready WebAppSpec from the user's UI prompt. Ou
 
 ## Field Decision Guidelines
 - navPattern: sidebar (5+ destinations), top-nav (marketing), hybrid (complex), none (single-focus)
-- visualPersonality: controls craft level, NOT brand adjectives
+- visualPersonality: derive from the user prompt (product, audience, mood) — not a global default
+- keyEmotionalTone: derive from the user prompt; playful/energetic products should not default to "trustworthy"
+- primaryColor / accentColor: choose a coherent brand palette that fits the prompt's product and mood. Do not default every product to near-black navy or grayscale. Restrained neutrals are correct only when the prompt implies minimal/utility/ops tooling.
 - contentDensityScore: 1=sparse, 3=SaaS normal, 5=dense operational
+- colorMode: choose light or dark from product context — not "dark-first" for everything
 
 ## Safety & Bias Guidelines (ai-prompt-engineering-safety-review)
 - NO cultural bias: Support all geographies, avoid Western-centric assumptions
@@ -425,22 +328,24 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Premium font pairings: use Geist, Satoshi, or Cabinet Grotesk for creative/editorial designs. Default to Inter for utilitarian UIs. NEVER use serif fonts for dashboards or software UIs.
 
 3. Width & Container Standards (CRITICAL - affects all screens)
-- Web screens MUST use at least 90% of available viewport width on desktop
-- Root container: max-w-[1280px] centered or full-bleed for landing/dashboard screens
-- For content/utility screens, use max-w-[1024px] centered for readability
-- NEVER create narrow "card-only" layouts - use full available width
-- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on desktop web layouts
-- If the prompt specifies "dashboard", "admin", "landing" - use full viewport width
-- Forms and lists should use full width with proper max-width constraints
+- Design for the exact artboard width provided in the screen brief — do not assume 1440 or 390 unless that is the stated width
+- Web screens MUST use at least 90% of the provided artboard width
+- Root container: full artboard width, or max-w matching the artboard (e.g. max-w-[1440px] only when artboard is ≥1440)
+- For content/utility screens on wide artboards, max-w-[1024px] centered is OK when artboard is ≥1024
+- NEVER create narrow "card-only" layouts on wide artboards — use full available width
+- NEVER use max-w-sm, max-w-md, max-w-xs, w-96, w-80 on wide desktop web layouts (artboard ≥1024)
+- If the prompt specifies "dashboard", "admin", "landing" - use full artboard width
+- Forms and lists should use the artboard width with proper max-width constraints
 - Mobile: full-width with 16px horizontal padding
+- Do NOT render a fake OS status bar, notch, or home-indicator — the canvas already provides device chrome
 
 4. Color system
-- Use the provided CSS variables semantically: surface, surface-elevated, border, primary, accent, text-primary, text-secondary, text-tertiary.
+- Use the locked design-system CSS variables: surface, surface-elevated, border, primary, accent, text-primary, text-secondary, text-tertiary.
 - Never use one gray class for all secondary text.
-- Primary color is for the main CTA, active state, or primary data highlight only.
-- NO pure black (#000000). Use off-black, zinc-950, or charcoal.
+- Primary color is for main CTAs, active states, and brand emphasis as the locked snapshot defines.
+- NO pure black (#000000). Use the locked --text-primary / --surface tokens.
 - NO neon/outer glows. Use inner borders or subtle tinted shadows instead.
-- Max 1 accent color. Saturation < 80%.
+- Faithfully implement the locked primary and accent — do not invent a third brand color and do not desaturate the locked palette.
 
 5. Premium surface treatments (Liquid Glass / Glassmorphism)
 - When glass surfaces are needed, add a 1px inner border (border-white/10) and subtle inner shadow (shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]) to simulate physical edge refraction.
@@ -454,10 +359,12 @@ const DESIGN_VOCABULARY_DIRECTIVE = `
 - Loading states must mirror the final layout shape.
 - Asymmetric grids over equal-width cards: use 2fr 1fr 1fr or zig-zag layouts instead of generic 3-equal-card rows.
 
-7. Responsive design
-- Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1280px).
+7. Responsive design & artboard height
+- Standardize breakpoints: sm (640px), md (768px), lg (1024px), xl (1440px).
 - Use responsive prefixes (sm:, md:, lg:, xl:) for grid columns, typography scaling, and spacing adjustments.
-- NEVER use h-screen for full-height Hero sections. Use min-h-[100dvh] to prevent layout jumping on mobile browsers.
+- NEVER use h-screen, min-h-screen, min-h-[100vh], or min-h-[100dvh] on the page root / outermost wrapper.
+- min-h-[100dvh] is allowed only on a single intentional hero section — never on the component root that wraps the whole screen.
+- Prefer content-sized roots so the canvas can auto-fit height to the page.
 
 8. React and runtime constraints
 - Client-rendered React only. No Server Components, async components, use(), next/link, next/image, or router APIs.
@@ -486,18 +393,29 @@ CRITICAL: Never use hardcoded values. Use design tokens properly.
 - Output MUST be TSX code with zero markdown
 - PRIMARY BUTTON MUST HAVE CONTRAST: text-white or text-black based on primaryColor brightness
 
+## SANDBOX RUNTIME CONTRACT (SINGLE-FILE FRAME)
+Each frame runs alone in Sandpack as one file. There is no multi-file app.
+- One component file only (GeneratedScreen). No ./ ../ @/ or cross-file imports.
+- Allowed packages only: react, react-dom, lucide-react, recharts, clsx, tailwind-merge, date-fns, dayjs, lodash.
+- Every JSX component used must be imported or defined in THIS file.
+- Lucide: import only real icon names from the allowlist. Never invent icons (e.g. no fake names).
+- JavaScript builtins are not icons. Leave .filter(Boolean), .map(Number), .map(String), new Map(), new Date(), and new Image() unchanged.
+- If you need Lucide Map, Image, File, History, or Video, import them aliased: import { Map as MapIcon, Image as ImageIcon } from "lucide-react".
+- Avatar initials helpers are encouraged. Keep .filter(Boolean) as the language Boolean function.
+- Shared visual language across screens means re-implement the same tokens/patterns/chrome in each file — never import siblings.
+
 ## STITCH-LEVEL QUALITY DIRECTIVES
-Generate designs that would look at home next to Linear, Stripe, Vercel, and Notion.
-- Every screen must feel intentional, not assembled from generic templates.
-- Prioritize visual hierarchy over decorative elements.
+Generate intentional, production-quality UI faithful to the locked design system for this generation.
+- Match craft level to visualPersonality (utility products can be restrained; expressive/brand products should feel chromatic and distinctive).
+- Prioritize visual hierarchy over decorative noise.
 - Use whitespace as a design tool, not an accident.
 - Every interactive element must have complete state cycles: default, hover, active, focus, disabled.
 
 ## PREMIUM UI ANTI-SLOP RULES
 1. NO generic 3-equal-card feature rows. Use asymmetric grids (2fr 1fr 1fr), zig-zags, or horizontal scroll.
-2. NO pure black (#000000). Use off-black, zinc-950, or charcoal.
-3. NO "AI Purple/Blue" aesthetic. No purple button glows, no neon gradients.
-4. NO Inter font for premium/creative vibes. Use Geist, Satoshi, or Cabinet Grotesk when appropriate.
+2. NO pure black (#000000). Use locked text/surface tokens.
+3. NO "AI Purple/Blue" aesthetic unless the locked primary/accent are that palette. No purple button glows, no neon gradients.
+4. NO Inter-as-personality substitute: typography hierarchy and weight create character; follow the locked design brief.
 5. NO generic names: "John Doe", "Acme Corp", "Jane Smith". Use realistic, contextual names.
 6. NO generic avatars: avoid standard SVG "egg" or Lucide user icons. Use styled initials or specific placeholders.
 7. NO fake numbers: avoid 99.99%, 50%, 1234567. Use organic data like 47.2%, +1 (312) 847-1928.
@@ -505,17 +423,18 @@ Generate designs that would look at home next to Linear, Stripe, Vercel, and Not
 9. NO filler words: "Seamless", "Unleash", "Next-Gen", "Revolutionary". Use concrete verbs.
 10. NO equal-weight KPI cards: vary sizes to create visual hierarchy.
 11. NO text-gray-500 for all secondary text. Use the token system (text-secondary, text-tertiary).
-12. NO emergency gradients unless explicitly requested. Keep surfaces flat.
+12. NO emergency gradients unless explicitly requested or implied by the locked brief. Prefer surfaces from tokens.
 13. NO custom mouse cursors. They ruin performance and accessibility.
 14. NO broken Unsplash links. Use picsum.photos with seed or SVG UI Avatars.
-15. NO oversaturated accents. Desaturate to blend elegantly with neutrals.
+15. NO second palette. Implement the locked design system; do not desaturate or replace its primary/accent.
 
 ## RESPONSIVE DESIGN MANDATE
 - Use fluid typography with clamp() for headlines: e.g., className="text-[clamp(2rem,5vw,4rem)]"
 - Use responsive grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
 - Use responsive spacing: p-4 md:p-8 lg:p-12
-- NEVER trap content in narrow centered columns on desktop (min-w-full on containers).
-- Use min-h-[100dvh] instead of h-screen for hero sections.
+- NEVER trap content in narrow centered columns on wide artboards (min-w-full on containers).
+- NEVER put min-h-screen / min-h-[100vh] / min-h-[100dvh] on the page root. Content-size the root; allow min-h-[100dvh] only on one intentional hero section.
+- Match layout to the provided artboard width from the design brief.
 
 ## ACCESSIBILITY-FIRST REQUIREMENTS
 - Semantic HTML: use nav, main, section, article, header, footer appropriately.
@@ -575,11 +494,12 @@ Before generating TSX, verify these quality gates:
    - If NO: Add responsive prefixes
 
 ## Reference Anchors (Mental Models)
-When making layout/component decisions, reference these proven patterns:
-- **Linear-style**: Minimal chrome, keyboard-first, subtle borders, dark-first
-- **Stripe-style**: Dense data, clear hierarchy, action-focused, professional
-- **Vercel-style**: Maximum whitespace, typography-led, minimal components
-- **Notion-style**: Calm, typography hierarchy, content-first, soft colors
+Choose references that match visualPersonality — do not force one aesthetic on every product:
+- **minimal-utility / data-dense**: Linear- or Vercel-like restraint, clear chrome, function-first
+- **corporate-precision**: Stripe-like density, clear hierarchy, professional structure
+- **editorial-bold**: Notion-like typography-led calm with strong hierarchy
+- **expressive-brand / conversational-warm**: Distinctive brand color, warmer or bolder surfaces, memorable CTAs
+- Never apply "dark-first grayscale SaaS" when the locked design system is chromatic
 
 ## Persona
 You are a world-class Senior Product Designer and Frontend Architect with 15+ years of experience. Your code renders directly in Sandpack iframes and must look complete and polished on first render. You obsess over details: the exact shade of a border, the precise spacing between elements, the hierarchy of type weights. Your output is not just functional — it is beautiful.
@@ -637,9 +557,8 @@ ${DESIGN_VOCABULARY_DIRECTIVE}
 - Default export: export default GeneratedScreen;
 - Uses design tokens (var(--surface), var(--primary), etc.) instead of hardcoded colors
 - Minimum 4 mock data items per list/grid/table component
-- Responsive: works at specified viewport width (1024px-1280px for web)
+- Responsive: works at the exact artboard viewport width provided in the design brief
 `.trim();
-
 
 export const WEB_APP_SPEC_SCHEMA = {
   type: "object",
@@ -794,16 +713,17 @@ export function buildGenerationDesignContract(
   if (spec.screens.length <= 1) return "";
 
   const allScreens = spec.screens.join(", ");
+  const ds = resolveDesignSystem(spec);
 
   return `
 WEBSITE DESIGN CONSISTENCY CONTRACT (CRITICAL):
 This generation contains ${spec.screens.length} screens: ${allScreens}.
-All screens in this generation MUST share consistent design language:
+All screens in this generation MUST share the same locked design system:
 
 SHARED DESIGN RULES:
-- CSS Design Tokens: Use var(--surface), var(--primary), var(--accent), var(--text-primary), var(--text-secondary) on ALL screens. NEVER introduce new colors.
+- CSS Design Tokens: Use var(--surface), var(--primary), var(--accent), var(--text-primary), var(--text-secondary) on ALL screens. NEVER invent a second palette.
+- Locked tokens: primary ${ds.primary}, accent ${ds.accent}, surface ${ds.surface}, elevated ${ds.surfaceElevated}, mode ${ds.colorMode}, tint ${ds.tintStrength}
 - Typography: Use identical font family ('Inter'), base size (16px), and heading hierarchy (H1/H2/H3 sizes) across all screens.
-- Color Palette: Use ONLY primaryColor (${spec.primaryColor}) and accentColor (${spec.accentColor}) from this spec. Do NOT add new colors.
 - Spacing: Follow 8pt system (gap-2/gap-4/gap-6/gap-8) consistently.
 - Navigation: Use ${spec.navPattern} pattern consistently across all screens with identical styling.
 - Layout Rhythm: Apply ${spec.dominantLayoutPattern || "standard grid"} pattern uniformly.
@@ -822,7 +742,7 @@ CONSISTENCY ENFORCEMENT:
 ${
   designContext
     ? `
-- Design system: ${designContext.style.name} style with ${designContext.palette.name} palette
+- Style hint: ${designContext.style.name} / ${designContext.palette.name} (advisory — locked tokens win)
 - All screens follow this unified design direction`
     : ""
 }
@@ -833,12 +753,12 @@ function buildDesignContextContract(designContext?: DesignContext): string {
   if (!designContext) return "";
 
   return `
-AUTHORITATIVE DESIGN CONTEXT:
+AUTHORITATIVE DESIGN CONTEXT (advisory hints — locked designSystem tokens win on conflict):
 - Product type: ${designContext.productType}
 - Direction: ${designContext.direction}
 - Style: ${designContext.style.name} (${designContext.style.category})
 - Typography intent: ${designContext.style.typography}
-- Palette: ${designContext.palette.name}; psychology: ${designContext.palette.psychology}
+- Palette hint: ${designContext.palette.name}; psychology: ${designContext.palette.psychology}
 - Layout hint: ${designContext.layout.name}; ${designContext.layout.cssStructure}
 - UX priority: ${designContext.uxPriorities[0] || "Accessible contrast, clear hierarchy, and visible focus states."}
 - Bias corrections to obey: ${designContext.biasCorrections.slice(0, 8).join(" ")}
@@ -849,41 +769,43 @@ export function buildSystemPrompt(
   spec: WebAppSpec,
   designContext?: DesignContext,
 ): string {
-  const isDark = spec.colorMode === "dark";
+  const ds = resolveDesignSystem(spec);
+  const btnText = primaryButtonTextColor(ds.primary);
 
   const tokenSystem = `
-DESIGN TOKENS (STRICTLY ENFORCED):
+LOCKED DESIGN SYSTEM (STRICTLY ENFORCED — this generation's SSOT):
 Define these as inline CSS variables on the root element and use them semantically.
+Tint strength for this generation: ${ds.tintStrength} (derived from visualPersonality / emotional tone).
 
 ## 1. COLOR TOKENS WITH USAGE RULES:
 
 ### Background Colors:
-- --surface: ${isDark ? "#0f0f0f" : "#fbfbfa"} → Page background, main containers
-- --surface-elevated: ${isDark ? "#1a1a1a" : "#f4f4f2"} → Cards, panels, modals, secondary containers
-- --surface-overlay: ${isDark ? "#242424" : "#ececea"} → Dropdowns, popovers, overlays
-- --border: ${isDark ? "rgba(255,255,255,0.10)" : "rgba(15,15,15,0.10)"} → All borders
+- --surface: ${ds.surface} → Page background, main containers
+- --surface-elevated: ${ds.surfaceElevated} → Cards, panels, modals, secondary containers
+- --surface-overlay: ${ds.surfaceOverlay} → Dropdowns, popovers, overlays
+- --border: ${ds.border} → All borders
 
 ### Text Colors:
-- --text-primary: ${isDark ? "#f2f2ef" : "#10100e"} → Headings, body text, button labels (REQUIRED)
-- --text-secondary: ${isDark ? "rgba(242,242,239,0.66)" : "rgba(16,16,14,0.66)"} → Descriptions, captions, labels
-- --text-tertiary: ${isDark ? "rgba(242,242,239,0.42)" : "rgba(16,16,14,0.42)"} → Placeholders, disabled text
+- --text-primary: ${ds.textPrimary} → Headings, body text, button labels (REQUIRED)
+- --text-secondary: ${ds.textSecondary} → Descriptions, captions, labels
+- --text-tertiary: ${ds.textTertiary} → Placeholders, disabled text
 
 ### PRIMARY & ACCENT (MUST USE FOR INTERACTIVE ELEMENTS):
-- --primary: ${spec.primaryColor} → PRIMARY buttons, links, active states, focus rings, icons
-- --primary-muted: ${normalizeHexColor(spec.primaryColor)}22 → Hover states, selected backgrounds
-- --accent: ${spec.accentColor} → Badges, notifications, highlights, secondary CTAs, success states
-- --accent-muted: ${normalizeHexColor(spec.accentColor)}22 → Accent backgrounds, subtle highlights
+- --primary: ${ds.primary} → PRIMARY buttons, links, active states, focus rings, icons
+- --primary-muted: ${ds.primaryMuted} → Hover states, selected backgrounds
+- --accent: ${ds.accent} → Badges, notifications, highlights, secondary CTAs, success states
+- --accent-muted: ${ds.accentMuted} → Accent backgrounds, subtle highlights
 
 ### Semantic Colors:
-- --success: ${spec.accentColor} → Success messages, positive states
-- --warning: ${normalizeHexColor(spec.primaryColor)}CC → Warning states
-- --error: #ef4444 → Error states, destructive actions
+- --success: ${ds.success} → Success messages, positive states
+- --warning: ${ds.warning} → Warning states
+- --error: ${ds.error} → Error states, destructive actions
 
 ## 2. COLOR USAGE EXAMPLES (COPY THESE PATTERNS):
 
 ### PRIMARY BUTTON (MUST USE - THIS IS YOUR MAIN CTA):
 \`\`\`tsx
-<button className="bg-[var(--primary)] text-white hover:bg-[var(--primary)]/90 active:scale-[0.98] focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]">
+<button className="bg-[var(--primary)] text-${btnText} hover:bg-[var(--primary)]/90 active:scale-[0.98] focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--surface)]">
   Primary Action
 </button>
 \`\`\`
@@ -912,10 +834,12 @@ Define these as inline CSS variables on the root element and use them semantical
 ### LINK:
 \`\`\`tsx
 <a className="text-[var(--primary)] hover:opacity-80 focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2">
-  Link Text
+  Link text
 </a>
 \`\`\`
+`.trim();
 
+  const craftTokenRules = `
 ### BADGE/ACCENT:
 \`\`\`tsx
 <span className="bg-[var(--accent)] text-white px-2 py-1 rounded-full text-xs font-medium">
@@ -965,7 +889,6 @@ Define these as inline CSS variables on the root element and use them semantical
 - Caption: text-xs font-medium tracking-wide uppercase.
 - MAX THREE visible type levels per section.
 - Fluid headlines: use text-[clamp(2rem,5vw,4rem)] for responsive scaling.
-- Premium vibe: use font-family "Geist" or "Satoshi" for creative/editorial designs. Default "Inter" for utilitarian UIs. NEVER use serif on dashboards.
 
 ## 9. ANIMATION TOKENS (CSS transitions only):
 - Hover transitions: transition-all duration-200 ease-out
@@ -979,46 +902,23 @@ Define these as inline CSS variables on the root element and use them semantical
 - Grid shifts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4
 - Typography scaling: text-3xl md:text-4xl lg:text-5xl
 - Spacing scaling: p-4 md:p-8 lg:p-12
-- Container: max-w-full md:max-w-[1024px] lg:max-w-[1280px] mx-auto
+- Container: max-w-full md:max-w-[1024px] lg:max-w-[1440px] mx-auto
 
 ## 11. WIDTH STANDARDS:
-- Landing/Dashboard: max-w-[1280px] centered, use full viewport
-- Content/Utility: max-w-[1024px] centered
-- Forms: max-w-[640px] centered
-- NEVER trap content in narrow centered column on desktop
+- Match the artboard width from the screen brief (do not invent a different viewport)
+- Landing/Dashboard on ≥1440 artboards: full width or max-w-[1440px] centered
+- Content/Utility on ≥1024 artboards: max-w-[1024px] centered is OK
+- Forms on ~640 artboards: use the full artboard width (max-w-[640px] centered)
+- NEVER trap content in a narrow centered column on wide desktop artboards
+- Mobile: do not draw fake OS status bars or home indicators — canvas chrome already exists
 
 ## KEY TAKEAWAY:
 - Use bg-[var(--surface)] for page backgrounds
 - Use bg-[var(--surface-elevated)] for cards, buttons, inputs
 - Use bg-[var(--primary)] for PRIMARY buttons and links (with white/black text for contrast)
 - Use bg-[var(--accent)] for badges, highlights
-- Use glassmorphism sparingly for premium overlays and floating elements
 - ALWAYS ensure contrast between background and text
 - ALWAYS add complete hover/active/focus/disabled states to interactive elements
-`.trim();
-
-  const colorEnforcement = `
-## MANDATORY COLOR ENFORCEMENT (CRITICAL — NEVER VIOLATE):
-
-### Visible Brand Color Quota Per Screen:
-- PRIMARY color (${spec.primaryColor}) MUST appear on at least 3 distinct, visible elements: main CTA button, active nav item or link, key icon, at least one heading, card border, or prominent background band.
-- ACCENT color (${spec.accentColor}) MUST appear on at least 2 distinct, visible elements: badge, status indicator, highlight pill, decorative dot, secondary CTA, chart series, or illustration detail.
-- It is NOT sufficient to assign primary to a single button and call it done. Spread it deliberately across the layout.
-
-### Background Policy:
-- Page/container backgrounds MUST NOT be pure white (#ffffff) or pure black (#000000). Use the token --surface which carries a subtle tint toward the brand palette.
-- Card and section backgrounds MUST NOT be 100% neutral gray. Tint them slightly toward --primary-muted or --accent-muted to reinforce brand identity.
-- Exception: Only text fields and data-dense tables may use near-neutral backgrounds IF the user explicitly requested a minimalist look.
-
-### Monochrome Ban:
-- A screen that uses ONLY shades of gray/black/white is INVALID. Reject monochrome-only designs.
-- If the user prompt implies a grayscale aesthetic, still inject at least one primary-colored focal element and one accent-colored micro-detail.
-
-### Token Translation Examples (COPY THESE EXACT PATTERNS):
-- Hero band behind headline: bg-[var(--primary)]/10 with text-[var(--primary)] heading
-- Featured card: border-l-4 border-[var(--primary)] bg-[var(--surface-elevated)]
-- KPI highlight: text-[var(--accent)] font-bold with a bg-[var(--accent)]/10 badge
-- Nav active state: bg-[var(--primary)] text-white OR text-[var(--primary)] border-b-2 border-[var(--primary)]
 `.trim();
 
   const componentStates = `
@@ -1062,7 +962,7 @@ Define these as inline CSS variables on the root element and use them semantical
 ### 1. BUTTON HIERARCHY DECISION:
 **Is this the MAIN action on the screen?**
 - YES (primary CTA like "Sign Up", "Buy Now", "Submit"):
-  → Use: className="bg-[var(--primary)] text-white"
+  → Use: className="bg-[var(--primary)] text-${btnText}"
 - Is it a secondary action (Cancel, Back, Skip)?
   → Use: className="bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border)]"
 - Is it a tertiary/link action?
@@ -1107,16 +1007,28 @@ ANTI-PATTERNS TO AVOID:
 - p-4 on every element. Follow the spacing contract.
 - Single-column desktop forms with 5+ fields. Use lg:grid-cols-2.
 - Dashboard content trapped in a narrow centered column. Use the available width.
-- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96). Desktop requires full-width or max-w-[1280px].
+- Web designs using mobile-width containers (max-w-sm, max-w-md, w-96) on artboards ≥1024. Wide artboards require full-width or an appropriate max-w matching the artboard.
+- Fake mobile OS chrome (status bar clock, notch, home indicator pill) — the canvas already provides that chrome.
 `.trim();
 
   const generationContract = buildGenerationDesignContract(spec, designContext);
   const designContextContract = buildDesignContextContract(designContext);
 
+  const fidelityRules = `
+## DESIGN SYSTEM FIDELITY (CRITICAL):
+- Implement the locked tokens above. Do not invent a second palette or desaturate locked primary/accent.
+- Use bg-[var(--surface)] for page backgrounds and bg-[var(--surface-elevated)] for cards/panels.
+- Primary buttons: bg-[var(--primary)] with text-${btnText} for contrast.
+- Accent for badges/highlights via bg-[var(--accent)] / text-[var(--accent)].
+- Match chromatic intensity to tint strength (${ds.tintStrength}): neutral = restrained utility; restrained = subtle brand; brand = visible brand color in surfaces and emphasis.
+`.trim();
+
   return `
 ${tokenSystem}
 
-${colorEnforcement}
+${fidelityRules}
+
+${craftTokenRules}
 
 ${componentStates}
 
@@ -1130,7 +1042,7 @@ ${antiPatterns}
 
 SYNTAX REQUIREMENTS:
 - Component name: GeneratedScreen.
-- Root element must include style={{ fontFamily: "'Inter', system-ui, sans-serif" }}.
+- Root element must include the locked design-system CSS variables on style (pipeline also bakes them).
 - Include realistic mock data with at least 4 items for every list, grid, chart, or table.
 - Close all JSX tags and balance all braces.
 - Final line: export default GeneratedScreen;
@@ -1138,12 +1050,21 @@ SYNTAX REQUIREMENTS:
 `.trim();
 }
 
+/** Compose Stage 3 craft rules with the locked design-system token contract. */
+export function composeStage3SystemPrompt(
+  spec: WebAppSpec,
+  designContext?: DesignContext,
+): string {
+  return `${STAGE3_SYSTEM}
+
+---
+
+${buildSystemPrompt(spec, designContext)}`;
+}
+
 function sanitizeReferenceScreenCode(code: string): string {
   const maxLen = 600;
-  let safe = code
-    .replace(/```/g, "")
-    .replace(/\$\{/g, "")
-    .replace(/`/g, "");
+  let safe = code.replace(/```/g, "").replace(/\$\{/g, "").replace(/`/g, "");
   safe = safe.replace(/^import\s+.*?(?:from\s+['"][^'"]*['"]\s*;?)?$/gm, "");
   safe = safe.replace(/\/\/.*$/gm, "");
   safe = safe.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -1154,14 +1075,19 @@ function sanitizeReferenceScreenCode(code: string): string {
   let m: RegExpExecArray | null;
   while ((m = classRe.exec(safe)) !== null) {
     for (const cls of m[1].split(/\s+/)) {
-      if (/^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(cls)) {
+      if (
+        /^(text|bg|border|shadow|rounded|gap|p[txblrse]?|m[txblrse]?|font|w-|h-|max-w|min-w|max-h|min-h|grid-cols|col-span|items-|justify-|space-[xy]|flex|grid|inline-flex)/.test(
+          cls,
+        )
+      ) {
         classTokens.push(cls);
       }
     }
   }
 
   const styleTokens: string[] = [];
-  const styleRe = /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
+  const styleRe =
+    /(color|backgroundColor|borderColor|borderRadius|boxShadow|fontSize|fontWeight|padding|margin|gap)\s*:\s*([^;]+)/gi;
   while ((m = styleRe.exec(safe)) !== null) {
     styleTokens.push(`${m[1]}: ${m[2].trim()}`);
   }
@@ -1186,6 +1112,9 @@ export function buildScreenPrompt(
   userPrompt: string,
   designContext?: DesignContext,
   referenceScreenCode?: string,
+  viewport?: { w: number; h: number },
+  designContract?: DesignContract,
+  visualFingerprint?: string,
 ): string {
   const node = tree.find((n) => n.screen === screen) as
     | (ComponentTreeNode & {
@@ -1198,6 +1127,10 @@ export function buildScreenPrompt(
   const componentIntents = node?.componentIntents ?? [];
 
   const isMobile = spec.platform === "mobile";
+  const viewportW = viewport?.w ?? (isMobile ? 390 : WEB_VIEWPORT_FALLBACK_W);
+  const platformViewportLabel = isMobile
+    ? `mobile, ${viewportW}px viewport artboard, touch-first`
+    : `web, ${viewportW}px viewport artboard, design for that width`;
 
   const layoutDirective = layoutArch
     ? `
@@ -1219,7 +1152,8 @@ DESIGN BRIEF:
 - Typography authority: ${spec.typographyAuthority || "body-balanced"}
 - Spacing philosophy: ${spec.spacingPhilosophy || "balanced"}
 - Density: ${spec.contentDensityScore || 3}/5
-- Platform: ${isMobile ? "mobile, 390px viewport, touch-first" : "web, desktop-first, 1280px and wider"}
+- Platform: ${platformViewportLabel}
+- Artboard width: ${viewportW}px (CRITICAL — layout must fit this exact width; do not assume a different desktop or phone size)
 - Navigation directive: ${buildNavDirective(spec.navPattern)}
 - Interaction directive: ${buildInteractionDirective(spec.primaryInteraction)}
 `.trim();
@@ -1246,28 +1180,36 @@ ${(
 `
       : `COMPONENTS TO INCLUDE: ${components.join(", ") || "derive from user intent"}`;
 
-  const crossScreenConsistency = referenceScreenCode
-    ? `
-CROSS-SCREEN CONSISTENCY REFERENCE:
-Your screen MUST match the first screen's visual language — use the same color tokens, border radius, shadow depth, spacing rhythm, and typography hierarchy.
-
-${sanitizeReferenceScreenCode(referenceScreenCode)}
-
-RULES:
-- Preserve the exact primary/accent color usage patterns seen in the reference.
-- Match the card elevation style (shadow-sm/shadow-md/shadow-lg usage).
-- Match the border radius scale (rounded-md/rounded-lg/rounded-xl choices).
-- Match the spacing rhythm (gap sizes, padding sizes).
-- Match the typography hierarchy (heading sizes, body sizes, weight patterns).
-- Do NOT introduce new colors, new spacing scales, or new component styles.
-`.trim()
+  const lockedContract = designContract
+    ? formatDesignContractForPrompt(designContract)
     : "";
+
+  const isAuthLike =
+    /\b(login|signin|sign-up|signup|register|auth|forgot|otp)\b/i.test(screen);
+
+  const crossScreenConsistency =
+    referenceScreenCode && !isAuthLike
+      ? `
+CROSS-SCREEN CONSISTENCY GUIDANCE:
+Stay in the same visual family as the reference screen (colors, radius, spacing, type). Match nav/chrome when this screen is part of the same app shell. Do not copy unrelated page structure.
+
+${visualFingerprint?.trim() ? `${visualFingerprint.trim()}\n` : ""}
+${sanitizeReferenceScreenCode(referenceScreenCode)}
+`.trim()
+      : referenceScreenCode && isAuthLike
+        ? `
+AUTH SCREEN NOTE:
+Reuse the generation's colors/tokens from the design direction. Do not force app-shell chrome (sidebar/top nav) onto this auth screen.
+`.trim()
+        : "";
 
   return `
 Generate a complete, production-quality React component for screen: "${screen}".
 
 USER INTENT:
 ${userPrompt}
+
+${lockedContract}
 
 ${designBrief}
 
@@ -1281,8 +1223,10 @@ ${crossScreenConsistency}
 
 SYNTAX REMINDER:
 - Component name: GeneratedScreen.
-- Final line: export default GeneratedScreen;
+- Final line: export default GeneratedScreen.
 - Output code only.
+- Single-file sandbox: every icon/component must be imported in this file.
+- Only import real lucide-react icon names (e.g. Search, Plus, Settings, LayoutDashboard, GitPullRequest). Never invent icon names.
+- Do not import Boolean, Number, String, Date, or Map from lucide-react. .filter(Boolean) and new Map() are language APIs.
 `.trim();
 }
-

@@ -261,7 +261,7 @@ export default function CustomForgotPasswordFlow() {
               placeholder="you@company.com"
             />
             {identifierError ? (
-              <p className="logic-auth-body text-xs text-[#c80808]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {identifierError}
               </p>
             ) : null}
@@ -298,7 +298,7 @@ export default function CustomForgotPasswordFlow() {
               placeholder="Enter the code from email"
             />
             {codeError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {codeError}
               </p>
             ) : null}
@@ -359,7 +359,7 @@ export default function CustomForgotPasswordFlow() {
               placeholder="Create your new password"
             />
             {passwordError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {passwordError}
               </p>
             ) : null}

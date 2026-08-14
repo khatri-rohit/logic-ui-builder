@@ -332,7 +332,7 @@ export default function CustomSignUpFlow() {
               placeholder="Enter the 6-digit code"
             />
             {codeError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {codeError}
               </p>
             ) : null}
@@ -436,7 +436,7 @@ export default function CustomSignUpFlow() {
               placeholder="you@company.com"
             />
             {emailError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {emailError}
               </p>
             ) : null}
@@ -461,7 +461,7 @@ export default function CustomSignUpFlow() {
               placeholder="Create a secure password"
             />
             {passwordError ? (
-              <p className="logic-auth-body text-xs text-[#8f1515]">
+              <p className={cn(styles.formError, "logic-auth-body")}>
                 {passwordError}
               </p>
             ) : null}
@@ -473,7 +473,7 @@ export default function CustomSignUpFlow() {
               type="checkbox"
               checked={acceptedTerms}
               onChange={(event) => setAcceptedTerms(event.target.checked)}
-              className="mt-0.5 h-4 w-4 cursor-pointer accent-(--logic-primary-fixed)"
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-(--logic-accent)"
             />
             <label
               htmlFor="accept-terms"

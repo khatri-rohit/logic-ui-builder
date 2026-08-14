@@ -1,14 +1,7 @@
-const KNOWN_VERSIONS: Record<string, string> = {
-  react: "19.2.4",
-  "react-dom": "19.2.4",
-  "lucide-react": "^0.577.0",
-  recharts: "^2.10.0",
-  clsx: "^2.1.1",
-  "tailwind-merge": "^3.5.0",
-  "date-fns": "^3.6.0",
-  dayjs: "^1.11.0",
-  lodash: "^4.17.21",
-};
+import {
+  SANDBOX_CORE_DEPENDENCIES,
+  SANDBOX_PACKAGE_VERSIONS,
+} from "@/lib/sandboxPackages";
 
 const CACHE = new Map<string, ExtractedDeps>();
 const MAX_CACHE_SIZE = 200;
@@ -23,11 +16,10 @@ export function extractDependencies(code: string): ExtractedDeps {
   if (cached) return cached;
 
   const dependencies: Record<string, string> = {
-    react: "19.2.4",
-    "react-dom": "19.2.4",
+    ...SANDBOX_CORE_DEPENDENCIES,
   };
   const unknownPackages: string[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<string>(Object.keys(dependencies));
 
   const importRegex =
     /(?:import\s+(?:type\s+)?(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
@@ -50,11 +42,11 @@ export function extractDependencies(code: string): ExtractedDeps {
       ? importPath.split("/").slice(0, 2).join("/")
       : importPath.split("/")[0];
 
-    if (isBuiltin(packageName) || seen.has(packageName)) continue;
+    if (isNodeBuiltin(packageName) || seen.has(packageName)) continue;
     seen.add(packageName);
 
-    if (KNOWN_VERSIONS[packageName]) {
-      dependencies[packageName] = KNOWN_VERSIONS[packageName];
+    if (SANDBOX_PACKAGE_VERSIONS[packageName]) {
+      dependencies[packageName] = SANDBOX_PACKAGE_VERSIONS[packageName];
     } else {
       unknownPackages.push(packageName);
     }
@@ -78,9 +70,8 @@ export function extractDependencies(code: string): ExtractedDeps {
   return result;
 }
 
-function isBuiltin(name: string): boolean {
+function isNodeBuiltin(name: string): boolean {
   return new Set([
-    "react",
     "path",
     "fs",
     "http",

@@ -2,7 +2,6 @@
 
 import {
   Focus,
-  Grid3X3,
   Minus,
   Plus,
   SquareDashed,

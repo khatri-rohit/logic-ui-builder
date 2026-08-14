@@ -17,7 +17,7 @@ export default function Page() {
     <AuthShell
       mode="sign-up"
       title="Create Account"
-      subtitle="Provision a secure workspace to generate, iterate, and ship production-grade UI architecture."
+      subtitle="Start free and generate production-ready UI from natural language."
     >
       <CustomSignUpFlow />
     </AuthShell>

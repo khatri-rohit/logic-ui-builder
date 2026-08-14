@@ -17,7 +17,7 @@ export default function Page() {
     <AuthShell
       mode="sign-in"
       title="Sign In"
-      subtitle="Authenticate to continue generating interfaces and editing your active design sessions."
+      subtitle="Continue generating interfaces and editing your design sessions."
     >
       <CustomSignInFlow />
     </AuthShell>

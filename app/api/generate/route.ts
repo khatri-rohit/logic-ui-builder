@@ -1,3 +1,12 @@
+/**
+ * POST /api/generate
+ *
+ * Called by ProjectStudioClient.handleGenerate for:
+ * - Full multi-screen generation (Stage 1 → 2 → 3)
+ * - G-mode + selected frame: createNewFrame sibling (Stage 3 only)
+ *
+ * In-place frame regenerate is POST /api/generate/[frameId] (handleFrame).
+ */
 import {
   GenerationPlatform as PrismaGenerationPlatform,
   Prisma,
@@ -10,7 +19,7 @@ import {
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
   STAGE2_SYSTEM,
-  buildSystemPrompt,
+  composeStage3SystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
 import { ComponentTreeNode, GenerationPlatform, WebAppSpec } from "@/lib/types";
@@ -20,6 +29,7 @@ import {
   buildFrameRegeneratePrompt,
 } from "@/lib/promptEnhancer";
 import { buildDesignContext, toDesignContextText } from "@/lib/designContext";
+import { withDesignSystem } from "@/lib/designSystemSnapshot";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
@@ -28,9 +38,20 @@ import {
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
+import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
 import {
+  STAGE1_MODELS,
+  STAGE2_MODELS,
+  STAGE3_MODELS,
+  getStageDecoding,
+  type GenerationDecodingStage,
+} from "@/lib/execution/modelDefaults";
+
+import {
+  collectBoundsFromGenerations,
   getGenerationLayout,
   getInitialDimensionsForPlatform,
+  mergeExistingFrameBounds,
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
 import { parseGenerationScreens } from "@/lib/utils";
@@ -48,26 +69,10 @@ import {
   runScreenGeneration,
 } from "@/lib/execution/generationPipeline";
 import type { PipelineContext } from "@/lib/execution/types";
+import { buildDesignContract } from "@/lib/designContract";
+import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 
 export const runtime = "nodejs";
-
-const STAGE1_MODELS = [
-  "qwen3-coder-next:cloud",
-  "mistral-large-3:675b-cloud",
-  "gemma4:31b",
-];
-const STAGE2_MODELS = [
-  "qwen3-coder-next:cloud",
-  "glm-5:cloud",
-  "mistral-large-3:675b-cloud",
-];
-const STAGE3_MODELS = [
-  "kimi-k2.6:cloud",
-  "qwen3-coder:480b-cloud",
-  "gemma4:31b",
-  "gpt-oss:120b-cloud",
-  "mistral-large-3:675b-cloud",
-];
 
 const generationBodySchema = generationRequestBodySchema;
 
@@ -271,6 +276,7 @@ async function generateTextWithFallback({
   system,
   prompt,
   abortSignal,
+  decodingStage,
 }: {
   stage: string;
   models: string[];
@@ -278,16 +284,22 @@ async function generateTextWithFallback({
   system: string;
   prompt: string;
   abortSignal?: AbortSignal;
+  decodingStage: GenerationDecodingStage;
 }) {
   let lastError: unknown = null;
+  const decoding = getStageDecoding(decodingStage);
 
   for (const model of models) {
     try {
-      logger.info(`${stage} via model: ${model}`);
+      logger.info(
+        `${stage} via model: ${model} (temp=${decoding.temperature})`,
+      );
       return await generateText({
         model: ollama(model),
         system,
         prompt,
+        temperature: decoding.temperature,
+        maxOutputTokens: decoding.maxOutputTokens,
         abortSignal,
       });
     } catch (error) {
@@ -425,13 +437,24 @@ export async function POST(req: NextRequest) {
     }
 
     const hasFrameContext = !!body.frameId && !!body.generationId;
-    const isFrameRegeneration = hasFrameContext && !body.createNewFrame;
+    // In-place regenerate belongs on POST /api/generate/[frameId].
+    if (hasFrameContext && !body.createNewFrame) {
+      return NextResponse.json(
+        {
+          error: true,
+          code: "USE_FRAME_REGENERATE_ROUTE",
+          message:
+            "In-place frame regeneration must use POST /api/generate/[frameId]. Use createNewFrame for sibling frames.",
+          data: null,
+        },
+        { status: 400 },
+      );
+    }
+
     const createNewFrameWithContext = hasFrameContext && !!body.createNewFrame;
-    const targetFrameId = isFrameRegeneration
-      ? (body.targetFrameId ?? body.frameId)
-      : createNewFrameWithContext
-        ? crypto.randomUUID()
-        : null;
+    const targetFrameId = createNewFrameWithContext
+      ? crypto.randomUUID()
+      : null;
 
     let sourceGeneration: {
       id: string;
@@ -445,7 +468,7 @@ export async function POST(req: NextRequest) {
 
     let sourceFrame: PersistedGenerationScreen | null = null;
 
-    if (isFrameRegeneration || createNewFrameWithContext) {
+    if (createNewFrameWithContext) {
       const generationCandidates = await prisma.generation.findMany({
         where: {
           projectId: project.id,
@@ -512,7 +535,7 @@ export async function POST(req: NextRequest) {
     logger.info("Plan guard passed for generation request", { usage });
 
     const requestedPlatform =
-      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+      createNewFrameWithContext && sourceGeneration
         ? toApiPlatform(sourceGeneration.platform)
         : toApiPlatform(project.platform);
     const prompt = body.prompt.trim();
@@ -521,7 +544,7 @@ export async function POST(req: NextRequest) {
     let stage3Prompt: string;
     let designContextText: string;
 
-    if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration) {
+    if (createNewFrameWithContext && sourceGeneration) {
       designContext = await buildDesignContext({
         prompt: sourceGeneration.prompt,
         platform: toApiPlatform(sourceGeneration.platform),
@@ -559,7 +582,7 @@ export async function POST(req: NextRequest) {
     );
 
     const requestedModelForPersistence =
-      (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+      createNewFrameWithContext && sourceGeneration
         ? (preferredModel ?? sourceGeneration.model)
         : (preferredModel ?? stage3ModelPriority[0]);
 
@@ -570,20 +593,20 @@ export async function POST(req: NextRequest) {
       const result = await reserveGenerationWithIdempotency(tx, {
         projectId: project.id,
         prompt:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? prompt || sourceGeneration.prompt
             : prompt,
         model: requestedModelForPersistence,
         platform:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? sourceGeneration.platform
             : toPrismaPlatform(requestedPlatform),
         spec:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? (sourceGeneration.spec as unknown as Prisma.InputJsonValue)
             : ({} as Prisma.InputJsonValue),
         tree:
-          (isFrameRegeneration || createNewFrameWithContext) && sourceGeneration
+          createNewFrameWithContext && sourceGeneration
             ? (sourceGeneration.tree as Prisma.InputJsonValue | undefined)
             : undefined,
         idempotencyKey,
@@ -630,19 +653,17 @@ export async function POST(req: NextRequest) {
       const persistedScreens: PersistedGenerationScreen[] = [];
 
       try {
-        // If frame regeneration, create generation with existing spec/tree and skip to Stage 3
-        if ((isFrameRegeneration || createNewFrameWithContext) && sourceGeneration && sourceFrame) {
-          logger.info("Frame regeneration: skipping Stage 1 & 2", {
+        // createNewFrame from selected frame context — skip Stage 1 & 2
+        if (createNewFrameWithContext && sourceGeneration && sourceFrame) {
+          logger.info("createNewFrame: skipping Stage 1 & 2", {
             generationId,
             frameId: body.frameId,
-            screenName: sourceFrame!.screenName,
+            screenName: sourceFrame.screenName,
           });
 
-          const regenerationFrameId = targetFrameId ?? body.frameId!;
-
-          // When creating a new frame from context, offset position from source
-          const framePosX = createNewFrameWithContext ? sourceFrame.x + 40 : sourceFrame.x;
-          const framePosY = createNewFrameWithContext ? sourceFrame.y + 40 : sourceFrame.y;
+          const regenerationFrameId = targetFrameId ?? crypto.randomUUID();
+          const framePosX = sourceFrame.x + 40;
+          const framePosY = sourceFrame.y + 40;
 
           // Pre-populate with an error placeholder so the outer catch handler
           // always writes a valid frame record if the stream is interrupted.
@@ -661,20 +682,20 @@ export async function POST(req: NextRequest) {
 
           await write({ type: "generation_id", generationId });
 
-          if (createNewFrameWithContext) {
-            await write({
-              type: "layout",
-              layout: [{
+          await write({
+            type: "layout",
+            layout: [
+              {
                 screen: sourceFrame.screenName,
                 frameId: regenerationFrameId,
                 x: framePosX,
                 y: framePosY,
                 w: sourceFrame.w,
                 h: sourceFrame.h,
-              }],
-              platform: toApiPlatform(sourceGeneration.platform),
-            });
-          }
+              },
+            ],
+            platform: toApiPlatform(sourceGeneration.platform),
+          });
 
           const sourcePlatform = toApiPlatform(sourceGeneration.platform);
 
@@ -715,19 +736,21 @@ export async function POST(req: NextRequest) {
           const webAppSpecParsed = webAppSpecSchema.safeParse(
             sourceGeneration.spec,
           );
-          const spec: WebAppSpec = webAppSpecParsed.success
-            ? webAppSpecParsed.data
-            : {
-                screens: [sourceFrame.screenName],
-                navPattern: "none",
-                platform: sourcePlatform,
-                colorMode: "light",
-                primaryColor: "#2563eb",
-                accentColor: "#f59e0b",
-                stylingLib: "tailwind",
-                layoutDensity: "comfortable",
-                components: [],
-              };
+          const spec: WebAppSpec = withDesignSystem(
+            webAppSpecParsed.success
+              ? webAppSpecParsed.data
+              : {
+                  screens: [sourceFrame.screenName],
+                  navPattern: "none",
+                  platform: sourcePlatform,
+                  colorMode: "light",
+                  primaryColor: "#2563eb",
+                  accentColor: "#f59e0b",
+                  stylingLib: "tailwind",
+                  layoutDensity: "comfortable",
+                  components: [],
+                },
+          );
 
           const framePipelineContext: PipelineContext = {
             ollama,
@@ -737,8 +760,9 @@ export async function POST(req: NextRequest) {
             stage3ModelPriority,
             abortController,
             write,
-            systemPrompt: buildSystemPrompt(spec, designContext),
+            systemPrompt: composeStage3SystemPrompt(spec, designContext),
             generationId,
+            designContract: buildDesignContract(spec, designContext),
           };
 
           const frameResult = await runScreenGeneration(
@@ -746,27 +770,31 @@ export async function POST(req: NextRequest) {
             sourceFrame.screenName,
             regenerationFrameId,
             stage3Prompt,
+            "screen",
+            { w: sourceFrame.w, h: sourceFrame.h },
           );
+
+          const safe = await ensureSandboxSafeCode(frameResult.code);
 
           persistedScreens[0] = {
             id: regenerationFrameId,
-            state: frameResult.success ? "done" : "error",
+            state: "done",
             x: framePosX,
             y: framePosY,
             w: sourceFrame.w,
             h: sourceFrame.h,
             screenName: sourceFrame.screenName,
-            content: frameResult.code,
+            content: safe.code,
             editedContent: null,
-            error: frameResult.success ? null : frameResult.error,
+            error: null,
           };
 
           await write({
             type: "screen_done",
             screen: sourceFrame.screenName,
             frameId: regenerationFrameId,
-            content: frameResult.code,
-            error: frameResult.success ? null : frameResult.error,
+            content: safe.code,
+            error: null,
           });
 
           if (generationId) {
@@ -788,7 +816,7 @@ export async function POST(req: NextRequest) {
             ]);
           }
 
-          logger.info("Frame regeneration complete", {
+          logger.info("createNewFrame complete", {
             generationId,
             frameId: body.frameId,
             screenName: sourceFrame.screenName,
@@ -808,29 +836,19 @@ export async function POST(req: NextRequest) {
             system: STAGE1_SYSTEM,
             prompt: `User prompt: ${prompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
             abortSignal: abortController.signal,
+            decodingStage: "stage1",
           });
 
         const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
-        const spec = splitMobileScreensIfNeeded(
+        let spec = splitMobileScreensIfNeeded(
           coerceSpec(rawParsedSpec, requestedPlatform),
           prompt,
         );
 
-        // Override generic default colors with design-context palette to avoid monochrome/generic designs
-        if (designContext.palette) {
-          if (
-            spec.primaryColor === "#2563eb" &&
-            designContext.palette.primaryHex
-          ) {
-            spec.primaryColor = designContext.palette.primaryHex;
-          }
-          if (
-            spec.accentColor === "#f59e0b" &&
-            designContext.palette.accentHex
-          ) {
-            spec.accentColor = designContext.palette.accentHex;
-          }
-        }
+        // Lock Design System Snapshot from Stage 1 intent (no mid-pipeline color overrides)
+        spec = withDesignSystem(spec);
+
+        const designContract = buildDesignContract(spec, designContext);
 
         logger.info("Stage 1 Spec Extraction complete", { usage: stage1Usage });
 
@@ -852,6 +870,7 @@ export async function POST(req: NextRequest) {
             system: STAGE2_SYSTEM,
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
             abortSignal: abortController.signal,
+            decodingStage: "stage2",
           });
         let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
         if (!isValidComponentTree(tree, spec.screens)) {
@@ -880,17 +899,35 @@ export async function POST(req: NextRequest) {
 
         const existingGenerations = await prisma.generation.findMany({
           where: { projectId: project.id },
-          select: { screens: true },
+          select: { id: true, screens: true },
         });
-        const existingFrameBounds: Array<{ x: number; y: number; w: number; h: number }> = [];
-        for (const gen of existingGenerations) {
-          const screens = parseGenerationScreens(gen.screens);
-          for (const s of screens) {
-            existingFrameBounds.push({ x: s.x, y: s.y, w: s.w, h: s.h });
-          }
-        }
 
-        const positions = getGenerationLayout(existingFrameBounds, screensWithDims);
+        const dbBounds = collectBoundsFromGenerations(
+          existingGenerations.map((gen) => ({
+            id: gen.id,
+            screens: parseGenerationScreens(gen.screens),
+          })),
+          generationId,
+        );
+
+        const liveBounds = (body.canvasFrames ?? []).map((frame) => ({
+          id: frame.id,
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+        }));
+
+        // Prefer live canvas geometry (auto-fit heights) over stale DB artboard heights.
+        const existingFrameBounds = mergeExistingFrameBounds(
+          dbBounds,
+          liveBounds,
+        );
+
+        const positions = getGenerationLayout(
+          existingFrameBounds,
+          screensWithDims,
+        );
 
         const frameAssignments = screensWithDims.map((screen, index) => ({
           screen: screen.name,
@@ -932,8 +969,9 @@ export async function POST(req: NextRequest) {
           stage3ModelPriority,
           abortController,
           write,
-          systemPrompt: buildSystemPrompt(spec, designContext),
+          systemPrompt: composeStage3SystemPrompt(spec, designContext),
           generationId,
+          designContract,
         };
 
         const screenJobs = frameAssignments.map((a) => ({
@@ -955,6 +993,7 @@ export async function POST(req: NextRequest) {
             const qualityCheck = performDesignQualityCheck(
               finalResult.code,
               spec,
+              assignment.w,
             );
 
             if (!qualityCheck.passed) {
@@ -971,25 +1010,27 @@ export async function POST(req: NextRequest) {
             }
           }
 
+          const safe = await ensureSandboxSafeCode(finalResult.code);
+
           persistedScreens[i] = {
             id: assignment.frameId,
-            state: finalResult.success ? "done" : "error",
+            state: "done",
             x: assignment.x,
             y: assignment.y,
             w: assignment.w,
             h: assignment.h,
             screenName: screen,
-            content: finalResult.code,
+            content: safe.code,
             editedContent: null,
-            error: finalResult.success ? null : finalResult.error,
+            error: null,
           };
 
           await write({
             type: "screen_done",
             screen,
             frameId: assignment.frameId,
-            content: finalResult.code,
-            error: finalResult.success ? null : finalResult.error,
+            content: safe.code,
+            error: null,
           });
 
           // Eager DB persistence: write completed screens immediately so a
@@ -1118,7 +1159,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
+const performDesignQualityCheck = (
+  code: string,
+  spec: WebAppSpec,
+  viewportWidth?: number,
+) => {
   const syntaxValidation = validateGeneratedTSX(code);
   const issues: string[] = [];
   let score = 10;
@@ -1129,17 +1174,18 @@ const performDesignQualityCheck = (code: string, spec: WebAppSpec) => {
     score -= syntaxValidation.issues.length * 2;
   }
 
-  // Major functional layout issue: web designs looking like mobile
-  if (spec.platform === "web") {
+  // Major functional layout issue: web designs looking like mobile on wide artboards
+  const artboardW = viewportWidth ?? (spec.platform === "web" ? 1440 : 390);
+  if (spec.platform === "web" && artboardW >= 1024) {
     const hasNarrowContainer =
       /max-w-sm|max-w-md|max-w-xs|max-w-\[400px\]|max-w-\[500px\]|max-w-\[600px\]|w-96|w-80|w-72/.test(
         code,
       );
     const hasFullWidth =
-      /max-w-\[1280px\]|max-w-\[1024px\]|max-w-7xl|max-w-6xl|w-full/.test(code);
+      /max-w-\[1440px\]|max-w-\[1280px\]|max-w-7xl|max-w-6xl|w-full/.test(code);
     if (hasNarrowContainer && !hasFullWidth) {
       issues.push(
-        "Layout: Web design appears mobile-narrow. Desktop layouts should use max-w-[1280px] or full-width.",
+        "Layout: Web design appears mobile-narrow. Desktop layouts should use max-w-[1440px] or full-width.",
       );
       score -= 2;
     }

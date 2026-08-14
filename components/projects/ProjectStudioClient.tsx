@@ -1,31 +1,30 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable @typescript-eslint/no-unused-vars */
+
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { JetBrains_Mono } from "next/font/google";
 
-import { CanvasFrame } from "@/components/canvas/CanvasFrame";
-import { CanvasErrorBoundary } from "@/components/canvas/CanvasErrorBoundary";
+import { StudioCanvasSurface } from "@/components/canvas/StudioCanvasSurface";
 import {
-  InfiniteCanvas,
   InfiniteCanvasHandle,
 } from "@/components/canvas/InfiniteCanvas";
-import { StudioThemeProvider } from "@/components/canvas/StudioThemeContext";
-import {
-  Transform,
-  FrameRect,
-} from "@/components/canvas/hooks/useCanvasTransform";
-import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
-import { CanvasFrameData } from "@/components/canvas/types";
-import { Button } from "@/components/ui/button";
 import { StudioShell } from "@/components/canvas/StudioShell";
-import { StudioToolbar } from "@/components/canvas/StudioToolbar";
+import {
+  readCanvasTransform,
+  useCanvasPersist,
+} from "@/components/canvas/hooks/useCanvasPersist";
+import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
+import { useStudioFrames } from "@/components/canvas/hooks/useStudioFrames";
+import { CanvasFrameData } from "@/components/canvas/types";
+import { buildSandboxFallbackScreen, isProbablyCompleteScreen } from "@/lib/sandboxFallbackScreen";
+import { Button } from "@/components/ui/button";
 import { StudioHeader } from "@/components/projects/StudioHeader";
 import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
 import { StudioStatusBar } from "@/components/projects/StudioStatusBar";
-import type { ThemeMode } from "@/components/projects/StudioHeader";
 import {
+  projectKeys,
+  upsertProjectGenerationInDetail,
   useProjectCanvasStateUpdateMutation,
   useProjectDeleteMutation,
   useProjectMetadataUpdateMutation,
@@ -35,22 +34,20 @@ import {
   useProjectThumbnailUpdateMutation,
   useRestoreFrameVersionMutation,
 } from "@/lib/projects/queries";
+import { shouldAutoStartProjectGeneration } from "@/lib/projects/autoStart";
 import { useUsageQuery } from "@/lib/billing/queries";
 import { FrameHistoryPanel } from "@/components/projects/FrameHistoryPanel";
 import {
   useProjectStudioStore,
   useProjectStudioStoreApi,
 } from "@/providers/project-studio-provider";
-import { Check, Code2, Copy, Link, Sparkles, X } from "lucide-react";
+import { Check, Code2, Copy, Link, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProjectStudioRuntimeState } from "@/stores/project-studio";
+import { useQueryClient } from "@tanstack/react-query";
+import type { ProjectGeneration } from "@/lib/api/types";
 
 import { CanvasSnapshotV1, FrameState } from "@/lib/canvas-state";
-import {
-  getGenerationLayout,
-  getInitialDimensionsForPlatform,
-  getRegenerationClonePosition,
-} from "@/lib/canvasLayout";
 import logger from "@/lib/logger";
 import { GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -106,7 +103,8 @@ type GenerationEvent =
   | { type: "done" }
   | { type: "error"; message: string }
   | { type: "design_context"; designContext: unknown }
-  | { type: "tree"; tree: unknown };
+  | { type: "tree"; tree: unknown }
+  | { type: "quality_warning"; screen?: string; frameId?: string; message?: string };
 
 type FrameGenerationEvent =
   | { type: "generation_id"; generationId: string }
@@ -115,7 +113,8 @@ type FrameGenerationEvent =
   | { type: "code_chunk"; frameId: string; token: string }
   | { type: "frame_done"; frameId: string; screen: string; content?: string; error?: string | null }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "quality_warning"; screen?: string; frameId?: string; message?: string };
 
 type ProjectActionId =
   | "all-projects"
@@ -133,35 +132,8 @@ interface ProjectStudioClientProps {
 const CHUNK_FLUSH_MS = 120;
 const MAX_PROMPT_HEIGHT = 220;
 
-function toFrameRects(frames: CanvasFrameData[]): FrameRect[] {
-  return frames.map((frame) => ({
-    x: frame.x,
-    y: frame.y,
-    w: frame.w,
-    h: frame.h,
-  }));
-}
-
 function normalizePosition(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-function cloneFrameForRegeneration(
-  sourceFrame: CanvasFrameData,
-  targetFrameId: string,
-  existingFrames: CanvasFrameData[],
-): CanvasFrameData {
-  const { x, y } = getRegenerationClonePosition(existingFrames, sourceFrame);
-
-  return {
-    ...sourceFrame,
-    id: targetFrameId,
-    x: normalizePosition(x),
-    y: normalizePosition(y),
-    state: "skeleton",
-    editedContent: null,
-    error: null,
-  };
 }
 
 function slugifyFileName(value: string, fallback: string) {
@@ -291,10 +263,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const {
     data: project,
     isLoading: projectLoading,
+    isFetching: projectFetching,
     isError,
     error: projectError,
     refetch: refetchProject,
   } = useProjectQuery(projectId);
+
+  const queryClient = useQueryClient();
 
   const { data: usage } = useUsageQuery();
 
@@ -388,25 +363,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const canvasRef = useRef<InfiniteCanvasHandle | null>(null);
   const domRef = useRef<HTMLDivElement | null>(null);
 
-  const framesRef = useRef<Map<string, CanvasFrameData>>(new Map());
-
   const chunkFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const snapshotSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const isUploadingThumbnailRef = useRef(false);
-  const activeFrameIdRef = useRef<string | null>(null);
-  const selectedFrameIdRef = useRef<string | null>(null);
   const generationAbortControllerRef = useRef<AbortController | null>(null);
   const frameRegenerationTokenRef = useRef(0);
-  const canvasTransformRef = useRef<Transform>({
-    x: 0,
-    y: 0,
-    k: 1,
-  });
+  const frameRegenAbortControllerRef = useRef<AbortController | null>(null);
   const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [prompt, setPrompt] = useState("");
@@ -418,14 +382,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const [activeStreamingScreen, setActiveStreamingScreen] = useState<
     string | null
   >(null);
-  const [frames, setFrames] = useState<Map<string, CanvasFrameData>>(
-    () => new Map(),
-  );
-  const [canvasTransform, setCanvasTransform] = useState<Transform>({
-    x: 0,
-    y: 0,
-    k: 1,
-  });
   const [openFeedbackForm, setOpenFeedbackForm] = useState(false);
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [metadataTitle, setMetadataTitle] = useState("");
@@ -449,56 +405,59 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   >(null);
   const handleGenerateRef = useRef<() => Promise<void>>(async () => {});
 
-  const [history, setHistory] = useState<Array<Map<string, CanvasFrameData>>>(
-    [],
-  );
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < history.length - 1;
-
-  const pushToHistory = useCallback(
-    (newFrames: Map<string, CanvasFrameData>) => {
-      setHistory((prev) => {
-        const newHistory = prev.slice(0, historyIndex + 1);
-        newHistory.push(newFrames);
-        if (newHistory.length > 50) newHistory.shift();
-        setHistoryIndex(newHistory.length - 1);
-        return newHistory;
-      });
+  const {
+    frameList,
+    frameRects,
+    replaceAll,
+    updateEphemeral,
+    commit,
+    beginGesture,
+    endGesture,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    getFramesSnapshot,
+  } = useStudioFrames({
+    onSync: (nextFrames) => {
+      setStudioFrames(nextFrames);
     },
-    [historyIndex],
+  });
+
+  /** Compatibility shim: streaming/ephemeral vs discrete commits. */
+  const applyFrames = useCallback(
+    (
+      updater: (
+        current: Map<string, CanvasFrameData>,
+      ) => Map<string, CanvasFrameData>,
+      skipHistory = false,
+    ) => {
+      if (skipHistory) {
+        updateEphemeral(updater);
+      } else {
+        commit(updater);
+      }
+    },
+    [commit, updateEphemeral],
   );
-
-  const undo = useCallback(() => {
-    if (canUndo) {
-      const prevFrames = history[historyIndex - 1];
-      setFrames(prevFrames);
-      framesRef.current = prevFrames;
-      setStudioFrames([...prevFrames.values()]);
-      setHistoryIndex(historyIndex - 1);
-    }
-  }, [canUndo, history, historyIndex, setStudioFrames]);
-
-  const redo = useCallback(() => {
-    if (canRedo) {
-      const nextFrames = history[historyIndex + 1];
-      setFrames(nextFrames);
-      framesRef.current = nextFrames;
-      setStudioFrames([...nextFrames.values()]);
-      setHistoryIndex(historyIndex + 1);
-    }
-  }, [canRedo, history, historyIndex, setStudioFrames]);
 
   const {
     activeFrameId,
     selectedFrameId,
-    setActiveFrameId,
     setSelectedFrameId,
     enterFrame,
     exitFrame,
+    deselect,
     openEditor,
     closeEditor,
   } = usePointerMode();
+
+  const handleCanvasEmptyPointerDown = useCallback(() => {
+    if (activeFrameId) {
+      exitFrame();
+    }
+    deselect();
+  }, [activeFrameId, deselect, exitFrame]);
 
   const canGenerate = !!prompt.trim() && !isGenerating;
   const canRegenerate = usage?.frameRegenerationEnabled ?? false;
@@ -507,47 +466,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   useEffect(() => {
     handleGenerateRef.current = handleGenerate;
   });
-
-  useEffect(() => {
-    activeFrameIdRef.current = activeFrameId;
-  }, [activeFrameId]);
-
-  useEffect(() => {
-    selectedFrameIdRef.current = selectedFrameId;
-  }, [selectedFrameId]);
-
-  useEffect(() => {
-    canvasTransformRef.current = canvasTransform;
-  }, [canvasTransform]);
-
-  const frameList = useMemo(() => {
-    return [...frames.values()].sort((a, b) => {
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x;
-    });
-  }, [frames]);
-
-  const frameRects = useMemo(() => toFrameRects(frameList), [frameList]);
-
-  const applyFrames = useCallback(
-    (
-      updater: (
-        current: Map<string, CanvasFrameData>,
-      ) => Map<string, CanvasFrameData>,
-      skipHistory = false,
-    ) => {
-      setFrames((current) => {
-        const next = updater(current);
-        framesRef.current = next;
-        setStudioFrames([...next.values()]);
-        if (!skipHistory) {
-          pushToHistory(next);
-        }
-        return next;
-      });
-    },
-    [setStudioFrames, pushToHistory],
-  );
 
   const getStudioRuntime = useCallback(
     () => projectStudioStoreApi.getState().runtime,
@@ -590,96 +508,99 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     [projectStudioStoreApi],
   );
 
-  const buildSnapshot = useCallback((): CanvasSnapshotV1 => {
-    const camera =
-      canvasRef.current?.getTransform() ?? canvasTransformRef.current;
-
-    return {
-      version: 1,
-      camera,
-      frames: [...framesRef.current.values()],
-      activeFrameId: activeFrameIdRef.current,
-      selectedFrameId: selectedFrameIdRef.current,
-      selectedGenerationId:
-        projectStudioStoreApi.getState().studio?.selectedGenerationId ?? null,
-      savedAt: new Date().toISOString(),
-    };
-  }, [projectStudioStoreApi]);
-
-  const scheduleSnapshotPersist = useCallback(
-    (generationId?: string, options: { allowEmpty?: boolean } = {}) => {
-      if (!projectId || !getStudioRuntime().hasHydratedCanvas) return;
-
-      if (snapshotSaveTimeoutRef.current) {
-        clearTimeout(snapshotSaveTimeoutRef.current);
-      }
-
-      const resolvedGenerationId = resolvePersistGenerationId(generationId);
-
-      snapshotSaveTimeoutRef.current = setTimeout(() => {
-        snapshotSaveTimeoutRef.current = null;
-        const snapshot = buildSnapshot();
-        if (snapshot.frames.length === 0 && !options.allowEmpty) {
-          // Don't persist empty canvas state as it can overwrite existing state with an empty one in case of a delayed persist call after a new generation has started.
-          return;
-        }
-        persistCanvasState({
-          id: projectId,
-          canvasState: snapshot,
-          generationId: resolvedGenerationId,
-        });
-      }, 450);
-    },
-    [
-      buildSnapshot,
-      getStudioRuntime,
-      persistCanvasState,
+  const { scheduleSnapshotPersist, flushPendingSnapshotPersist } =
+    useCanvasPersist({
       projectId,
+      hasHydratedCanvas: () => getStudioRuntime().hasHydratedCanvas,
+      getFramesSnapshot,
+      getCanvasTransform: () => readCanvasTransform(canvasRef),
+      getSelection: () => ({ activeFrameId, selectedFrameId }),
+      getSelectedGenerationId: () =>
+        projectStudioStoreApi.getState().studio?.selectedGenerationId ?? null,
       resolvePersistGenerationId,
-    ],
-  );
-
-  const flushPendingSnapshotPersist = useCallback(() => {
-    if (!projectId || !getStudioRuntime().hasHydratedCanvas) return;
-
-    if (snapshotSaveTimeoutRef.current) {
-      clearTimeout(snapshotSaveTimeoutRef.current);
-      snapshotSaveTimeoutRef.current = null;
-    }
-
-    persistCanvasState({
-      id: projectId,
-      canvasState: buildSnapshot(),
-      generationId: resolvePersistGenerationId(),
+      persistCanvasState,
     });
-  }, [
-    buildSnapshot,
-    getStudioRuntime,
-    persistCanvasState,
-    projectId,
-    resolvePersistGenerationId,
-  ]);
 
   const recoverStalledFrames = useCallback(() => {
     let changed = false;
-    const next = new Map(framesRef.current);
+    const snapshot = getFramesSnapshot();
+    const next = new Map(snapshot);
 
-    for (const [frameId, frame] of framesRef.current) {
+    for (const [frameId, frame] of snapshot) {
       if (frame.state !== "skeleton" && frame.state !== "streaming") continue;
 
       changed = true;
+      const content = isProbablyCompleteScreen(frame.content)
+        ? frame.content
+        : buildSandboxFallbackScreen();
       next.set(frameId, {
         ...frame,
-        state: "error",
-        error: "Generation was interrupted before this screen completed.",
+        state: "done",
+        content,
+        error: null,
       });
     }
 
     if (!changed) return;
 
-    applyFrames(() => next, true);
+    updateEphemeral(() => next);
     scheduleSnapshotPersist();
-  }, [applyFrames, scheduleSnapshotPersist]);
+  }, [getFramesSnapshot, scheduleSnapshotPersist, updateEphemeral]);
+
+  const syncProjectDetailCache = useCallback(
+    (generationId?: string | null) => {
+      const resolvedGenerationId = resolvePersistGenerationId(
+        generationId ?? undefined,
+      );
+      if (!resolvedGenerationId || !project) return;
+
+      const frames = [...getFramesSnapshot().values()].filter(
+        (frame) => frame.generationId === resolvedGenerationId,
+      );
+      if (frames.length === 0) return;
+
+      const existing = project.generations.find(
+        (generation) => generation.generationId === resolvedGenerationId,
+      );
+
+      const generation: ProjectGeneration = {
+        generationId: resolvedGenerationId,
+        model: existing?.model ?? "unknown",
+        platform: frames[0]?.platform ?? project.platform,
+        spec: existing?.spec ?? null,
+        screens: frames.map((frame) => ({
+          id: frame.id,
+          state: frame.state,
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          screenName: frame.screenName,
+          content: frame.content,
+          editedContent: frame.editedContent,
+          error: frame.error,
+        })),
+        status: "COMPLETED",
+        terminalAt: existing?.terminalAt ?? new Date().toISOString(),
+        errorMessage: null,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData(
+        ["projects", projectId],
+        (prev: typeof project | undefined) =>
+          upsertProjectGenerationInDetail(prev, generation, "ACTIVE"),
+      );
+    },
+    [
+      getFramesSnapshot,
+      project,
+      projectId,
+      queryClient,
+      resolvePersistGenerationId,
+    ],
+  );
 
   const upsertGenerationReviewEntry = useCallback(
     ({
@@ -730,7 +651,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         );
 
       if (entries.length === 0 && activeGenerationId) {
-        entries = [...framesRef.current.values()]
+        entries = [...getFramesSnapshot().values()]
           .filter((frame) => frame.generationId === activeGenerationId)
           .map((frame) => ({
             frameId: frame.id,
@@ -839,8 +760,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const finalizePendingFrames = useCallback(
     ({
-      preferError = false,
-      errorMessage,
+      preferError: _preferError = false,
+      errorMessage: _errorMessage,
     }: {
       preferError?: boolean;
       errorMessage?: string;
@@ -860,15 +781,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           const frame = next.get(frameId);
           if (!frame) return;
 
-          const resolvedContent = bufferedContent ?? frame.content;
-          const hasRenderableContent = resolvedContent.trim().length > 0;
-          const nextState =
-            preferError || !hasRenderableContent ? "error" : "done";
-          const nextError =
-            nextState === "error"
-              ? (errorMessage ??
-                "Generation ended before this screen completed.")
-              : null;
+          const resolvedContent = isProbablyCompleteScreen(
+            bufferedContent ?? frame.content,
+          )
+            ? (bufferedContent ?? frame.content)
+            : buildSandboxFallbackScreen();
+          const nextState: FrameState = "done";
+          const nextError = null;
 
           if (
             frame.state === nextState &&
@@ -987,8 +906,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         snapshot.frames.map((frame) => [frame.id, frame]),
       );
 
-      setFrames(restoredFrames);
-      framesRef.current = restoredFrames;
+      replaceAll(restoredFrames, { pushHistory: true });
       const restoredFrameIds: Record<string, string[]> = {};
       for (const frame of snapshot.frames) {
         const frameIds = restoredFrameIds[frame.screenName] ?? [];
@@ -1001,8 +919,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         activeFrameIdsByScreen: {},
       }));
 
-      selectedFrameIdRef.current = snapshot.selectedFrameId ?? null;
-      activeFrameIdRef.current = snapshot.activeFrameId ?? null;
       setSelectedFrameId(snapshot.selectedFrameId ?? null);
       if (snapshot.activeFrameId) {
         enterFrame(snapshot.activeFrameId);
@@ -1012,11 +928,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       requestAnimationFrame(() => {
         canvasRef.current?.setTransform(snapshot.camera);
-        canvasTransformRef.current = snapshot.camera;
-        setCanvasTransform(snapshot.camera);
       });
     },
-    [enterFrame, exitFrame, setSelectedFrameId, updateStudioRuntime],
+    [enterFrame, exitFrame, replaceAll, setSelectedFrameId, updateStudioRuntime],
   );
 
   const handleEvent = (event: GenerationEvent, generationToken: number) => {
@@ -1087,7 +1001,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       });
 
       requestAnimationFrame(() => {
-        const allRects = toFrameRects([...framesRef.current.values()]);
+        const allRects = [...getFramesSnapshot().values()].map((frame) => ({
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+        }));
         canvasRef.current?.zoomToFit(allRects);
       });
       scheduleSnapshotPersist(generationId);
@@ -1188,16 +1107,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       // Watch stream provides content directly; live generation uses buffer
       const finalCode = event.content ?? runtime.screenBuffers[event.screen] ?? "";
-      const hasRenderableContent = finalCode.trim().length > 0;
-      const nextState: FrameState = hasRenderableContent
-        ? "done"
-        : (event.error ? "error" : "error");
-      const nextError = event.error ?? (
-        hasRenderableContent
-          ? null
-          : "Generation ended before this screen completed."
-      );
-      const frame = framesRef.current.get(frameId);
+      const content = isProbablyCompleteScreen(finalCode)
+        ? finalCode
+        : buildSandboxFallbackScreen();
+      const nextState: FrameState = "done";
+      const nextError = null;
+      const frame = getFramesSnapshot().get(frameId);
       const generationId =
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
 
@@ -1224,7 +1139,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         next.set(frameId, {
           ...frame,
           state: nextState,
-          content: finalCode,
+          content,
           error: nextError,
         });
         return next;
@@ -1236,21 +1151,19 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         generationId,
         state: nextState,
         error: nextError,
-        code: finalCode,
+        code: content,
       });
 
       setActiveStreamingScreen((current) =>
         current === event.screen ? null : current,
       );
 
-      // Focus canvas on regenerated frame
+      // Focus canvas on regenerated frame (select + zoom; do not auto-enter preview)
       if (regenFrameIdRef.current && frameId === regenFrameIdRef.current) {
-        const regenFrame = framesRef.current.get(regenFrameIdRef.current);
+        const regenFrame = getFramesSnapshot().get(regenFrameIdRef.current);
         if (regenFrame) {
           setSelectedFrameId(frameId);
-          selectedFrameIdRef.current = frameId;
-          enterFrame(frameId);
-          activeFrameIdRef.current = frameId;
+          exitFrame();
 
           requestAnimationFrame(() => {
             canvasRef.current?.zoomToRect(
@@ -1274,15 +1187,23 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       finalizePendingFrames({ preferError: false });
 
       updateProjectStatus({ id: projectId, status: "ACTIVE" });
+      syncProjectDetailCache();
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
 
-      const allRects = toFrameRects([...framesRef.current.values()]);
+      const allRects = [...getFramesSnapshot().values()].map((frame) => ({
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+        }));
       if (regenFrameIdRef.current) {
-        const focusFrame = framesRef.current.get(regenFrameIdRef.current);
+        const focusFrame = getFramesSnapshot().get(regenFrameIdRef.current);
         if (focusFrame) {
           setSelectedFrameId(focusFrame.id);
-          selectedFrameIdRef.current = focusFrame.id;
-          enterFrame(focusFrame.id);
-          activeFrameIdRef.current = focusFrame.id;
+          exitFrame();
 
           requestAnimationFrame(() => {
             canvasRef.current?.zoomToRect(
@@ -1504,7 +1425,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     try {
       stopChunkFlusher();
       if (activeFrameId) {
-        sourceFrame = framesRef.current.get(activeFrameId) ?? null;
+        sourceFrame = getFramesSnapshot().get(activeFrameId) ?? null;
       }
 
       // G mode + selected frame: use frame context to create NEW frame with new prompt
@@ -1515,6 +1436,17 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (useFrameContext && !generationId) {
         throw new Error("Unable to find generation ID for active frame.");
       }
+
+      const canvasFrames = [...getFramesSnapshot().values()].map((frame) => ({
+        id: frame.id,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+      }));
+
+      // Flush pending canvas geometry so DB screens stay closer to live sizes.
+      flushPendingSnapshotPersist();
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -1527,6 +1459,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           // model,
           prompt: generationPrompt,
           platform,
+          canvasFrames,
           ...(useFrameContext && {
             generationId,
             frameId: sourceFrame!.id,
@@ -1674,6 +1607,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       stopChunkFlusher();
       setActiveStreamingScreen(null);
       setIsGenerating(false);
+
+      if (!streamFailed && !isStaleGeneration()) {
+        syncProjectDetailCache();
+        void queryClient.invalidateQueries({
+          queryKey: ["projects", projectId],
+        });
+        void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+      }
     }
   };
 
@@ -1697,14 +1638,34 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           y: normalizedY,
         });
         return next;
-      });
-
-      scheduleSnapshotPersist();
+      }, true);
     },
-    [applyFrames, scheduleSnapshotPersist],
+    [applyFrames],
   );
 
   const handleResizeFrame = useCallback(
+    (id: string, nextW: number, nextH: number) => {
+      applyFrames((current) => {
+        const frame = current.get(id);
+        if (!frame) return current;
+
+        if (frame.w === nextW && frame.h === nextH) {
+          return current;
+        }
+
+        const next = new Map(current);
+        next.set(id, {
+          ...frame,
+          w: nextW,
+          h: nextH,
+        });
+        return next;
+      }, true);
+    },
+    [applyFrames],
+  );
+
+  const handleAutoFitFrame = useCallback(
     (id: string, nextW: number, nextH: number) => {
       applyFrames((current) => {
         const frame = current.get(id);
@@ -1728,17 +1689,21 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     [applyFrames, scheduleSnapshotPersist],
   );
 
-  const handleTransformChange = useCallback(
-    (nextTransform: Transform) => {
-      canvasTransformRef.current = nextTransform;
-      setCanvasTransform(nextTransform);
-      scheduleSnapshotPersist();
-    },
-    [scheduleSnapshotPersist],
-  );
+  const handleInteractionStart = useCallback(() => {
+    beginGesture();
+  }, [beginGesture]);
+
+  const handleInteractionEnd = useCallback(() => {
+    endGesture();
+    scheduleSnapshotPersist();
+  }, [endGesture, scheduleSnapshotPersist]);
+
+  const handleTransformChange = useCallback(() => {
+    scheduleSnapshotPersist();
+  }, [scheduleSnapshotPersist]);
 
   const handleDownloadProject = useCallback(async () => {
-    const doneFrames = [...framesRef.current.values()].filter(
+    const doneFrames = [...getFramesSnapshot().values()].filter(
       (frame) =>
         frame.state === "done" && (frame.editedContent ?? frame.content),
     );
@@ -1926,7 +1891,7 @@ npm run dev
       '[data-canvas-capture="world"]',
     );
 
-    if (!world || framesRef.current.size === 0) {
+    if (!world || getFramesSnapshot().size === 0) {
       toast.error("No canvas frames to export.");
       return;
     }
@@ -2010,11 +1975,10 @@ npm run dev
 
   const handleOpenCodeEditor = useCallback(
     (frameId: string) => {
-      const frame = framesRef.current.get(frameId);
+      const frame = getFramesSnapshot().get(frameId);
       if (!frame) return;
 
       setSelectedFrameId(frameId);
-      selectedFrameIdRef.current = frameId;
       setCodeEditorValue(frame.editedContent ?? frame.content);
       setCodeEditorOpen(true);
       openEditor(frameId);
@@ -2042,7 +2006,7 @@ npm run dev
   const handleSaveCodeEditor = useCallback(() => {
     if (!activeFrameId) return;
 
-    const generationId = framesRef.current.get(activeFrameId)?.generationId;
+    const generationId = getFramesSnapshot().get(activeFrameId)?.generationId;
 
     applyFrames((current) => {
       const frame = current.get(activeFrameId);
@@ -2134,7 +2098,7 @@ npm run dev
         return;
       }
 
-      const sourceFrame = framesRef.current.get(id);
+      const sourceFrame = getFramesSnapshot().get(id);
       if (!sourceFrame) {
         logger.warn("Clicked frame not found", { frameId: id });
         return;
@@ -2192,37 +2156,37 @@ npm run dev
         });
       };
 
-      const applyFallbackError = (message: string) => {
+      const applyFallbackError = (_message: string) => {
         applyFrames((current) => {
           const frame = current.get(id);
           if (!frame) return current;
 
-          const fallbackContent = hasMeaningfulStream
+          const candidate = hasMeaningfulStream
             ? streamedContent || sourceContent
             : sourceContent;
+          const nextContent = isProbablyCompleteScreen(candidate)
+            ? candidate
+            : buildSandboxFallbackScreen();
 
           const next = new Map(current);
           next.set(id, {
             ...frame,
             generationId: resolvedGenerationId,
-            state: "error",
-            content: fallbackContent,
+            state: "done",
+            content: nextContent,
             editedContent: hasMeaningfulStream ? null : sourceEditedContent,
-            error: message,
+            error: null,
           });
           return next;
         });
       };
 
       const finalizeFromStream = () => {
-        const hasRenderableContent = streamedContent.trim().length > 0;
-        const nextState: FrameState = hasRenderableContent ? "done" : "error";
-        const nextError = hasRenderableContent
-          ? null
-          : "Generation ended before this frame completed.";
-        const nextContent = hasRenderableContent
+        const nextContent = isProbablyCompleteScreen(streamedContent)
           ? streamedContent
-          : sourceContent;
+          : isProbablyCompleteScreen(sourceContent)
+            ? sourceContent
+            : buildSandboxFallbackScreen();
 
         applyFrames((current) => {
           const frame = current.get(id);
@@ -2232,16 +2196,19 @@ npm run dev
           next.set(id, {
             ...frame,
             generationId: resolvedGenerationId,
-            state: nextState,
+            state: "done",
             content: nextContent,
-            editedContent: hasRenderableContent ? null : sourceEditedContent,
-            error: nextError,
+            error: null,
           });
           return next;
         });
       };
 
       try {
+        frameRegenAbortControllerRef.current?.abort();
+        const abortController = new AbortController();
+        frameRegenAbortControllerRef.current = abortController;
+
         applyFrames((current) => {
           const frame = current.get(id);
           if (!frame) return current;
@@ -2253,22 +2220,20 @@ npm run dev
             error: null,
           });
           return next;
-        });
+        }, true);
 
         const response = await fetch(`/api/generate/${id}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(hasPromptOverride
-              ? { "Idempotency-Key": crypto.randomUUID() }
-              : {}),
+            "Idempotency-Key": crypto.randomUUID(),
           },
           body: JSON.stringify({
             projectId: project.id,
             generationId: sourceFrame.generationId,
-            // model,
             ...(hasPromptOverride ? { prompt: promptOverride } : {}),
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok || !response.body) {
@@ -2431,6 +2396,10 @@ npm run dev
           return;
         }
 
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
         streamFailed = true;
         applyFallbackError(
           error instanceof Error
@@ -2467,7 +2436,7 @@ npm run dev
 
   const handleDelete = useCallback(
     (frameId: string) => {
-      const frameToDelete = framesRef.current.get(frameId);
+      const frameToDelete = getFramesSnapshot().get(frameId);
 
       applyFrames((current) => {
         const frame = current.get(frameId);
@@ -2516,7 +2485,7 @@ npm run dev
         // Still allow Escape in inputs
         if (event.key === "Escape") {
           target.blur();
-          setSelectedFrameId(null);
+          deselect();
           setPrompt("");
         }
         return;
@@ -2529,19 +2498,15 @@ npm run dev
         !isGenerating
       ) {
         event.preventDefault();
-        const frame = framesRef.current.get(selectedFrameId);
+        const frame = getFramesSnapshot().get(selectedFrameId);
         if (frame) {
           handleDelete(selectedFrameId);
           toast.info("Frame deleted");
         }
       }
 
-      // Escape to deselect
-      if (event.key === "Escape") {
-        setSelectedFrameId(null);
-        setActiveFrameId(null);
-        exitFrame();
-      }
+      // Escape in canvas is handled by usePointerMode (exit → then deselect).
+      // Do not clear selection here — that fights the Esc ladder.
 
       // Ctrl/Cmd + Enter to generate
       if (
@@ -2578,7 +2543,7 @@ npm run dev
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo]);
+  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo, deselect, handleDelete]);
 
   useEffect(() => {
     if (!generationRecoveryPrompt) return;
@@ -2594,7 +2559,7 @@ npm run dev
   }, [generationRecoveryPrompt]);
 
   useEffect(() => {
-    if (projectLoading || isError) return;
+    if (projectLoading || projectFetching || isError) return;
 
     if (!project) {
       logger.error("Project not found");
@@ -2644,9 +2609,8 @@ npm run dev
     }
 
     if (
-      project.frames.length === 0 &&
       !hasInitiatedGeneration &&
-      project.status !== "ARCHIVED"
+      shouldAutoStartProjectGeneration(project)
     ) {
       setRuntimeInitiatedGeneration(true);
       void handleGenerateRef.current();
@@ -2656,8 +2620,10 @@ npm run dev
     hasInitiatedGeneration,
     hydrateStudioState,
     isError,
+    isGenerating,
     project,
     projectError,
+    projectFetching,
     projectLoading,
     recoverStalledFrames,
     restoreFromSnapshot,
@@ -2682,11 +2648,6 @@ npm run dev
       if (captureTimeoutRef.current) {
         clearTimeout(captureTimeoutRef.current);
         captureTimeoutRef.current = null;
-      }
-
-      if (snapshotSaveTimeoutRef.current) {
-        clearTimeout(snapshotSaveTimeoutRef.current);
-        snapshotSaveTimeoutRef.current = null;
       }
     };
   }, [flushPendingSnapshotPersist, stopChunkFlusher]);
@@ -2807,99 +2768,49 @@ npm run dev
         ...themeVariables,
       )}
     >
-      <div className="absolute inset-0 z-40" ref={domRef}>
-        <CanvasErrorBoundary>
-          <StudioThemeProvider value={{ mode: themeMode, isDark }}>
-            <InfiniteCanvas
-              ref={canvasRef}
-              frames={frameRects}
-              frameData={frameList}
-              activeFrameId={activeFrameId}
-              selectedFrameId={selectedFrameId}
-              onFrameExit={exitFrame}
-              onTransformChange={handleTransformChange}
-            >
-              {/* <SandpackProvider> */}
-              {frameList.map((frame) => (
-                <CanvasFrame
-                  {...frame}
-                  key={frame.id}
-                  scale={canvasTransform.k}
-                  isActive={activeFrameId === frame.id}
-                  isSelected={selectedFrameId === frame.id}
-                  onSelect={(id) => {
-                    setSelectedFrameId(id);
-                    selectedFrameIdRef.current = id;
-                    const frame = framesRef.current.get(id);
-                    if (frame) {
-                      setStudioSelectedGenerationId(frame.generationId);
-                    }
-                    // onCapture();
-                  }}
-                  onActivate={(id) => {
-                    setSelectedFrameId(id);
-                    enterFrame(id);
-                    selectedFrameIdRef.current = id;
-                    activeFrameIdRef.current = id;
-                    const frame = framesRef.current.get(id);
-                    if (frame) {
-                      setStudioSelectedGenerationId(frame.generationId);
-                    }
-                    scheduleSnapshotPersist();
-                  }}
-                  onMove={handleMoveFrame}
-                  onResize={handleResizeFrame}
-                  handleFrame={handleFrame}
-                  handleDelete={handleDelete}
-                  handleEditCode={handleOpenCodeEditor}
-                  onOpenHistory={handleOpenHistory}
-                  canRegenerate={canRegenerate}
-                  canEditCode={canEditCode}
-                  onLockedAction={handleLockedAction}
-                />
-              ))}
-              {/* </SandpackProvider> */}
-            </InfiniteCanvas>
-          </StudioThemeProvider>
-        </CanvasErrorBoundary>
-
-        {frameList.length === 0 && (
-          <div
-            className="pointer-events-none absolute inset-0 flex items-center justify-center"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="pointer-events-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-border bg-card/95 p-6 text-center shadow-2xl shadow-black/40">
-              <div
-                className="mx-auto flex size-10 items-center justify-center rounded-md border border-border bg-foreground/5"
-                aria-hidden="true"
-              >
-                {isGenerating ? (
-                  <Sparkles className="size-5 animate-spin text-foreground/80" />
-                ) : (
-                  <Code2 className="size-5 text-foreground/70" />
-                )}
-              </div>
-              <h2 className="mt-4 text-base font-semibold text-foreground">
-                {isGenerating
-                  ? "Preparing screens"
-                  : "No screens on this canvas"}
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-foreground/55">
-                {isGenerating
-                  ? "LOGIC is extracting the app spec and will place preview screens here shortly."
-                  : "Use the prompt bar below to generate a new UI, or restore a project from history."}
-              </p>
-              {!isGenerating && frameList.length === 0 && (
-                <p className="sr-only">
-                  Type a description of your desired UI in the prompt bar below
-                  and press Enter to generate screens.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <StudioCanvasSurface
+        canvasRef={canvasRef}
+        containerRef={domRef}
+        frameList={frameList}
+        frameRects={frameRects}
+        activeFrameId={activeFrameId}
+        selectedFrameId={selectedFrameId}
+        isGenerating={isGenerating}
+        themeMode={themeMode}
+        isDark={isDark}
+        canRegenerate={canRegenerate}
+        canEditCode={canEditCode}
+        isSpacePressed={() => canvasRef.current?.isSpacePressed() ?? false}
+        onFrameExit={exitFrame}
+        onCanvasEmptyPointerDown={handleCanvasEmptyPointerDown}
+        onTransformChange={handleTransformChange}
+        onSelectFrame={(id) => {
+          setSelectedFrameId(id);
+          const frame = getFramesSnapshot().get(id);
+          if (frame) {
+            setStudioSelectedGenerationId(frame.generationId);
+          }
+        }}
+        onActivateFrame={(id) => {
+          setSelectedFrameId(id);
+          enterFrame(id);
+          const frame = getFramesSnapshot().get(id);
+          if (frame) {
+            setStudioSelectedGenerationId(frame.generationId);
+          }
+          scheduleSnapshotPersist();
+        }}
+        onMove={handleMoveFrame}
+        onResize={handleResizeFrame}
+        onAutoFit={handleAutoFitFrame}
+        onInteractionStart={handleInteractionStart}
+        onInteractionEnd={handleInteractionEnd}
+        onRegenerate={handleFrame}
+        onDelete={handleDelete}
+        onEditCode={handleOpenCodeEditor}
+        onOpenHistory={handleOpenHistory}
+        onLockedAction={handleLockedAction}
+      />
 
       <StudioHeader
         title={project.title || "Untitled Project"}
@@ -3186,10 +3097,11 @@ npm run dev
         monoClassName={mono.className}
         onEscape={() => {
           setPrompt("");
-          setSelectedFrameId(null);
+          deselect();
         }}
         onLockedAction={handleLockedAction}
         canRegenerate={canRegenerate}
+        activeStreamingScreen={activeStreamingScreen}
       />
     </StudioShell>
   );

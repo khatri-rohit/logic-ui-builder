@@ -93,11 +93,38 @@ export default function PublicProjectViewer({
     setCanvasTransform(nextTransform);
   }, []);
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (activeFrameId) {
+        setActiveFrameId(null);
+        return;
+      }
+      if (selectedFrameId) {
+        setSelectedFrameId(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeFrameId, selectedFrameId]);
+
   const handleMoveFrame = useCallback(() => {
     // No-op: read-only
   }, []);
 
   const handleResizeFrame = useCallback(() => {
+    // No-op: read-only
+  }, []);
+
+  const handleAutoFitFrame = useCallback(() => {
+    // No-op: read-only — preserve shared snapshot dimensions
+  }, []);
+
+  const handleInteractionStart = useCallback(() => {
+    // No-op: read-only
+  }, []);
+
+  const handleInteractionEnd = useCallback(() => {
     // No-op: read-only
   }, []);
 
@@ -158,8 +185,14 @@ export default function PublicProjectViewer({
                 w: f.w,
                 h: f.h,
               }))}
+              frameData={frameList}
               activeFrameId={activeFrameId}
+              selectedFrameId={selectedFrameId}
               onFrameExit={() => setActiveFrameId(null)}
+              onCanvasEmptyPointerDown={() => {
+                setActiveFrameId(null);
+                setSelectedFrameId(null);
+              }}
               onTransformChange={handleTransformChange}
             >
               {frameList.map((frame) => (
@@ -179,6 +212,9 @@ export default function PublicProjectViewer({
                   }}
                   onMove={handleMoveFrame}
                   onResize={handleResizeFrame}
+                  onAutoFit={handleAutoFitFrame}
+                  onInteractionStart={handleInteractionStart}
+                  onInteractionEnd={handleInteractionEnd}
                   handleFrame={handleFrameAction}
                   handleDelete={handleDeleteFrame}
                   handleEditCode={handleEditCode}

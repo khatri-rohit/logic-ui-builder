@@ -133,6 +133,14 @@ if (ReactDOM.createRoot) {
 // Dimension reporter — runs after React renders
 (function() {
   let rafId = 0
+  let lastW = 0
+  let lastH = 0
+  let debounceTimer = 0
+  let burstCount = 0
+  let burstResetTimer = 0
+  const MAX_BURST = 4
+  const DEBOUNCE_MS = 100
+  const BURST_IDLE_MS = 1500
 
   function scheduleReport() {
     if (rafId) return
@@ -142,26 +150,43 @@ if (ReactDOM.createRoot) {
     })
   }
 
+  function scheduleSettleReport() {
+    if (burstCount >= MAX_BURST) return
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      if (burstCount >= MAX_BURST) return
+      burstCount += 1
+      scheduleReport()
+      clearTimeout(burstResetTimer)
+      burstResetTimer = setTimeout(() => {
+        burstCount = 0
+      }, BURST_IDLE_MS)
+    }, DEBOUNCE_MS)
+  }
+
   function reportSize() {
     const body = document.body
-    const html = document.documentElement
     const root = document.getElementById('root')
+    const rootRect = root ? root.getBoundingClientRect() : { width: 0, height: 0 }
 
+    // Content-rooted only — exclude html.clientHeight/offsetHeight viewport coupling.
     const width = Math.max(
       root ? root.scrollWidth : 0,
-      root ? root.offsetWidth : 0,
-      body.scrollWidth, body.offsetWidth,
-      html.scrollWidth, html.offsetWidth,
-      html.clientWidth
+      body ? body.scrollWidth : 0,
+      Math.ceil(rootRect.width)
     )
-      
+
     const height = Math.max(
       root ? root.scrollHeight : 0,
-      root ? root.offsetHeight : 0,
-      body.scrollHeight, body.offsetHeight,
-      html.scrollHeight, html.offsetHeight,
-      html.clientHeight
+      body ? body.scrollHeight : 0,
+      Math.ceil(rootRect.height)
     )
+
+    if (!width || !height) return
+    if (Math.abs(width - lastW) < 4 && Math.abs(height - lastH) < 4) return
+
+    lastW = width
+    lastH = height
 
     window.parent.postMessage({
       type: 'iframe-resize',
@@ -181,16 +206,16 @@ if (ReactDOM.createRoot) {
   // Follow-up reports for async content.
   setTimeout(scheduleReport, 0)
   setTimeout(scheduleReport, 150)
-  window.addEventListener('resize', scheduleReport)
+  setTimeout(scheduleReport, 800)
+  setTimeout(scheduleReport, 1400)
 
-  // Re-report if content changes (lazy images, dynamic content)
-  const ro = new ResizeObserver(scheduleReport)
-  ro.observe(document.body)
+  const ro = new ResizeObserver(scheduleSettleReport)
   const root = document.getElementById('root')
   if (root) ro.observe(root)
+  else ro.observe(document.body)
 
-  const mo = new MutationObserver(scheduleReport)
-  mo.observe(root || document.body, { childList: true, subtree: true, attributes: true, characterData: true })
+  const mo = new MutationObserver(scheduleSettleReport)
+  mo.observe(root || document.body, { childList: true, subtree: true, attributes: false, characterData: false })
 })()
 </script>
 </body>

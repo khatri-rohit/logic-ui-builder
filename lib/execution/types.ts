@@ -1,4 +1,5 @@
 import { ComponentTreeNode, DesignContext, WebAppSpec } from "@/lib/types";
+import type { DesignContract } from "@/lib/designContract";
 import type { ScreenClass } from "@/lib/execution/modelRouter";
 import { initializeOllama } from "@/lib/ollama";
 
@@ -45,6 +46,8 @@ export interface PipelineContext {
   screenClass?: ScreenClass;
   generationId?: string;
   referenceScreenCode?: string;
+  designContract?: DesignContract;
+  visualFingerprint?: string;
 }
 
 export interface TelemetryPayload {
@@ -65,6 +68,7 @@ export interface ModelExecutorOptions {
   system: string;
   prompt: string;
   temperature: number;
+  maxOutputTokens?: number;
   abortController: AbortController;
   modelTimeoutMs?: number;
   onToken?: (token: string) => void | Promise<void>;

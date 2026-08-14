@@ -6,15 +6,29 @@ import {
 } from "@/lib/execution/types";
 import { executeModel } from "@/lib/execution/modelExecutor";
 import { classifyScreen, buildDynamicModelPriority } from "@/lib/execution/modelRouter";
+import { getStage3Decoding } from "@/lib/execution/modelDefaults";
+import {
+  extractVisualFingerprint,
+  isWeakDesignAnchor,
+  pickDesignAnchorIndex,
+} from "@/lib/designContract";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { sanitizeGeneratedCode } from "@/lib/generatedCodeSanitizer";
+import { extractDependencies } from "@/lib/dependencyExtractor";
+import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 import {
   buildScreenPrompt,
-  STAGE3_SYSTEM,
+  composeStage3SystemPrompt,
   validateGeneratedTSX,
 } from "@/lib/prompts";
+import {
+  ensureDesignTokensOnRoot,
+  resolveDesignSystem,
+} from "@/lib/designSystemSnapshot";
 import { validateCompile } from "@/lib/validation/compileValidator";
+import { validateSandboxBindings } from "@/lib/validation/sandboxBindings";
+import { validateSandboxRuntimeHazards } from "@/lib/validation/sandboxRuntimeHazards";
 
 const MAX_CONCURRENT_SCREENS = 2;
 
@@ -39,12 +53,28 @@ async function logTelemetry(payload: TelemetryPayload) {
   }
 }
 
+function applyReferenceFromResult(
+  context: PipelineContext,
+  result: ScreenResult,
+  screenName: string,
+  allowWeakAnchor: boolean,
+) {
+  if (!result.success || !result.code) return false;
+  if (context.referenceScreenCode) return false;
+  if (!allowWeakAnchor && isWeakDesignAnchor(screenName)) return false;
+
+  context.referenceScreenCode = result.code;
+  context.visualFingerprint = extractVisualFingerprint(result.code);
+  return true;
+}
+
 export async function runScreenGeneration(
   context: PipelineContext,
   screen: string,
   frameId: string,
   basePrompt: string,
   eventPrefix: "screen" | "frame" = "screen",
+  viewport?: { w: number; h: number },
 ): Promise<ScreenResult> {
   const {
     ollama,
@@ -58,14 +88,14 @@ export async function runScreenGeneration(
   } = context;
 
   const MAX_STAGE3_ATTEMPTS = 3;
+  const isFrameRegen = eventPrefix === "frame";
 
   const screenClass = classifyScreen(spec, screen, tree);
 
-  // Dynamic model routing: re-rank priority for this screen's complexity class
   const dynamicPriority = await buildDynamicModelPriority(
     stage3ModelPriority,
     screenClass,
-    null, // preferredModel is already at the front of stage3ModelPriority
+    null,
   );
 
   let lastError: string | null = null;
@@ -91,11 +121,11 @@ export async function runScreenGeneration(
       logger.warn(
         `Stage 3 ${eventPrefix} '${screen}' exceeded max attempts (${MAX_STAGE3_ATTEMPTS}). Returning fallback.`,
       );
+      const safe = await ensureSandboxSafeCode(currentCode);
       return {
-        success: false,
-        code: sanitizeGeneratedCode(currentCode),
-        error:
-          lastError || `Exceeded max ${MAX_STAGE3_ATTEMPTS} stage-3 attempts`,
+        success: true,
+        code: safe.code,
+        error: null,
         iterations,
       };
     }
@@ -116,14 +146,22 @@ export async function runScreenGeneration(
       ? `${basePrompt}\n\nCRITICAL FIXES NEEDED:\n${lastError}`
       : basePrompt;
 
+    const decoding = getStage3Decoding({
+      hasReference: Boolean(context.referenceScreenCode),
+      isValidationRetry: Boolean(lastError),
+      isFrameRegen,
+    });
+
     logger.info(
-      `Stage 3 ${eventPrefix} '${screen}' attempt ${iterations} via model: ${candidateModel}`,
+      `Stage 3 ${eventPrefix} '${screen}' attempt ${iterations} via model: ${candidateModel} (temp=${decoding.temperature})`,
     );
 
     const result = await executeModel({
       ollama,
       model: candidateModel,
-      system: context.systemPrompt || STAGE3_SYSTEM,
+      system:
+        context.systemPrompt ||
+        composeStage3SystemPrompt(spec, designContext),
       prompt: buildScreenPrompt(
         spec,
         tree,
@@ -131,8 +169,12 @@ export async function runScreenGeneration(
         promptWithFixes,
         designContext,
         context.referenceScreenCode,
+        viewport,
+        context.designContract,
+        context.visualFingerprint,
       ),
-      temperature: 0.2,
+      temperature: decoding.temperature,
+      maxOutputTokens: decoding.maxOutputTokens,
       abortController,
       async onToken(token) {
         await write({ type: "code_chunk", screen, frameId, token });
@@ -192,8 +234,7 @@ export async function runScreenGeneration(
       .replace(/^```(?:tsx?|typescript|jsx?)?\n?/gm, "")
       .replace(/^```$/gm, "")
       .trim();
-    // logger.info("Code: ", currentCode);
-    // Layer 1: TS parser validation
+
     const tsValidation = validateGeneratedTSX(currentCode);
     if (!tsValidation.valid) {
       lastError = tsValidation.issues.join("; ");
@@ -221,7 +262,6 @@ export async function runScreenGeneration(
       continue;
     }
 
-    // Layer 2: esbuild compile validation
     const sanitized = sanitizeGeneratedCode(currentCode);
     const compileValidation = await validateCompile(sanitized);
     if (!compileValidation.valid) {
@@ -250,7 +290,87 @@ export async function runScreenGeneration(
       continue;
     }
 
-    // Both validations passed
+    const bindingValidation = validateSandboxBindings(sanitized);
+    if (!bindingValidation.valid) {
+      lastError = bindingValidation.issues.join("; ");
+      errorType = "binding_error";
+      logger.info(
+        `${eventPrefix} '${screen}' sandbox binding validation failed on ${candidateModel}: ${lastError}`,
+      );
+      await write({
+        type: "quality_warning",
+        screen,
+        issues: bindingValidation.issues,
+        score: 0,
+      });
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      continue;
+    }
+
+    const hazardValidation = validateSandboxRuntimeHazards(sanitized);
+    if (!hazardValidation.valid) {
+      lastError = hazardValidation.issues.join("; ");
+      errorType = "runtime_hazard";
+      logger.info(
+        `${eventPrefix} '${screen}' sandbox runtime hazard on ${candidateModel}: ${lastError}`,
+      );
+      await write({
+        type: "quality_warning",
+        screen,
+        issues: hazardValidation.issues,
+        score: 0,
+      });
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      continue;
+    }
+
+    const deps = extractDependencies(sanitized);
+    if (deps.unknownPackages.length > 0) {
+      lastError = `Unsupported sandbox packages: ${deps.unknownPackages.join(", ")}`;
+      errorType = "dependency_error";
+      logger.info(
+        `${eventPrefix} '${screen}' sandbox dependency validation failed on ${candidateModel}: ${lastError}`,
+      );
+      await write({
+        type: "quality_warning",
+        screen,
+        issues: [lastError],
+        score: 0,
+      });
+      void logTelemetry({
+        generationId: generationId ?? "",
+        screenName: screen,
+        model: candidateModel,
+        stage: "stage3",
+        success: false,
+        latencyMs,
+        tokenCount: result.usage?.totalTokens ?? null,
+        errorType,
+        screenClass,
+      });
+      continue;
+    }
+
     void logTelemetry({
       generationId: generationId ?? "",
       screenName: screen,
@@ -263,23 +383,27 @@ export async function runScreenGeneration(
       screenClass,
     });
 
+    const snapshot = resolveDesignSystem(spec);
+    const baked = ensureDesignTokensOnRoot(sanitized, snapshot);
+    const safe = await ensureSandboxSafeCode(baked);
+
     return {
       success: true,
-      code: sanitized,
+      code: safe.code,
       error: null,
       iterations,
     };
   }
 
-  // All models exhausted — return degraded fallback
   logger.warn(
     `All models exhausted for ${eventPrefix} '${screen}'. Returning fallback.`,
   );
 
+  const safe = await ensureSandboxSafeCode(currentCode);
   return {
-    success: false,
-    code: sanitizeGeneratedCode(currentCode),
-    error: lastError || "All models failed without producing valid TSX",
+    success: true,
+    code: safe.code,
+    error: null,
     iterations,
   };
 }
@@ -299,7 +423,6 @@ export async function runFullGeneration(
 ): Promise<ScreenResult[]> {
   const { write } = context;
 
-  // Emit screen_start events in order so client initializes buffers
   for (const job of screens) {
     await write({
       type: "screen_start",
@@ -309,39 +432,74 @@ export async function runFullGeneration(
   }
 
   const results: ScreenResult[] = new Array(screens.length);
+  if (screens.length === 0) return results;
 
-  // Run the first screen alone to establish the design language.
-  // Its generated code becomes the cross-screen consistency reference.
-  if (screens.length > 0) {
-    const firstJob = screens[0];
-    const firstResult = await runScreenGeneration(
+  const hasNonWeakAnchor = screens.some(
+    (job) => !isWeakDesignAnchor(job.screen),
+  );
+  const anchorIndex = pickDesignAnchorIndex(screens.map((job) => job.screen));
+
+  // Generate the design-anchor screen first (e.g. dashboard before login).
+  const serialOrder = [
+    anchorIndex,
+    ...screens.map((_, i) => i).filter((i) => i !== anchorIndex),
+  ];
+
+  logger.info("Stage 3 design anchor selected", {
+    anchorScreen: screens[anchorIndex]?.screen,
+    anchorIndex,
+  });
+
+  for (const i of serialOrder) {
+    if (results[i]) continue;
+
+    const job = screens[i];
+    const result = await runScreenGeneration(
       context,
-      firstJob.screen,
-      firstJob.frameId,
+      job.screen,
+      job.frameId,
       basePrompt,
+      "screen",
+      job.dimensions,
     );
-    results[0] = firstResult;
-    await onScreenComplete?.(0, firstResult);
+    results[i] = result;
+    await onScreenComplete?.(i, result);
 
-    if (firstResult.success && firstResult.code) {
-      context.referenceScreenCode = firstResult.code;
-    }
+    const applied = applyReferenceFromResult(
+      context,
+      result,
+      job.screen,
+      !hasNonWeakAnchor,
+    );
+
+    // Once we have a usable reference, stop serial phase.
+    if (applied) break;
+
+    // Keep going if this was a weak auth/splash screen or a failure.
   }
 
-  // Process remaining screens in chunks of MAX_CONCURRENT_SCREENS
-  for (let i = 1; i < screens.length; i += MAX_CONCURRENT_SCREENS) {
-    const chunk = screens.slice(i, i + MAX_CONCURRENT_SCREENS);
+  const pending = screens
+    .map((_, i) => i)
+    .filter((i) => results[i] === undefined);
 
-    const promises = chunk.map((job, chunkIdx) =>
-      runScreenGeneration(context, job.screen, job.frameId, basePrompt).then(
-        async (result) => {
-          results[i + chunkIdx] = result;
-          await onScreenComplete?.(i + chunkIdx, result);
-        },
-      ),
+  for (let offset = 0; offset < pending.length; offset += MAX_CONCURRENT_SCREENS) {
+    const chunk = pending.slice(offset, offset + MAX_CONCURRENT_SCREENS);
+
+    await Promise.all(
+      chunk.map(async (i) => {
+        const job = screens[i];
+        const result = await runScreenGeneration(
+          context,
+          job.screen,
+          job.frameId,
+          basePrompt,
+          "screen",
+          job.dimensions,
+        );
+        results[i] = result;
+        await onScreenComplete?.(i, result);
+      }),
     );
-
-    await Promise.all(promises);
   }
 
   return results;
@@ -352,6 +510,7 @@ export async function runFrameRegeneration(
   screen: string,
   frameId: string,
   basePrompt: string,
+  viewport?: { w: number; h: number },
 ): Promise<ScreenResult> {
   await context.write({
     type: "frame_start",
@@ -359,5 +518,12 @@ export async function runFrameRegeneration(
     frameId,
   });
 
-  return runScreenGeneration(context, screen, frameId, basePrompt, "frame");
+  return runScreenGeneration(
+    context,
+    screen,
+    frameId,
+    basePrompt,
+    "frame",
+    viewport,
+  );
 }

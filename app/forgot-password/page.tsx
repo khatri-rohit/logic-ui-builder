@@ -17,7 +17,7 @@ export default function Page() {
     <AuthShell
       mode="sign-in"
       title="Reset Password"
-      subtitle="Recover access to your workspace by verifying your email and setting a new password."
+      subtitle="Verify your email and set a new password to get back in."
     >
       <CustomForgotPasswordFlow />
     </AuthShell>

@@ -2,17 +2,14 @@ import { RefObject, useCallback, useEffect, useRef } from "react";
 import * as d3Selection from "d3-selection";
 import * as d3Zoom from "d3-zoom";
 
+import type { FrameRect } from "@/components/canvas/types";
+
+export type { FrameRect };
+
 export interface Transform {
   x: number;
   y: number;
   k: number;
-}
-
-export interface FrameRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface CanvasTransformHandle {
@@ -23,6 +20,7 @@ export interface CanvasTransformHandle {
   resetZoom: () => void;
   setTransform: (transform: Transform) => void;
   getTransform: () => Transform;
+  isSpacePressed: () => boolean;
 }
 
 const MIN_ZOOM = 0.05;
@@ -38,17 +36,34 @@ function getWheelZoomDelta(event: WheelEvent) {
   return -event.deltaY * modeFactor;
 }
 
-function getWheelPanDelta(event: WheelEvent) {
-  if (event.deltaMode === 1) return event.deltaY * 16;
-  if (event.deltaMode === 2) return event.deltaY * 120;
-  return event.deltaY;
+function getWheelPanAxisDelta(delta: number, deltaMode: number) {
+  if (deltaMode === 1) return delta * 16;
+  if (deltaMode === 2) return delta * 120;
+  return delta;
+}
+
+function isEventFromActiveIframe(
+  event: Event,
+  activeFrameId: string | null,
+): boolean {
+  if (!activeFrameId) return false;
+  const target = event.target;
+  if (!(target instanceof Element)) return false;
+
+  const frame = target.closest(`[data-canvas-frame="${activeFrameId}"]`);
+  if (!frame) return false;
+
+  // Iframe owns wheel when the event target is the iframe element itself
+  // (parent never sees in-document iframe wheel events; those stay inside).
+  return target.tagName === "IFRAME";
 }
 
 export function useCanvasTransform(
   containerRef: RefObject<HTMLDivElement | null>,
   worldRef: RefObject<HTMLDivElement | null>,
-  _activeFrameId: string | null,
+  activeFrameId: string | null,
   onTransformChange?: (transform: Transform) => void,
+  onSpacePressedChange?: (pressed: boolean) => void,
 ): CanvasTransformHandle {
   const zoomBehaviorRef = useRef<d3Zoom.ZoomBehavior<
     HTMLDivElement,
@@ -56,10 +71,21 @@ export function useCanvasTransform(
   > | null>(null);
   const transformRef = useRef<Transform>({ x: 0, y: 0, k: 1 });
   const onTransformChangeRef = useRef(onTransformChange);
+  const onSpacePressedChangeRef = useRef(onSpacePressedChange);
+  const activeFrameIdRef = useRef(activeFrameId);
+  const isSpacePressedRef = useRef(false);
 
   useEffect(() => {
     onTransformChangeRef.current = onTransformChange;
   }, [onTransformChange]);
+
+  useEffect(() => {
+    onSpacePressedChangeRef.current = onSpacePressedChange;
+  }, [onSpacePressedChange]);
+
+  useEffect(() => {
+    activeFrameIdRef.current = activeFrameId;
+  }, [activeFrameId]);
 
   const applyTransform = useCallback(
     (nextTransform: Transform) => {
@@ -76,6 +102,48 @@ export function useCanvasTransform(
   );
 
   useEffect(() => {
+    const setSpacePressed = (pressed: boolean) => {
+      if (isSpacePressedRef.current === pressed) return;
+      isSpacePressedRef.current = pressed;
+      onSpacePressedChangeRef.current?.(pressed);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.tagName === "INPUT" ||
+          event.target.tagName === "TEXTAREA" ||
+          event.target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setSpacePressed(true);
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setSpacePressed(false);
+      }
+    };
+
+    const handleBlur = () => {
+      setSpacePressed(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -90,12 +158,31 @@ export function useCanvasTransform(
             return false;
           }
 
+          if (isEventFromActiveIframe(wheelEvent, activeFrameIdRef.current)) {
+            return false;
+          }
+
           wheelEvent.preventDefault();
           return true;
         }
 
         if (event.type === "mousedown") {
-          return event.button === 0 || event.button === 1;
+          const mouseEvent = event as MouseEvent;
+          // Middle mouse always pans; left pans when Space is held.
+          // Left without Space is left to frames (move) or empty-canvas d3 pan.
+          if (mouseEvent.button === 1) return true;
+          if (mouseEvent.button === 0 && isSpacePressedRef.current) return true;
+          if (mouseEvent.button === 0) {
+            const target = mouseEvent.target;
+            if (target instanceof Element) {
+              // Empty canvas / world (not on a frame) → allow d3 pan.
+              if (!target.closest("[data-canvas-frame]")) {
+                return true;
+              }
+            }
+            return false;
+          }
+          return false;
         }
 
         return true;
@@ -114,12 +201,19 @@ export function useCanvasTransform(
     const handleWheelPan = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) return;
 
+      // Active iframe content owns wheel; parent rarely sees those events.
+      // If we do see a wheel whose target is the iframe element, skip pan.
+      if (isEventFromActiveIframe(event, activeFrameIdRef.current)) {
+        return;
+      }
+
       event.preventDefault();
 
       const current = transformRef.current;
-      const panDeltaY = getWheelPanDelta(event);
+      const panDeltaY = getWheelPanAxisDelta(event.deltaY, event.deltaMode);
+      const panDeltaX = getWheelPanAxisDelta(event.deltaX, event.deltaMode);
       const next = {
-        x: current.x,
+        x: current.x - panDeltaX,
         y: current.y - panDeltaY,
         k: current.k,
       };
@@ -133,6 +227,7 @@ export function useCanvasTransform(
 
     const preventNativeZoom = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) {
+        if (isEventFromActiveIframe(event, activeFrameIdRef.current)) return;
         event.preventDefault();
       }
     };
@@ -230,6 +325,7 @@ export function useCanvasTransform(
   }, [setTransform]);
 
   const getTransform = useCallback(() => transformRef.current, []);
+  const isSpacePressed = useCallback(() => isSpacePressedRef.current, []);
 
   return {
     zoomToFit,
@@ -239,5 +335,6 @@ export function useCanvasTransform(
     resetZoom,
     setTransform,
     getTransform,
+    isSpacePressed,
   };
 }

@@ -3,10 +3,10 @@ import {
   loadSandpackClient,
   SandpackClient,
 } from "@codesandbox/sandpack-client";
-// import { useSandpack } from "@codesandbox/sandpack-react";
 import { buildSandpackFiles } from "@/lib/sandpackTemplate";
 import { FrameState } from "@/lib/canvas-state";
 import logger from "@/lib/logger";
+import { useCanvasGestureStore } from "@/components/canvas/CanvasGestureContext";
 
 interface UseFrameLifecycleOptions {
   content: string;
@@ -17,6 +17,10 @@ interface UseFrameLifecycleOptions {
 
 const DESTROY_GRACE_MS = 5000;
 const INTERSECTION_ROOT_MARGIN = "300px 300px";
+const RECOVER_DEBOUNCE_MS = 80;
+const RECOVER_SETTLE_MS = 1000;
+const MAX_RECOVERS_PER_WINDOW = 3;
+const RECOVER_WINDOW_MS = 10_000;
 
 function getParentOrigin(): string {
   if (typeof window === "undefined") return "*";
@@ -34,11 +38,34 @@ export function useFrameLifecycle({
   const isMountingRef = useRef(false);
   const mountTokenRef = useRef(0);
   const destroyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ignoreIframeLoadUntilRef = useRef(0);
+  const lastIntersectingRef = useRef(true);
+  const recoverWindowRef = useRef({ startedAt: 0, count: 0 });
   const originRef = useRef(getParentOrigin());
+  const contentRef = useRef(content);
+  const gestureStore = useCanvasGestureStore();
+
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  const clearDestroyTimer = useCallback(() => {
+    if (!destroyTimerRef.current) return;
+    clearTimeout(destroyTimerRef.current);
+    destroyTimerRef.current = null;
+  }, []);
+
+  const clearRecoverTimer = useCallback(() => {
+    if (!recoverTimerRef.current) return;
+    clearTimeout(recoverTimerRef.current);
+    recoverTimerRef.current = null;
+  }, []);
 
   const mount = useCallback(async () => {
     const iframeElement = iframeRef.current;
-    if (!iframeElement || !content) return;
+    const nextContent = contentRef.current;
+    if (!iframeElement || !nextContent) return;
     if (isMountedRef.current || isMountingRef.current) return;
 
     const mountToken = mountTokenRef.current + 1;
@@ -50,7 +77,7 @@ export function useFrameLifecycle({
       const client = await loadSandpackClient(
         iframeElement,
         {
-          files: buildSandpackFiles(content, origin),
+          files: buildSandpackFiles(nextContent, origin),
           entry: "/index.tsx",
           template: "create-react-app-typescript",
         },
@@ -66,26 +93,22 @@ export function useFrameLifecycle({
         },
       );
 
-      // Capture sandbox lifecycle and errors for observability
       client.listen((msg: unknown) => {
         const message = msg as Record<string, unknown>;
         if (message.type === "status") {
           logger.info("Sandbox status", { status: message.status });
         }
-        if (
-          message.type === "action" &&
-          message.action === "show-error"
-        ) {
+        if (message.type === "action" && message.action === "show-error") {
           logger.warn("Sandbox compile error", {
             message: message.message,
             path: message.path,
             line: message.line,
-            code: content.slice(0, 200),
+            code: nextContent.slice(0, 200),
           });
         }
         if (message.type === "done" && message.compilationError) {
           logger.warn("Sandbox compilation failed", {
-            code: content.slice(0, 200),
+            code: nextContent.slice(0, 200),
           });
         }
       });
@@ -97,16 +120,18 @@ export function useFrameLifecycle({
 
       clientRef.current = client;
       isMountedRef.current = true;
+      ignoreIframeLoadUntilRef.current = Date.now() + RECOVER_SETTLE_MS;
     } finally {
       if (mountToken === mountTokenRef.current) {
         isMountingRef.current = false;
       }
     }
-  }, [content, iframeRef]);
+  }, [iframeRef]);
 
   const destroy = useCallback(() => {
     mountTokenRef.current += 1;
     isMountingRef.current = false;
+    clearRecoverTimer();
     clientRef.current?.destroy();
     clientRef.current = null;
     isMountedRef.current = false;
@@ -114,40 +139,76 @@ export function useFrameLifecycle({
     if (iframeRef.current) {
       iframeRef.current.src = "about:blank";
     }
-  }, [iframeRef]);
+  }, [clearRecoverTimer, iframeRef]);
+
+  const scheduleDestroy = useCallback(() => {
+    if (gestureStore.isActive()) {
+      clearDestroyTimer();
+      return;
+    }
+
+    clearDestroyTimer();
+    destroyTimerRef.current = setTimeout(() => {
+      destroyTimerRef.current = null;
+      if (gestureStore.isActive()) return;
+      destroy();
+    }, DESTROY_GRACE_MS);
+  }, [clearDestroyTimer, destroy, gestureStore]);
+
+  const scheduleRecover = useCallback(() => {
+    const now = Date.now();
+    if (now - recoverWindowRef.current.startedAt > RECOVER_WINDOW_MS) {
+      recoverWindowRef.current = { startedAt: now, count: 0 };
+    }
+    if (recoverWindowRef.current.count >= MAX_RECOVERS_PER_WINDOW) {
+      logger.warn("Sandbox iframe recover loop suppressed");
+      return;
+    }
+    recoverWindowRef.current.count += 1;
+
+    clearRecoverTimer();
+    recoverTimerRef.current = setTimeout(() => {
+      recoverTimerRef.current = null;
+      mountTokenRef.current += 1;
+      isMountingRef.current = false;
+      clientRef.current?.destroy();
+      clientRef.current = null;
+      isMountedRef.current = false;
+      void mount();
+    }, RECOVER_DEBOUNCE_MS);
+  }, [clearRecoverTimer, mount]);
 
   // Visibility-driven mount/destroy — content is NOT in deps to avoid
   // recreating the observer on every streaming chunk.
   useEffect(() => {
     if (state !== "done" || !containerRef.current) {
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
-        destroyTimerRef.current = null;
-      }
+      clearDestroyTimer();
       destroy();
       return;
     }
 
+    const iframeElement = iframeRef.current;
+
+    const handleIframeLoad = () => {
+      if (isMountingRef.current) return;
+      if (!isMountedRef.current) return;
+      if (Date.now() < ignoreIframeLoadUntilRef.current) return;
+      scheduleRecover();
+    };
+
+    iframeElement?.addEventListener("load", handleIframeLoad);
+
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          if (destroyTimerRef.current) {
-            clearTimeout(destroyTimerRef.current);
-            destroyTimerRef.current = null;
-          }
+        lastIntersectingRef.current = entry.isIntersecting;
 
+        if (entry.isIntersecting) {
+          clearDestroyTimer();
           void mount();
           return;
         }
 
-        if (destroyTimerRef.current) {
-          clearTimeout(destroyTimerRef.current);
-        }
-
-        destroyTimerRef.current = setTimeout(() => {
-          destroy();
-          destroyTimerRef.current = null;
-        }, DESTROY_GRACE_MS);
+        scheduleDestroy();
       },
       { rootMargin: INTERSECTION_ROOT_MARGIN, threshold: 0 },
     );
@@ -156,12 +217,32 @@ export function useFrameLifecycle({
 
     return () => {
       observer.disconnect();
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
-        destroyTimerRef.current = null;
-      }
+      iframeElement?.removeEventListener("load", handleIframeLoad);
+      clearDestroyTimer();
     };
-  }, [containerRef, destroy, mount, state]);
+  }, [
+    clearDestroyTimer,
+    containerRef,
+    destroy,
+    iframeRef,
+    mount,
+    scheduleDestroy,
+    scheduleRecover,
+    state,
+  ]);
+
+  useEffect(() => {
+    return gestureStore.subscribe(() => {
+      if (gestureStore.isActive()) {
+        clearDestroyTimer();
+        return;
+      }
+
+      if (!lastIntersectingRef.current) {
+        scheduleDestroy();
+      }
+    });
+  }, [clearDestroyTimer, gestureStore, scheduleDestroy]);
 
   // Debounced content updates — avoids thrashing Sandpack during streaming
   useEffect(() => {
@@ -178,13 +259,11 @@ export function useFrameLifecycle({
 
   useEffect(() => {
     return () => {
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
-        destroyTimerRef.current = null;
-      }
+      clearDestroyTimer();
+      clearRecoverTimer();
       destroy();
     };
-  }, [destroy]);
+  }, [clearDestroyTimer, clearRecoverTimer, destroy]);
 
   return {
     clientRef,

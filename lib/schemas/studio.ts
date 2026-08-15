@@ -194,13 +194,39 @@ export const componentTreeNodeSchema = z.object({
   components: z.array(z.string()),
   canvasX: z.number().optional(),
   canvasY: z.number().optional(),
-  layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
-  componentIntents: z.array(z.unknown()).optional(),
+  layoutArchitecture: z
+    .object({
+      outerContainer: z.string(),
+      primaryGrid: z.string(),
+      sectionBreaks: z.array(z.string()),
+      fixedElements: z.array(z.string()),
+      contentStartOffset: z.string(),
+    })
+    .optional(),
+  componentIntents: z
+    .array(
+      z.object({
+        component: z.string(),
+        role: z.string(),
+        spatialWeight: z.string(),
+        visualPriority: z.number(),
+        interactionType: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 export const componentTreeSchema = z
   .array(componentTreeNodeSchema)
   .min(1);
+
+/**
+ * Stage 2 model output — AI SDK structured output requires a top-level object.
+ * Models historically returned a bare array; prompts now ask for `{ tree: [...] }`.
+ */
+export const stage2TreeOutputSchema = z.object({
+  tree: componentTreeSchema,
+});
 
 export const generationRequestBodySchema = z.object({
   projectId: projectIdSchema,

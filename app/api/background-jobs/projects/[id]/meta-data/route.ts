@@ -85,14 +85,14 @@ export const POST = verifySignatureAppRouter(
     // Project meta-data processing logic
     const ollama = initializeOllama();
     const { text: projectTitle } = await generateText({
-      model: ollama("deepseek-v4-flash:cloud"),
+      model: ollama("gemma4:31b-cloud"),
       system:
         "Generate exactly one concise, descriptive project title from the user's prompt. Return only the title text as a single line. Do not provide options, explanations, discussion, quotes, numbering, labels, or any extra text.",
       prompt,
     });
 
     const { text: projectDescription } = await generateText({
-      model: ollama("deepseek-v4-flash:cloud"),
+      model: ollama("gemma4:31b-cloud"),
       system:
         "You are a helpful assistant that generates a very short description for a design project based on the user's prompt. The description should be concise and descriptive.",
       prompt,

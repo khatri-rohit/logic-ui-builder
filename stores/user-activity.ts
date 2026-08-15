@@ -21,7 +21,7 @@ export type ProjectsStore = UserActivityState & UserActivityActions;
 const defaultState: UserActivityState = {
   selectedTimeframe: "Recent",
   spec: "web",
-  model: "gemma4:31b",
+  model: "gemma4:31b-cloud",
 };
 
 export const createUserActivityStore = (

@@ -14,7 +14,7 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { initializeOllama } from "@/lib/ollama";
 
-import { generateText, Output } from "ai";
+import { generateText, NoObjectGeneratedError, Output } from "ai";
 import {
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
@@ -34,10 +34,10 @@ import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 import {
-  componentTreeNodeSchema,
   componentTreeSchema,
   generationRequestBodySchema,
   stage1SpecOutputSchema,
+  stage2TreeOutputSchema,
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
@@ -208,6 +208,41 @@ function isValidComponentTree(
   return parsed.data.every((item) => expectedScreens.includes(item.screen));
 }
 
+/**
+ * Recover Stage 2 trees when the model returns a bare array (or alternate
+ * wrappers) that AI SDK structured-output rejected for shape mismatch.
+ */
+function recoverComponentTreeFromError(
+  error: unknown,
+): ComponentTreeNode[] | null {
+  if (!NoObjectGeneratedError.isInstance(error) || !error.text) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(error.text);
+
+    const bareArray = componentTreeSchema.safeParse(parsed);
+    if (bareArray.success) {
+      return bareArray.data;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      for (const key of ["tree", "elements"] as const) {
+        const nested = componentTreeSchema.safeParse(record[key]);
+        if (nested.success) {
+          return nested.data;
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function generateStructuredWithFallback<T>({
   stage,
   models,
@@ -217,6 +252,7 @@ async function generateStructuredWithFallback<T>({
   abortSignal,
   decodingStage,
   output,
+  recoverOutput,
 }: {
   stage: string;
   models: string[];
@@ -227,6 +263,8 @@ async function generateStructuredWithFallback<T>({
   decodingStage: GenerationDecodingStage;
   // AI SDK Output.object / Output.array configuration
   output: NonNullable<Parameters<typeof generateText>[0]["output"]>;
+  /** Optional salvage when structured output shape mismatches but content is valid. */
+  recoverOutput?: (error: unknown) => T | null;
 }): Promise<{
   output: T;
   usage: Awaited<ReturnType<typeof generateText>>["usage"];
@@ -259,6 +297,21 @@ async function generateStructuredWithFallback<T>({
       };
     } catch (error) {
       lastError = error;
+
+      const recovered = recoverOutput?.(error) ?? null;
+      if (recovered != null) {
+        logger.info(
+          `${stage} recovered structured output from model response: ${model}`,
+        );
+        const usage = NoObjectGeneratedError.isInstance(error)
+          ? error.usage
+          : undefined;
+        return {
+          output: recovered,
+          usage: usage as Awaited<ReturnType<typeof generateText>>["usage"],
+        };
+      }
+
       logger.warn(`${stage} model failed: ${model}`, error);
     }
   }
@@ -813,20 +866,23 @@ export async function POST(req: NextRequest) {
           | Awaited<ReturnType<typeof generateStructuredWithFallback>>["usage"]
           | null = null;
         try {
-          const stage2Result =
-            await generateStructuredWithFallback<ComponentTreeNode[]>({
-              stage: "Stage 2 Component Planner",
-              models: stage2ModelPriority,
-              ollama,
-              system: STAGE2_SYSTEM,
-              prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
-              abortSignal: abortController.signal,
-              decodingStage: "stage2",
-              output: Output.array({
-                element: componentTreeNodeSchema,
-              }),
-            });
-          tree = stage2Result.output;
+          const stage2Result = await generateStructuredWithFallback<{
+            tree: ComponentTreeNode[];
+          }>({
+            stage: "Stage 2 Component Planner",
+            models: stage2ModelPriority,
+            ollama,
+            system: STAGE2_SYSTEM,
+            prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
+            abortSignal: abortController.signal,
+            decodingStage: "stage2",
+            output: Output.object({ schema: stage2TreeOutputSchema }),
+            recoverOutput: (error) => {
+              const recovered = recoverComponentTreeFromError(error);
+              return recovered ? { tree: recovered } : null;
+            },
+          });
+          tree = stage2Result.output.tree;
           treeUsage = stage2Result.usage;
         } catch (stage2Error) {
           logger.warn(

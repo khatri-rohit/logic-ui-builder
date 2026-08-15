@@ -2,22 +2,21 @@
  * Shared model priority lists and per-stage decoding for generation Stage 1–3.
  * Both POST /api/generate and POST /api/generate/[frameId] must use these.
  */
-export const STAGE1_MODELS = [
-  "deepseek-v4-flash:cloud",
-  "glm-5.2:cloud",
-  "gemma4:31b",
-] as const;
+export const STAGE1_MODELS = ["glm-5.2:cloud", "gemma4:31b-cloud"] as const;
 
 export const STAGE2_MODELS = [
   "glm-5.2:cloud",
-  "deepseek-v4-flash:cloud",
+  "deepseek-v4-pro:cloud",
+  "gemma4:31b-cloud",
 ] as const;
 
 export const STAGE3_MODELS = [
   "glm-5.2:cloud",
-  "deepseek-v4-flash:cloud",
-  "gemma4:31b",
-  "gpt-oss:120b-cloud",
+  "kimi-k2.6:cloud",
+  "kimi-k2.5:cloud",
+  "kimi-k2.7-code:cloud",
+  // "gemma4:31b-cloud",
+  // "gpt-oss:120b-cloud",
 ] as const;
 
 export type GenerationDecodingStage =

@@ -206,7 +206,7 @@ export const STAGE2_SYSTEM = `
 ## CRITICAL CONSTRAINTS (ABSOLUTELY ENFORCED)
 - NO hardcoded colors - specify color behavior conceptually (primary, secondary, accent)
 - NO specific pixel values - use relative spacing concepts
-- Output MUST be valid JSON array with zero markdown
+- Output MUST be valid JSON object with a "tree" array and zero markdown
 - Mobile-first: prefer mobile-stack outerContainer, single-column primaryGrid
 
 ## PROMPT Framework
@@ -252,7 +252,7 @@ Choose the RIGHT pattern based on content type:
 You are a Senior UI Layout Architect with expertise in responsive design systems, CSS grid/flexbox layouts, and information architecture.
 
 ## Task
-Convert a WebAppSpec into one layout blueprint per screen. Output ONLY a valid JSON array with zero markdown, comments, or explanation text.
+Convert a WebAppSpec into one layout blueprint per screen. Output ONLY a valid JSON object with a "tree" array and zero markdown, comments, or explanation text.
 
 ## Context & Variables
 - Input: WebAppSpec JSON from Stage 1
@@ -264,29 +264,31 @@ Convert a WebAppSpec into one layout blueprint per screen. Output ONLY a valid J
 - fixedElements must always be an array (use [] when none)
 - Every component in componentIntents MUST appear in components array
 
-## Output Format (strict JSON array)
-[
-  {
-    "screen": "string",
-    "components": ["string"],
-    "layoutArchitecture": {
-      "outerContainer": "full-bleed" | "max-w-7xl centered" | "split-sidebar-content" | "hero-then-sections" | "mobile-stack",
-      "primaryGrid": "12-col" | "8-col" | "auto-fit-280px" | "single-column" | "sidebar-256px-fluid",
-      "sectionBreaks": ["Hero/Above-fold", "Primary Content", "Secondary Content", "CTA/Footer"],
-      "fixedElements": ["top-nav 64px", "sidebar 256px"],
-      "contentStartOffset": "80px" | "64px" | "0px"
-    },
-    "componentIntents": [
-      {
-        "component": "string",
-        "role": "primary-action" | "navigation" | "data-display" | "status-indicator" | "content-container" | "input" | "feedback",
-        "spatialWeight": "full-width" | "half-width" | "one-third" | "sidebar" | "overlay" | "inline",
-        "visualPriority": 1 | 2 | 3,
-        "interactionType": "clickable" | "readable" | "inputable" | "static"
-      }
-    ]
-  }
-]
+## Output Format (strict JSON object)
+{
+  "tree": [
+    {
+      "screen": "string",
+      "components": ["string"],
+      "layoutArchitecture": {
+        "outerContainer": "full-bleed" | "max-w-7xl centered" | "split-sidebar-content" | "hero-then-sections" | "mobile-stack",
+        "primaryGrid": "12-col" | "8-col" | "auto-fit-280px" | "single-column" | "sidebar-256px-fluid",
+        "sectionBreaks": ["Hero/Above-fold", "Primary Content", "Secondary Content", "CTA/Footer"],
+        "fixedElements": ["top-nav 64px", "sidebar 256px"],
+        "contentStartOffset": "80px" | "64px" | "0px"
+      },
+      "componentIntents": [
+        {
+          "component": "string",
+          "role": "primary-action" | "navigation" | "data-display" | "status-indicator" | "content-container" | "input" | "feedback",
+          "spatialWeight": "full-width" | "half-width" | "one-third" | "sidebar" | "overlay" | "inline",
+          "visualPriority": 1 | 2 | 3,
+          "interactionType": "clickable" | "readable" | "inputable" | "static"
+        }
+      ]
+    }
+  ]
+}
 
 ## Layout Pattern Guidelines
 - spatialWeight describes FOOTPRINT, not importance
@@ -300,8 +302,8 @@ Convert a WebAppSpec into one layout blueprint per screen. Output ONLY a valid J
 - Consider content density in component placement
 
 ## Validation Criteria (prompt-builder skill)
-- Output must be valid, parseable JSON array
-- Each array element must have screen, components, layoutArchitecture, componentIntents
+- Output must be valid, parseable JSON object with a non-empty "tree" array
+- Each tree element must have screen, components, layoutArchitecture, componentIntents
 - All enum fields must use exact allowed values
 - componentIntents entries must reference components from the components array
 `.trim();

@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { useCanvasScaleGetter } from "@/components/canvas/CanvasScaleContext";
+import { useCanvasGestureStore } from "@/components/canvas/CanvasGestureContext";
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { useStudioTheme } from "@/components/canvas/StudioThemeContext";
@@ -111,6 +112,8 @@ export const CanvasFrame = memo(function CanvasFrame({
   const didResizeRef = useRef(false);
 
   const getScaleFromContext = useCanvasScaleGetter();
+  const gestureStore = useCanvasGestureStore();
+  const gestureHeldRef = useRef(false);
   const getScale = useCallback(() => {
     if (typeof scaleProp === "number") return Math.max(scaleProp, 0.001);
     return getScaleFromContext();
@@ -221,10 +224,15 @@ export const CanvasFrame = memo(function CanvasFrame({
     interactionRef.current = null;
     window.removeEventListener("pointermove", handleWindowPointerMove);
 
+    if (gestureHeldRef.current) {
+      gestureStore.end();
+      gestureHeldRef.current = false;
+    }
+
     if (shouldCommit) {
       propsRef.current.onInteractionEnd(id);
     }
-  }, [handleWindowPointerMove, id]);
+  }, [gestureStore, handleWindowPointerMove, id]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -236,6 +244,10 @@ export const CanvasFrame = memo(function CanvasFrame({
       onSelect(id);
       didDragRef.current = false;
       propsRef.current.onInteractionStart(id);
+      if (!gestureHeldRef.current) {
+        gestureStore.begin();
+        gestureHeldRef.current = true;
+      }
 
       interactionRef.current = {
         kind: "drag",
@@ -253,6 +265,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       });
     },
     [
+      gestureStore,
       handleWindowPointerMove,
       id,
       isActive,
@@ -275,6 +288,10 @@ export const CanvasFrame = memo(function CanvasFrame({
       onSelect(id);
       didResizeRef.current = false;
       propsRef.current.onInteractionStart(id);
+      if (!gestureHeldRef.current) {
+        gestureStore.begin();
+        gestureHeldRef.current = true;
+      }
 
       interactionRef.current = {
         kind: "resize",
@@ -291,6 +308,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       });
     },
     [
+      gestureStore,
       handleWindowPointerMove,
       h,
       id,
@@ -368,8 +386,12 @@ export const CanvasFrame = memo(function CanvasFrame({
     return () => {
       window.removeEventListener("pointermove", moveHandler);
       interactionRef.current = null;
+      if (gestureHeldRef.current) {
+        gestureStore.end();
+        gestureHeldRef.current = false;
+      }
     };
-  }, [handleWindowPointerMove]);
+  }, [gestureStore, handleWindowPointerMove]);
 
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
@@ -388,6 +410,7 @@ export const CanvasFrame = memo(function CanvasFrame({
             top: y,
             width: w,
             height: h,
+            zIndex: isActive ? 3 : isSelected ? 2 : 1,
           }}
         >
           <div className="absolute -top-6 left-0 flex items-center gap-2">

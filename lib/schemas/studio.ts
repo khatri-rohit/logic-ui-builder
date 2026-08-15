@@ -181,6 +181,53 @@ export const webAppSpecSchema = z.object({
     .optional(),
 });
 
+/**
+ * Stage 1 model output — screens required; other fields optional so
+ * coerceSpec can fill defaults (matches prior Partial JSON parse behavior).
+ */
+export const stage1SpecOutputSchema = webAppSpecSchema.partial().extend({
+  screens: z.array(z.string().min(1)).min(1),
+});
+
+export const componentTreeNodeSchema = z.object({
+  screen: z.string().min(1),
+  components: z.array(z.string()),
+  canvasX: z.number().optional(),
+  canvasY: z.number().optional(),
+  layoutArchitecture: z
+    .object({
+      outerContainer: z.string(),
+      primaryGrid: z.string(),
+      sectionBreaks: z.array(z.string()),
+      fixedElements: z.array(z.string()),
+      contentStartOffset: z.string(),
+    })
+    .optional(),
+  componentIntents: z
+    .array(
+      z.object({
+        component: z.string(),
+        role: z.string(),
+        spatialWeight: z.string(),
+        visualPriority: z.number(),
+        interactionType: z.string(),
+      }),
+    )
+    .optional(),
+});
+
+export const componentTreeSchema = z
+  .array(componentTreeNodeSchema)
+  .min(1);
+
+/**
+ * Stage 2 model output — AI SDK structured output requires a top-level object.
+ * Models historically returned a bare array; prompts now ask for `{ tree: [...] }`.
+ */
+export const stage2TreeOutputSchema = z.object({
+  tree: componentTreeSchema,
+});
+
 export const generationRequestBodySchema = z.object({
   projectId: projectIdSchema,
   prompt: z.string().trim().min(1).max(10000),

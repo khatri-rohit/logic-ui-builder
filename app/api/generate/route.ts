@@ -14,7 +14,7 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { initializeOllama } from "@/lib/ollama";
 
-import { generateText } from "ai";
+import { generateText, NoObjectGeneratedError, Output } from "ai";
 import {
   GENERATED_SCREEN_LIMITS,
   STAGE1_SYSTEM,
@@ -34,7 +34,10 @@ import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
 import {
+  componentTreeSchema,
   generationRequestBodySchema,
+  stage1SpecOutputSchema,
+  stage2TreeOutputSchema,
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
@@ -196,80 +199,51 @@ function coerceSpec(
   };
 }
 
-function parseJsonStrict<T>(raw: string): T {
-  // Strip markdown code fences first
-  const stripped = raw
-    .replace(/^```(?:json|javascript|typescript)?\n?/gm, "")
-    .replace(/^```$/gm, "")
-    .trim();
-
-  // Try direct parse
-  try {
-    return JSON.parse(stripped) as T;
-  } catch {
-    /* continue */
-  }
-
-  // Extract the FIRST complete JSON object using a brace-counter approach.
-  // Handles consecutive backslashes correctly so \" and \\\" are parsed
-  // the same way a real JSON parser would.
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-  let escapeNext = false;
-
-  for (let i = 0; i < stripped.length; i++) {
-    const ch = stripped[i];
-    if (ch === "\\") {
-      escapeNext = !escapeNext;
-      continue;
-    }
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "{" || ch === "[") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}" || ch === "]") {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        const candidate = stripped.slice(start, i + 1);
-        try {
-          return JSON.parse(candidate) as T;
-        } catch {
-          start = -1;
-        }
-      }
-    }
-  }
-
-  throw new Error("No valid JSON object found in model output");
-}
-
 function isValidComponentTree(
   tree: unknown,
   expectedScreens: string[],
 ): tree is ComponentTreeNode[] {
-  if (!Array.isArray(tree) || tree.length === 0) return false;
-  return tree.every(
-    (item) =>
-      item != null &&
-      typeof item === "object" &&
-      "screen" in item &&
-      typeof item.screen === "string" &&
-      expectedScreens.includes(item.screen) &&
-      "components" in item &&
-      Array.isArray(item.components),
-  );
+  const parsed = componentTreeSchema.safeParse(tree);
+  if (!parsed.success) return false;
+  return parsed.data.every((item) => expectedScreens.includes(item.screen));
 }
 
-async function generateTextWithFallback({
+/**
+ * Recover Stage 2 trees when the model returns a bare array (or alternate
+ * wrappers) that AI SDK structured-output rejected for shape mismatch.
+ */
+function recoverComponentTreeFromError(
+  error: unknown,
+): ComponentTreeNode[] | null {
+  if (!NoObjectGeneratedError.isInstance(error) || !error.text) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(error.text);
+
+    const bareArray = componentTreeSchema.safeParse(parsed);
+    if (bareArray.success) {
+      return bareArray.data;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      for (const key of ["tree", "elements"] as const) {
+        const nested = componentTreeSchema.safeParse(record[key]);
+        if (nested.success) {
+          return nested.data;
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function generateStructuredWithFallback<T>({
   stage,
   models,
   ollama,
@@ -277,6 +251,8 @@ async function generateTextWithFallback({
   prompt,
   abortSignal,
   decodingStage,
+  output,
+  recoverOutput,
 }: {
   stage: string;
   models: string[];
@@ -285,7 +261,14 @@ async function generateTextWithFallback({
   prompt: string;
   abortSignal?: AbortSignal;
   decodingStage: GenerationDecodingStage;
-}) {
+  // AI SDK Output.object / Output.array configuration
+  output: NonNullable<Parameters<typeof generateText>[0]["output"]>;
+  /** Optional salvage when structured output shape mismatches but content is valid. */
+  recoverOutput?: (error: unknown) => T | null;
+}): Promise<{
+  output: T;
+  usage: Awaited<ReturnType<typeof generateText>>["usage"];
+}> {
   let lastError: unknown = null;
   const decoding = getStageDecoding(decodingStage);
 
@@ -294,16 +277,41 @@ async function generateTextWithFallback({
       logger.info(
         `${stage} via model: ${model} (temp=${decoding.temperature})`,
       );
-      return await generateText({
+      const result = await generateText({
         model: ollama(model),
         system,
         prompt,
         temperature: decoding.temperature,
         maxOutputTokens: decoding.maxOutputTokens,
         abortSignal,
+        output,
       });
+
+      if (result.output == null) {
+        throw new Error(`${stage} produced empty structured output`);
+      }
+
+      return {
+        output: result.output as T,
+        usage: result.usage,
+      };
     } catch (error) {
       lastError = error;
+
+      const recovered = recoverOutput?.(error) ?? null;
+      if (recovered != null) {
+        logger.info(
+          `${stage} recovered structured output from model response: ${model}`,
+        );
+        const usage = NoObjectGeneratedError.isInstance(error)
+          ? error.usage
+          : undefined;
+        return {
+          output: recovered,
+          usage: usage as Awaited<ReturnType<typeof generateText>>["usage"],
+        };
+      }
+
       logger.warn(`${stage} model failed: ${model}`, error);
     }
   }
@@ -702,20 +710,9 @@ export async function POST(req: NextRequest) {
           const storedTree = (() => {
             if (!sourceGeneration.tree) return null;
             try {
-              const parsed = z
-                .array(
-                  z.object({
-                    screen: z.string(),
-                    components: z.array(z.string()),
-                    canvasX: z.number().optional(),
-                    canvasY: z.number().optional(),
-                    layoutArchitecture: z
-                      .record(z.string(), z.unknown())
-                      .optional(),
-                    componentIntents: z.array(z.unknown()).optional(),
-                  }),
-                )
-                .safeParse(sourceGeneration.tree);
+              const parsed = componentTreeSchema.safeParse(
+                sourceGeneration.tree,
+              );
               return parsed.success ? parsed.data : null;
             } catch {
               return null;
@@ -828,8 +825,10 @@ export async function POST(req: NextRequest) {
         // Normal full generation flow - Stage 1, 2, 3
         logger.info("Starting Stage 1: Spec Extraction");
 
-        const { text: rawSpec, usage: stage1Usage } =
-          await generateTextWithFallback({
+        const { output: rawParsedSpec, usage: stage1Usage } =
+          await generateStructuredWithFallback<
+            Partial<WebAppSpec> & { screens: string[] }
+          >({
             stage: "Stage 1 Spec Extraction",
             models: stage1ModelPriority,
             ollama,
@@ -837,9 +836,9 @@ export async function POST(req: NextRequest) {
             prompt: `User prompt: ${prompt}\nPlatform: ${requestedPlatform}\n${designContextText}`,
             abortSignal: abortController.signal,
             decodingStage: "stage1",
+            output: Output.object({ schema: stage1SpecOutputSchema }),
           });
 
-        const rawParsedSpec = parseJsonStrict<Partial<WebAppSpec>>(rawSpec);
         let spec = splitMobileScreensIfNeeded(
           coerceSpec(rawParsedSpec, requestedPlatform),
           prompt,
@@ -862,8 +861,14 @@ export async function POST(req: NextRequest) {
         await write({ type: "spec", spec });
 
         logger.info("Stage 2: Component Planner");
-        const { text: rawTree, usage: treeUsage } =
-          await generateTextWithFallback({
+        let tree: ComponentTreeNode[] = [];
+        let treeUsage:
+          | Awaited<ReturnType<typeof generateStructuredWithFallback>>["usage"]
+          | null = null;
+        try {
+          const stage2Result = await generateStructuredWithFallback<{
+            tree: ComponentTreeNode[];
+          }>({
             stage: "Stage 2 Component Planner",
             models: stage2ModelPriority,
             ollama,
@@ -871,8 +876,21 @@ export async function POST(req: NextRequest) {
             prompt: `${requestedPlatform}Spec: ${JSON.stringify(spec)}\n${designContextText}`,
             abortSignal: abortController.signal,
             decodingStage: "stage2",
+            output: Output.object({ schema: stage2TreeOutputSchema }),
+            recoverOutput: (error) => {
+              const recovered = recoverComponentTreeFromError(error);
+              return recovered ? { tree: recovered } : null;
+            },
           });
-        let tree = parseJsonStrict<ComponentTreeNode[]>(rawTree);
+          tree = stage2Result.output.tree;
+          treeUsage = stage2Result.usage;
+        } catch (stage2Error) {
+          logger.warn(
+            "Stage 2 structured generation failed; constructing fallback from spec screens",
+            stage2Error,
+          );
+        }
+
         if (!isValidComponentTree(tree, spec.screens)) {
           logger.warn(
             "Stage 2 produced invalid tree; constructing fallback from spec screens",

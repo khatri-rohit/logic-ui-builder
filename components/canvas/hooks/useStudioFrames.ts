@@ -152,10 +152,9 @@ export function useStudioFrames({ onSync }: UseStudioFramesOptions = {}) {
   const getFramesSnapshot = useCallback(() => latestFramesRef.current, []);
 
   const frameList = useMemo(() => {
-    return [...frames.values()].sort((a, b) => {
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x;
-    });
+    // Stable DOM order by id — never sort by x/y or dragging reorders
+    // siblings, which reloads Sandpack iframes and blanks every frame.
+    return [...frames.values()].sort((a, b) => a.id.localeCompare(b.id));
   }, [frames]);
 
   const frameRects = useMemo(() => toFrameRects(frameList), [frameList]);

@@ -12,16 +12,15 @@ import {
 import {
   CanvasFrameSnapshot,
   CanvasStateMetadataV1,
-  PersistedGenerationScreen,
   isCanvasSnapshotV1,
   isCanvasStateMetadataV1,
   toCanvasStateMetadata,
 } from "@/lib/canvas-state";
 import logger from "@/lib/logger";
 import prisma from "@/lib/prisma";
-import { persistedGenerationScreenSchema, webAppSpecSchema } from "@/lib/schemas/studio";
+import { webAppSpecSchema } from "@/lib/schemas/studio";
 import { GenerationPlatform } from "@/lib/types";
-import { z } from "zod";
+import { parseGenerationScreens } from "@/lib/utils";
 
 const generationSelect = {
   id: true,
@@ -70,13 +69,6 @@ function normalizeCanvasMetadata(
   }
 
   return null;
-}
-
-function parseGenerationScreens(
-  value: Prisma.JsonValue | null,
-): PersistedGenerationScreen[] {
-  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
 }
 
 function toProjectGeneration(record: GenerationRecord): ProjectGeneration {

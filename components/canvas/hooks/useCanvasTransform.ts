@@ -58,12 +58,16 @@ function isEventFromActiveIframe(
   return target.tagName === "IFRAME";
 }
 
+const GESTURE_END_IDLE_MS = 250;
+
 export function useCanvasTransform(
   containerRef: RefObject<HTMLDivElement | null>,
   worldRef: RefObject<HTMLDivElement | null>,
   activeFrameId: string | null,
   onTransformChange?: (transform: Transform) => void,
   onSpacePressedChange?: (pressed: boolean) => void,
+  onGestureStart?: () => void,
+  onGestureEnd?: () => void,
 ): CanvasTransformHandle {
   const zoomBehaviorRef = useRef<d3Zoom.ZoomBehavior<
     HTMLDivElement,
@@ -72,6 +76,8 @@ export function useCanvasTransform(
   const transformRef = useRef<Transform>({ x: 0, y: 0, k: 1 });
   const onTransformChangeRef = useRef(onTransformChange);
   const onSpacePressedChangeRef = useRef(onSpacePressedChange);
+  const onGestureStartRef = useRef(onGestureStart);
+  const onGestureEndRef = useRef(onGestureEnd);
   const activeFrameIdRef = useRef(activeFrameId);
   const isSpacePressedRef = useRef(false);
 
@@ -82,6 +88,14 @@ export function useCanvasTransform(
   useEffect(() => {
     onSpacePressedChangeRef.current = onSpacePressedChange;
   }, [onSpacePressedChange]);
+
+  useEffect(() => {
+    onGestureStartRef.current = onGestureStart;
+  }, [onGestureStart]);
+
+  useEffect(() => {
+    onGestureEndRef.current = onGestureEnd;
+  }, [onGestureEnd]);
 
   useEffect(() => {
     activeFrameIdRef.current = activeFrameId;
@@ -147,6 +161,15 @@ export function useCanvasTransform(
     const container = containerRef.current;
     if (!container) return;
 
+    let transformGestureActive = false;
+    let gestureEndTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearGestureEndTimer = () => {
+      if (!gestureEndTimer) return;
+      clearTimeout(gestureEndTimer);
+      gestureEndTimer = null;
+    };
+
     const zoomBehavior = d3Zoom
       .zoom<HTMLDivElement, unknown>()
       .scaleExtent([MIN_ZOOM, MAX_ZOOM])
@@ -187,9 +210,25 @@ export function useCanvasTransform(
 
         return true;
       })
+      .on("start", () => {
+        clearGestureEndTimer();
+        if (!transformGestureActive) {
+          transformGestureActive = true;
+          onGestureStartRef.current?.();
+        }
+      })
       .on("zoom", (event: d3Zoom.D3ZoomEvent<HTMLDivElement, unknown>) => {
         const { x, y, k } = event.transform;
         applyTransform({ x, y, k });
+      })
+      .on("end", () => {
+        clearGestureEndTimer();
+        gestureEndTimer = setTimeout(() => {
+          gestureEndTimer = null;
+          if (!transformGestureActive) return;
+          transformGestureActive = false;
+          onGestureEndRef.current?.();
+        }, GESTURE_END_IDLE_MS);
       });
 
     zoomBehaviorRef.current = zoomBehavior;
@@ -197,6 +236,20 @@ export function useCanvasTransform(
     const selection = d3Selection.select(container);
     selection.call(zoomBehavior as never);
     selection.on("dblclick.zoom", null);
+
+    const markWheelGesture = () => {
+      clearGestureEndTimer();
+      if (!transformGestureActive) {
+        transformGestureActive = true;
+        onGestureStartRef.current?.();
+      }
+      gestureEndTimer = setTimeout(() => {
+        gestureEndTimer = null;
+        if (!transformGestureActive) return;
+        transformGestureActive = false;
+        onGestureEndRef.current?.();
+      }, GESTURE_END_IDLE_MS);
+    };
 
     const handleWheelPan = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) return;
@@ -208,6 +261,7 @@ export function useCanvasTransform(
       }
 
       event.preventDefault();
+      markWheelGesture();
 
       const current = transformRef.current;
       const panDeltaY = getWheelPanAxisDelta(event.deltaY, event.deltaMode);
@@ -243,6 +297,12 @@ export function useCanvasTransform(
       selection.on(".zoom", null);
       container.removeEventListener("wheel", handleWheelPan);
       container.removeEventListener("wheel", preventNativeZoom);
+      if (gestureEndTimer) {
+        clearTimeout(gestureEndTimer);
+      }
+      if (transformGestureActive) {
+        onGestureEndRef.current?.();
+      }
     };
   }, [applyTransform, containerRef]);
 

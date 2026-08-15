@@ -24,15 +24,14 @@ import prisma from "@/lib/prisma";
 import { projectWriteRatelimit } from "@/lib/ratelimit";
 import {
   projectRouteParamsSchema,
-  persistedGenerationScreenSchema,
   projectPatchBodySchema,
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
+import { parseGenerationScreens } from "@/lib/utils";
 import { GenerationPlatform } from "@/lib/types";
 import { revalidateTag } from "next/cache";
 import { NextResponse, NextRequest } from "next/server";
-import { z } from "zod";
 
 const CANVAS_SNAPSHOT_CLOCK_SKEW_MS = 2000;
 const GENERATION_NOT_FOUND = "GENERATION_NOT_FOUND";
@@ -125,13 +124,6 @@ function normalizeCanvasMetadata(
   }
 
   return null;
-}
-
-function parseGenerationScreens(
-  value: Prisma.JsonValue | null,
-): PersistedGenerationScreen[] {
-  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
 }
 
 function toProjectGeneration(record: GenerationRecord): ProjectGeneration {

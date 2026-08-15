@@ -3,7 +3,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { useCanvasScaleGetter } from "@/components/canvas/CanvasScaleContext";
+import { useCanvasGestureStore } from "@/components/canvas/CanvasGestureContext";
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
+import { FrameErrorState } from "@/components/canvas/FrameErrorState";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { useStudioTheme } from "@/components/canvas/StudioThemeContext";
 import {
@@ -64,6 +66,7 @@ interface CanvasFrameProps extends CanvasFrameData {
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
   onOpenHistory?: (id: string) => void;
+  onPreviewFailed?: (id: string) => void;
   canRegenerate?: boolean;
   canEditCode?: boolean;
   onLockedAction?: (featureName: string) => void;
@@ -100,6 +103,7 @@ export const CanvasFrame = memo(function CanvasFrame({
   handleDelete,
   handleEditCode,
   onOpenHistory,
+  onPreviewFailed,
   canRegenerate = true,
   canEditCode = true,
   onLockedAction,
@@ -111,6 +115,8 @@ export const CanvasFrame = memo(function CanvasFrame({
   const didResizeRef = useRef(false);
 
   const getScaleFromContext = useCanvasScaleGetter();
+  const gestureStore = useCanvasGestureStore();
+  const gestureHeldRef = useRef(false);
   const getScale = useCallback(() => {
     if (typeof scaleProp === "number") return Math.max(scaleProp, 0.001);
     return getScaleFromContext();
@@ -169,6 +175,9 @@ export const CanvasFrame = memo(function CanvasFrame({
     state,
     containerRef,
     iframeRef,
+    onPreviewFailed: onPreviewFailed
+      ? () => onPreviewFailed(id)
+      : undefined,
   });
 
   const isSpaceDown = useCallback(() => {
@@ -221,10 +230,15 @@ export const CanvasFrame = memo(function CanvasFrame({
     interactionRef.current = null;
     window.removeEventListener("pointermove", handleWindowPointerMove);
 
+    if (gestureHeldRef.current) {
+      gestureStore.end();
+      gestureHeldRef.current = false;
+    }
+
     if (shouldCommit) {
       propsRef.current.onInteractionEnd(id);
     }
-  }, [handleWindowPointerMove, id]);
+  }, [gestureStore, handleWindowPointerMove, id]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -236,6 +250,10 @@ export const CanvasFrame = memo(function CanvasFrame({
       onSelect(id);
       didDragRef.current = false;
       propsRef.current.onInteractionStart(id);
+      if (!gestureHeldRef.current) {
+        gestureStore.begin();
+        gestureHeldRef.current = true;
+      }
 
       interactionRef.current = {
         kind: "drag",
@@ -253,6 +271,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       });
     },
     [
+      gestureStore,
       handleWindowPointerMove,
       id,
       isActive,
@@ -275,6 +294,10 @@ export const CanvasFrame = memo(function CanvasFrame({
       onSelect(id);
       didResizeRef.current = false;
       propsRef.current.onInteractionStart(id);
+      if (!gestureHeldRef.current) {
+        gestureStore.begin();
+        gestureHeldRef.current = true;
+      }
 
       interactionRef.current = {
         kind: "resize",
@@ -291,6 +314,7 @@ export const CanvasFrame = memo(function CanvasFrame({
       });
     },
     [
+      gestureStore,
       handleWindowPointerMove,
       h,
       id,
@@ -330,6 +354,11 @@ export const CanvasFrame = memo(function CanvasFrame({
         return;
       }
 
+      if (event.data?.type === "frame-preview-failed") {
+        onPreviewFailed?.(id);
+        return;
+      }
+
       if (event.data?.type !== "frame-dimensions") return;
       if (interactionRef.current) return;
       if (readOnly) return;
@@ -361,15 +390,19 @@ export const CanvasFrame = memo(function CanvasFrame({
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [h, id, platform, readOnly, state, w]);
+  }, [h, id, onPreviewFailed, platform, readOnly, state, w]);
 
   useEffect(() => {
     const moveHandler = handleWindowPointerMove;
     return () => {
       window.removeEventListener("pointermove", moveHandler);
       interactionRef.current = null;
+      if (gestureHeldRef.current) {
+        gestureStore.end();
+        gestureHeldRef.current = false;
+      }
     };
-  }, [handleWindowPointerMove]);
+  }, [gestureStore, handleWindowPointerMove]);
 
   const chromeTopHeight = platform === "web" ? WEB_CHROME_H : MOBILE_STATUS_H;
   const chromeBottomHeight = platform === "mobile" ? MOBILE_HOME_H : 0;
@@ -388,6 +421,7 @@ export const CanvasFrame = memo(function CanvasFrame({
             top: y,
             width: w,
             height: h,
+            zIndex: isActive ? 3 : isSelected ? 2 : 1,
           }}
         >
           <div className="absolute -top-6 left-0 flex items-center gap-2">
@@ -438,17 +472,15 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 bg-(--studio-surface) p-6"
+                className="absolute inset-0 z-30"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
-                <div className="h-full rounded-xl border border-(--studio-border) bg-(--frame-skeleton-bg) p-6">
-                  <div className="h-3 w-24 rounded bg-(--studio-text-muted)/20" />
-                  <div className="mt-4 h-8 w-2/3 rounded bg-(--studio-text-muted)/15" />
-                  <div className="mt-8 grid grid-cols-2 gap-3">
-                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
-                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
-                  </div>
-                </div>
+                <FrameErrorState
+                  readOnly={readOnly}
+                  canRegenerate={canRegenerate}
+                  onTryAgain={() => handleFrame(id)}
+                  onLockedAction={onLockedAction}
+                />
               </div>
             )}
 

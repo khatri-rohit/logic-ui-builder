@@ -12,6 +12,10 @@ import {
 
 import { CanvasGrid } from "@/components/canvas/CanvasGrid";
 import { useCanvasScaleStore } from "@/components/canvas/CanvasScaleContext";
+import {
+  CanvasGestureProvider,
+  createCanvasGestureStore,
+} from "@/components/canvas/CanvasGestureContext";
 import { StudioToolbar } from "@/components/canvas/StudioToolbar";
 import { CanvasFrameData, FrameRect } from "@/components/canvas/types";
 import {
@@ -67,6 +71,7 @@ export const InfiniteCanvas = forwardRef<
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const scaleStore = useCanvasScaleStore();
+  const [gestureStore] = useState(() => createCanvasGestureStore());
   const onTransformChangeRef = useRef(onTransformChange);
   useEffect(() => {
     onTransformChangeRef.current = onTransformChange;
@@ -91,6 +96,8 @@ export const InfiniteCanvas = forwardRef<
       onTransformChangeRef.current?.(next);
     },
     setIsSpacePressed,
+    gestureStore.begin,
+    gestureStore.end,
   );
 
   const handleContainerPointerDown = useCallback(
@@ -137,35 +144,37 @@ export const InfiniteCanvas = forwardRef<
   }, [activeFrameId, isSpacePressed]);
 
   return (
-    <div
-      ref={containerRef}
-      data-canvas-empty="true"
-      className={`relative h-full w-full overflow-hidden select-none ${className ?? ""}`}
-      style={{ cursor }}
-      onPointerDown={handleContainerPointerDown}
-    >
-      <CanvasGrid transform={transform} />
-
+    <CanvasGestureProvider store={gestureStore}>
       <div
-        ref={worldRef}
-        data-canvas-capture="world"
+        ref={containerRef}
         data-canvas-empty="true"
-        className="absolute left-0 top-0 z-10 origin-top-left will-change-transform"
-        style={{ transformOrigin: "0 0" }}
+        className={`relative h-full w-full overflow-hidden select-none ${className ?? ""}`}
+        style={{ cursor }}
+        onPointerDown={handleContainerPointerDown}
       >
-        {children}
-      </div>
+        <CanvasGrid transform={transform} />
 
-      <div data-canvas-toolbar="true">
-        <StudioToolbar
-          zoomPercent={zoomPercent}
-          onZoomIn={transformApi.zoomIn}
-          onZoomOut={transformApi.zoomOut}
-          onFit={() => transformApi.zoomToFit(frames)}
-          onFitSelected={handleFitSelected}
-          hasSelectedFrame={!!selectedFrameId}
-        />
+        <div
+          ref={worldRef}
+          data-canvas-capture="world"
+          data-canvas-empty="true"
+          className="absolute left-0 top-0 z-10 origin-top-left will-change-transform"
+          style={{ transformOrigin: "0 0" }}
+        >
+          {children}
+        </div>
+
+        <div data-canvas-toolbar="true">
+          <StudioToolbar
+            zoomPercent={zoomPercent}
+            onZoomIn={transformApi.zoomIn}
+            onZoomOut={transformApi.zoomOut}
+            onFit={() => transformApi.zoomToFit(frames)}
+            onFitSelected={handleFitSelected}
+            hasSelectedFrame={!!selectedFrameId}
+          />
+        </div>
       </div>
-    </div>
+    </CanvasGestureProvider>
   );
 });

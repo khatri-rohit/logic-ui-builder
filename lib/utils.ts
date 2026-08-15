@@ -6,7 +6,6 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { PersistedGenerationScreen } from "./canvas-state";
 import { persistedGenerationScreenSchema } from "./schemas/studio";
-import { z } from "zod";
 import { GenerationPlatform } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -51,8 +50,16 @@ export const heroVisualRevealAnimation = (
 export function parseGenerationScreens(
   value: Prisma.JsonValue | null,
 ): PersistedGenerationScreen[] {
-  const parsed = z.array(persistedGenerationScreenSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
+  if (!Array.isArray(value)) return [];
+
+  const screens: PersistedGenerationScreen[] = [];
+  for (const item of value) {
+    const parsed = persistedGenerationScreenSchema.safeParse(item);
+    if (parsed.success) {
+      screens.push(parsed.data);
+    }
+  }
+  return screens;
 }
 
 export function toApiPlatform(

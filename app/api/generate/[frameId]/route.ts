@@ -16,6 +16,7 @@ import prisma from "@/lib/prisma";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import { buildDesignContext } from "@/lib/designContext";
 import {
+  componentTreeSchema,
   frameRegenerateRequestBodySchema,
   toValidationIssues,
 } from "@/lib/schemas/studio";
@@ -25,12 +26,14 @@ import { incrementFrameRegenUsage, releaseFrameRegenUsage } from "@/lib/usage";
 import { ensureSandboxSafeCode } from "@/lib/sandboxSafeCode";
 import { buildFrameRegeneratePrompt } from "@/lib/promptEnhancer";
 import { parseGenerationScreens } from "@/lib/utils";
+import { isProbablyCompleteScreen } from "@/lib/sandboxFallbackScreen";
 import {
   toApiPlatform,
   toPrismaPlatform,
   buildModelPriority,
   reserveGenerationWithIdempotency,
 } from "@/lib/generation";
+import { assertProjectAvailableForFrameRegen } from "@/lib/generationLock";
 import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
 import { STAGE3_MODELS } from "@/lib/execution/modelDefaults";
 import { runFrameRegeneration } from "@/lib/execution/generationPipeline";
@@ -267,18 +270,7 @@ export async function POST(
     const storedTree = (() => {
       if (!sourceGeneration.tree) return null;
       try {
-        const parsed = z
-          .array(
-            z.object({
-              screen: z.string(),
-              components: z.array(z.string()),
-              canvasX: z.number().optional(),
-              canvasY: z.number().optional(),
-              layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
-              componentIntents: z.array(z.unknown()).optional(),
-            }),
-          )
-          .safeParse(sourceGeneration.tree);
+        const parsed = componentTreeSchema.safeParse(sourceGeneration.tree);
         return parsed.success ? parsed.data : null;
       } catch {
         return null;
@@ -323,12 +315,11 @@ export async function POST(
     );
     const persistenceModel = body.model ?? sourceGeneration.model;
 
-    // Reject overlapping regenerations on the same project.
-    const projectStatus = await prisma.project.findUnique({
-      where: { id: project.id },
-      select: { status: true },
-    });
-    if (projectStatus?.status === "GENERATING") {
+    // Block only while a generation is actually live; recover stale GENERATING.
+    const lockResult = await prisma.$transaction((tx) =>
+      assertProjectAvailableForFrameRegen(tx, project.id),
+    );
+    if (lockResult.blocked) {
       return NextResponse.json(
         {
           error: true,
@@ -416,7 +407,7 @@ export async function POST(
           `Starting frame regeneration for frame '${frame.screenName}' with generation ID ${generationId}`,
         );
 
-        if (frame.state === "done" && frame.content) {
+        if (frame.content && isProbablyCompleteScreen(frame.content)) {
           await prisma.$transaction(async (tx) => {
             const maxVersion = await tx.frameVersion.aggregate({
               where: { projectId: project.id, frameId: frame.id },

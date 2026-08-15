@@ -40,6 +40,7 @@ interface StudioCanvasSurfaceProps {
   onInteractionStart: (id: string) => void;
   onInteractionEnd: (id: string) => void;
   onRegenerate: (id: string) => void;
+  onPreviewFailed?: (id: string) => void;
   onDelete: (id: string) => void;
   onEditCode: (id: string) => void;
   onOpenHistory: (id: string) => void;
@@ -70,6 +71,7 @@ export function StudioCanvasSurface({
   onInteractionStart,
   onInteractionEnd,
   onRegenerate,
+  onPreviewFailed,
   onDelete,
   onEditCode,
   onOpenHistory,
@@ -108,6 +110,7 @@ export function StudioCanvasSurface({
                   handleDelete={onDelete}
                   handleEditCode={onEditCode}
                   onOpenHistory={onOpenHistory}
+                  onPreviewFailed={onPreviewFailed}
                   canRegenerate={canRegenerate}
                   canEditCode={canEditCode}
                   onLockedAction={onLockedAction}

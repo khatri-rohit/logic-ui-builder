@@ -70,15 +70,23 @@ const quickActions: Array<{
 
 const MAX_PROMPT_HEIGHT = 220;
 
+function getCreationQuotaError(usage: UserUsage): string | null {
+  if (usage.projectLimit !== -1 && usage.projectsRemaining <= 0) {
+    return `You have reached the ${usage.projectLimit}-project limit on the ${usage.planDisplayName} plan.`;
+  }
+
+  if (usage.generationLimit !== -1 && usage.generationsRemaining <= 0) {
+    return `You have used all ${usage.generationLimit} generations this month on the ${usage.planDisplayName} plan.`;
+  }
+
+  return null;
+}
+
 const Dashboard = () => {
   const spec = useUserActivityStore((state) => state.spec);
   const setSpec = useUserActivityStore((state) => state.setSpec);
 
-  const {
-    mutateAsync: createProject,
-    isPending: isCreatingProject,
-    isIdle,
-  } = useCreateProjectMutation();
+  const { mutateAsync: createProject } = useCreateProjectMutation();
   const router = useRouter();
 
   const shouldReduceMotion = useReducedMotion();
@@ -88,6 +96,7 @@ const Dashboard = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPricingModalOpen, setPricingModalOpen] = useState(false);
 
@@ -95,6 +104,7 @@ const Dashboard = () => {
   const launcherButtonRef = useRef<HTMLButtonElement | null>(null);
   const voiceBaseRef = useRef("");
   const wasListeningRef = useRef(false);
+  const isSubmittingRef = useRef(false);
 
   const {
     isListening,
@@ -107,7 +117,7 @@ const Dashboard = () => {
     clearTranscript,
   } = useSpeechRecognition("en-US");
 
-  const canSubmit = command.trim().length > 0 && !isCreatingProject;
+  const canSubmit = command.trim().length > 0 && !isSubmitting;
 
   const fadeUp = (delay = 0) =>
     shouldReduceMotion
@@ -147,41 +157,21 @@ const Dashboard = () => {
   const handleSubmit = async () => {
     const normalizedPrompt = command.trim();
 
-    if (!normalizedPrompt) {
+    if (!normalizedPrompt || isSubmittingRef.current) {
       return;
     }
 
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
     setError(null);
 
-    try {
-      const usageRes = await fetch("/api/usage", { cache: "no-store" });
-      const usageJson = await usageRes.json();
-      const usage = usageJson.data as UserUsage | undefined;
-
-      if (usage) {
-        const projectBlocked =
-          usage.projectLimit !== -1 && usage.projectsRemaining <= 0;
-        const generationBlocked =
-          usage.generationLimit !== -1 && usage.generationsRemaining <= 0;
-
-        if (projectBlocked) {
-          setError(
-            `You have reached the ${usage.projectLimit}-project limit on the ${usage.planDisplayName} plan.`,
-          );
-          setPricingModalOpen(true);
-          return;
-        }
-
-        if (generationBlocked) {
-          setError(
-            `You have used all ${usage.generationLimit} generations this month on the ${usage.planDisplayName} plan.`,
-          );
-          setPricingModalOpen(true);
-          return;
-        }
-      }
-    } catch {
-      // Usage fetch failed — fall through, server guard will handle it
+    const quotaError = usage ? getCreationQuotaError(usage) : null;
+    if (quotaError) {
+      setError(quotaError);
+      setPricingModalOpen(true);
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+      return;
     }
 
     try {
@@ -192,6 +182,8 @@ const Dashboard = () => {
 
       if (!createdProject.projectId) {
         setError("Project created but failed to resolve project id.");
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
 
@@ -200,6 +192,8 @@ const Dashboard = () => {
       setError(
         "Failed to initiate new design. Please check your connection and try again.",
       );
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -466,10 +460,12 @@ const Dashboard = () => {
                     )}
                     placeholder="Design a dashboard with 3 KPI cards and a line chart showing revenue trends."
                     value={command}
+                    disabled={isSubmitting}
                     onChange={(event) => setCommand(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
+                        if (!canSubmit) return;
                         void handleSubmit();
                       }
                     }}
@@ -525,6 +521,7 @@ const Dashboard = () => {
                     <Button
                       size="icon-sm"
                       aria-label="Submit command"
+                      aria-busy={isSubmitting}
                       onClick={() => {
                         if (!canSubmit) return;
                         void handleSubmit();
@@ -532,10 +529,10 @@ const Dashboard = () => {
                       disabled={!canSubmit}
                       className="cursor-pointer"
                     >
-                      {isIdle ? (
-                        <ArrowUp />
-                      ) : (
+                      {isSubmitting ? (
                         <Loader2 className="animate-spin" />
+                      ) : (
+                        <ArrowUp />
                       )}
                     </Button>
                   </div>

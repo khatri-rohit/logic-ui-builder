@@ -287,7 +287,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const {
     data: project,
     isLoading: projectLoading,
-    isFetching: projectFetching,
     isError,
     error: projectError,
     refetch: refetchProject,
@@ -2502,7 +2501,7 @@ npm run dev
   }, [generationRecoveryPrompt]);
 
   useEffect(() => {
-    if (projectLoading || projectFetching || isError) return;
+    if (projectLoading || isError) return;
 
     if (!project) {
       logger.error("Project not found");
@@ -2563,7 +2562,6 @@ npm run dev
     isGenerating,
     project,
     projectError,
-    projectFetching,
     projectLoading,
     recoverStalledFrames,
     restoreFromSnapshot,
@@ -2676,6 +2674,10 @@ npm run dev
     );
   }
 
+  const isPreparingFirstGeneration =
+    isGenerating ||
+    (!hasInitiatedGeneration && shouldAutoStartProjectGeneration(project));
+
   const themeVariables = isDark
     ? [
         "[--radius:2px] [--background:#111111] [--foreground:#e2e2e2]",
@@ -2715,7 +2717,7 @@ npm run dev
         frameRects={frameRects}
         activeFrameId={activeFrameId}
         selectedFrameId={selectedFrameId}
-        isGenerating={isGenerating}
+        isGenerating={isPreparingFirstGeneration}
         themeMode={themeMode}
         isDark={isDark}
         canRegenerate={canRegenerate}
@@ -2764,7 +2766,7 @@ npm run dev
 
       <StudioStatusBar
         platform={platform}
-        isGenerating={isGenerating}
+        isGenerating={isPreparingFirstGeneration}
         activeStreamingScreen={activeStreamingScreen}
         canvasSaveMessage={canvasSaveMessage}
         activeFrameId={activeFrameId}
@@ -3017,7 +3019,7 @@ npm run dev
         prompt={prompt}
         onPromptChange={setPrompt}
         onGenerate={() => void handleGenerate()}
-        isGenerating={isGenerating}
+        isGenerating={isPreparingFirstGeneration}
         canGenerate={canGenerate}
         activeFrameId={activeFrameId}
         generationMode={generationMode}

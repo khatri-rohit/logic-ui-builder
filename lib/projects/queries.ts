@@ -23,11 +23,11 @@ type CreateProjectInput = {
 
 type CreateProjectResult = {
   projectId: string;
-  title: string;
-  description: string | null;
-  platform: "web" | "mobile";
-  model: string;
-  updatedAt: string;
+  title?: string;
+  description?: string | null;
+  platform?: "web" | "mobile";
+  model?: string;
+  updatedAt?: string;
 };
 
 export const projectKeys = {
@@ -94,8 +94,53 @@ export function useCreateProjectMutation() {
 
   return useMutation({
     mutationFn: createProject,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    onSuccess: (created, variables) => {
+      const projectId = created.projectId;
+      const platform = created.platform ?? variables.platform;
+      const title = created.title?.trim() || "Untitled Project";
+      const description = created.description ?? "";
+      const updatedAt = created.updatedAt ?? new Date().toISOString();
+
+      queryClient.setQueryData<ProjectDetail>(["projects", projectId], {
+        id: projectId,
+        title,
+        description,
+        initialPrompt: variables.prompt,
+        status: "PENDING",
+        platform,
+        canvasState: null,
+        isPublic: false,
+        shareToken: null,
+        frames: [],
+        generations: [],
+      });
+
+      const summary: ProjectSummary = {
+        id: projectId,
+        title,
+        description,
+        thumbnailUrl: null,
+        status: "PENDING",
+        platform,
+        updatedAt,
+      };
+
+      queryClient.setQueryData<ProjectSummary[]>(projectKeys.list(), (prev) => {
+        if (!prev) return [summary];
+        if (prev.some((project) => project.id === projectId)) return prev;
+        return [summary, ...prev];
+      });
+
+      const cachedProjects = useProjectsCacheStore.getState().projects;
+      if (!cachedProjects) {
+        useProjectsCacheStore.getState().setProjects([summary]);
+      } else if (!cachedProjects.some((project) => project.id === projectId)) {
+        useProjectsCacheStore
+          .getState()
+          .setProjects([summary, ...cachedProjects]);
+      }
+
+      void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
     },
   });
 }

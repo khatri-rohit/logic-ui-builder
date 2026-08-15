@@ -6,9 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { JetBrains_Mono } from "next/font/google";
 
 import { StudioCanvasSurface } from "@/components/canvas/StudioCanvasSurface";
-import {
-  InfiniteCanvasHandle,
-} from "@/components/canvas/InfiniteCanvas";
+import { InfiniteCanvasHandle } from "@/components/canvas/InfiniteCanvas";
 import { StudioShell } from "@/components/canvas/StudioShell";
 import {
   readCanvasTransform,
@@ -17,7 +15,10 @@ import {
 import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
 import { useStudioFrames } from "@/components/canvas/hooks/useStudioFrames";
 import { CanvasFrameData } from "@/components/canvas/types";
-import { buildSandboxFallbackScreen, isProbablyCompleteScreen } from "@/lib/sandboxFallbackScreen";
+import {
+  buildSandboxFallbackScreen,
+  isProbablyCompleteScreen,
+} from "@/lib/sandboxFallbackScreen";
 import { Button } from "@/components/ui/button";
 import { StudioHeader } from "@/components/projects/StudioHeader";
 import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
@@ -49,6 +50,10 @@ import type { ProjectGeneration } from "@/lib/api/types";
 
 import { CanvasSnapshotV1, FrameState } from "@/lib/canvas-state";
 import logger from "@/lib/logger";
+import {
+  createChunkIntervalFlusher,
+  readDomainSse,
+} from "@/lib/sse/readDomainSse";
 import { GenerationPlatform, WebAppSpec } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import FeedbackForm from "./FeedbackForm";
@@ -99,22 +104,44 @@ type GenerationEvent =
   | { type: "screen_start"; screen: string; frameId: string }
   | { type: "screen_reset"; screen: string; frameId: string; reason?: string }
   | { type: "code_chunk"; screen: string; frameId: string; token: string }
-  | { type: "screen_done"; screen: string; frameId: string; content?: string; error?: string | null }
+  | {
+      type: "screen_done";
+      screen: string;
+      frameId: string;
+      content?: string;
+      error?: string | null;
+    }
   | { type: "done" }
   | { type: "error"; message: string }
   | { type: "design_context"; designContext: unknown }
   | { type: "tree"; tree: unknown }
-  | { type: "quality_warning"; screen?: string; frameId?: string; message?: string };
+  | {
+      type: "quality_warning";
+      screen?: string;
+      frameId?: string;
+      message?: string;
+    };
 
 type FrameGenerationEvent =
   | { type: "generation_id"; generationId: string }
   | { type: "frame_start"; frameId: string; screen: string }
   | { type: "frame_reset"; frameId: string; screen: string; reason?: string }
   | { type: "code_chunk"; frameId: string; token: string }
-  | { type: "frame_done"; frameId: string; screen: string; content?: string; error?: string | null }
+  | {
+      type: "frame_done";
+      frameId: string;
+      screen: string;
+      content?: string;
+      error?: string | null;
+    }
   | { type: "done" }
   | { type: "error"; message: string }
-  | { type: "quality_warning"; screen?: string; frameId?: string; message?: string };
+  | {
+      type: "quality_warning";
+      screen?: string;
+      frameId?: string;
+      message?: string;
+    };
 
 type ProjectActionId =
   | "all-projects"
@@ -363,8 +390,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const canvasRef = useRef<InfiniteCanvasHandle | null>(null);
   const domRef = useRef<HTMLDivElement | null>(null);
 
-  const chunkFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
+  const flushChunkBufferRef = useRef<() => void>(() => {});
+  const fullGenChunkFlusherRef = useRef(
+    createChunkIntervalFlusher(() => {
+      flushChunkBufferRef.current();
+    }, CHUNK_FLUSH_MS),
   );
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUploadingThumbnailRef = useRef(false);
@@ -560,7 +590,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (frames.length === 0) return;
 
       const existing = project.generations.find(
-        (generation) => generation.generationId === resolvedGenerationId,
+        (generation: ProjectGeneration) =>
+          generation.generationId === resolvedGenerationId,
       );
 
       const generation: ProjectGeneration = {
@@ -743,19 +774,14 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     }, true);
   }, [applyFrames, getStudioRuntime, updateStudioRuntime]);
 
-  const startChunkFlusher = useCallback(() => {
-    if (chunkFlushIntervalRef.current) return;
+  flushChunkBufferRef.current = flushChunkBuffer;
 
-    chunkFlushIntervalRef.current = setInterval(() => {
-      flushChunkBuffer();
-    }, CHUNK_FLUSH_MS);
-  }, [flushChunkBuffer]);
+  const startChunkFlusher = useCallback(() => {
+    fullGenChunkFlusherRef.current.start();
+  }, []);
 
   const stopChunkFlusher = useCallback(() => {
-    if (!chunkFlushIntervalRef.current) return;
-
-    clearInterval(chunkFlushIntervalRef.current);
-    chunkFlushIntervalRef.current = null;
+    fullGenChunkFlusherRef.current.stop();
   }, []);
 
   const finalizePendingFrames = useCallback(
@@ -930,7 +956,13 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         canvasRef.current?.setTransform(snapshot.camera);
       });
     },
-    [enterFrame, exitFrame, replaceAll, setSelectedFrameId, updateStudioRuntime],
+    [
+      enterFrame,
+      exitFrame,
+      replaceAll,
+      setSelectedFrameId,
+      updateStudioRuntime,
+    ],
   );
 
   const handleEvent = (event: GenerationEvent, generationToken: number) => {
@@ -1106,7 +1138,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       const frameId = event.frameId;
 
       // Watch stream provides content directly; live generation uses buffer
-      const finalCode = event.content ?? runtime.screenBuffers[event.screen] ?? "";
+      const finalCode =
+        event.content ?? runtime.screenBuffers[event.screen] ?? "";
       const content = isProbablyCompleteScreen(finalCode)
         ? finalCode
         : buildSandboxFallbackScreen();
@@ -1117,7 +1150,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
 
       updateStudioRuntime((current) => {
-        const { [event.screen]: _omitBuf, ...restBuffers } = current.screenBuffers;
+        const { [event.screen]: _omitBuf, ...restBuffers } =
+          current.screenBuffers;
         const nextDirtyScreens = current.dirtyScreens.filter(
           (s) => s !== event.screen,
         );
@@ -1194,11 +1228,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
 
       const allRects = [...getFramesSnapshot().values()].map((frame) => ({
-          x: frame.x,
-          y: frame.y,
-          w: frame.w,
-          h: frame.h,
-        }));
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+      }));
       if (regenFrameIdRef.current) {
         const focusFrame = getFramesSnapshot().get(regenFrameIdRef.current);
         if (focusFrame) {
@@ -1267,49 +1301,22 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = "";
-
-      const processLines = (lines: string[]) => {
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const raw = line.slice(5).trim();
-          if (!raw) continue;
-          if (raw === "[DONE]") return true;
-
-          try {
-            const event = JSON.parse(raw) as GenerationEvent;
-            if (event.type === "done" || event.type === "error") {
-              handleEvent(event, watchToken);
-              return true;
-            }
-            handleEvent(event, watchToken);
-          } catch {
-            logger.warn("Malformed watch SSE payload", raw.slice(0, 200));
+      const result = await readDomainSse({
+        body: response.body,
+        onEvent: (parsed) => {
+          const event = parsed as GenerationEvent;
+          handleEvent(event, watchToken);
+          if (event.type === "done" || event.type === "error") {
+            return true;
           }
-        }
-        return false;
-      };
+        },
+        onMalformed: (raw) => {
+          logger.warn("Malformed watch SSE payload", raw.slice(0, 200));
+        },
+      });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) {
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split(/\r?\n/);
-          sseBuffer = lines.pop() ?? "";
-          if (processLines(lines)) {
-            stopChunkFlusher();
-            return;
-          }
-        }
-        if (done) {
-          sseBuffer += decoder.decode();
-          if (sseBuffer) {
-            processLines(sseBuffer.split(/\r?\n/));
-          }
-          break;
-        }
+      if (result === "stopped" || result === "stale") {
+        stopChunkFlusher();
       }
     } catch (err) {
       logger.warn("Watch stream error", err);
@@ -1320,7 +1327,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     if (!project) return;
 
     const runningGeneration = project.generations.find(
-      (g) => g.status === "RUNNING",
+      (g: ProjectGeneration) => g.status === "RUNNING",
     );
     if (!runningGeneration) return;
 
@@ -1431,7 +1438,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       // G mode + selected frame: use frame context to create NEW frame with new prompt
       // R mode + selected frame: handled above via handleFrame (in-place)
       const useFrameContext = !!activeFrameId && !!sourceFrame;
-      const generationId = useFrameContext ? sourceFrame?.generationId ?? "" : "";
+      const generationId = useFrameContext
+        ? (sourceFrame?.generationId ?? "")
+        : "";
 
       if (useFrameContext && !generationId) {
         throw new Error("Unable to find generation ID for active frame.");
@@ -1487,80 +1496,32 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
       updateProjectStatus({ id: projectId, status: "GENERATING" });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = "";
-
-      const processSseLines = (lines: string[]) => {
-        for (const line of lines) {
-          if (isStaleGeneration()) {
-            return true;
+      const readResult = await readDomainSse({
+        body: response.body,
+        signal: abortController.signal,
+        isStale: isStaleGeneration,
+        onEvent: (parsed) => {
+          const event = parsed as GenerationEvent;
+          if (event.type === "done" || event.type === "error") {
+            terminalEventReceived = true;
           }
+          handleEvent(event, generationToken);
+        },
+        onMalformed: (raw, parseError) => {
+          logger.warn("Skipping malformed SSE payload", {
+            rawSnippet: raw.slice(0, 200),
+            parseError,
+          });
+        },
+      });
 
-          if (!line.startsWith("data:")) continue;
+      if (readResult === "stale") {
+        stopChunkFlusher();
+        return;
+      }
 
-          const raw = line.slice(5).trim();
-          if (!raw) continue;
-
-          if (raw === "[DONE]") {
-            return true;
-          }
-
-          try {
-            const event = JSON.parse(raw) as GenerationEvent;
-            if (event.type === "done" || event.type === "error") {
-              terminalEventReceived = true;
-            }
-            handleEvent(event, generationToken);
-          } catch (parseError) {
-            logger.warn("Skipping malformed SSE payload", {
-              rawSnippet: raw.slice(0, 200),
-              parseError,
-            });
-          }
-        }
-
-        return false;
-      };
-
-      while (true) {
-        if (isStaleGeneration()) {
-          stopChunkFlusher();
-          return;
-        }
-
-        const { done, value } = await reader.read();
-
-        if (isStaleGeneration()) {
-          stopChunkFlusher();
-          return;
-        }
-
-        if (value) {
-          sseBuffer += decoder.decode(value, { stream: true });
-
-          const lines = sseBuffer.split(/\r?\n/);
-          sseBuffer = lines.pop() ?? "";
-
-          if (processSseLines(lines)) {
-            stopChunkFlusher();
-            return;
-          }
-        }
-
-        if (done) {
-          // Flush decoder state and process any trailing buffered event lines.
-          sseBuffer += decoder.decode();
-
-          if (sseBuffer) {
-            if (processSseLines(sseBuffer.split(/\r?\n/))) {
-              stopChunkFlusher();
-              return;
-            }
-          }
-
-          break;
-        }
+      if (readResult === "stopped") {
+        stopChunkFlusher();
       }
     } catch (error) {
       if (isStaleGeneration() || abortController.signal.aborted) {
@@ -2125,13 +2086,6 @@ npm run dev
       let hasMeaningfulStream = false;
       let terminalEventReceived = false;
       let streamFailed = false;
-      let chunkFlushInterval: ReturnType<typeof setInterval> | null = null;
-
-      const stopChunkFlush = () => {
-        if (!chunkFlushInterval) return;
-        clearInterval(chunkFlushInterval);
-        chunkFlushInterval = null;
-      };
 
       const flushChunk = () => {
         if (!bufferedChunk) return;
@@ -2156,6 +2110,12 @@ npm run dev
         });
       };
 
+      const chunkFlusher = createChunkIntervalFlusher(
+        flushChunk,
+        CHUNK_FLUSH_MS,
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const applyFallbackError = (_message: string) => {
         applyFrames((current) => {
           const frame = current.get(id);
@@ -2241,155 +2201,102 @@ npm run dev
           throw new Error(errorMessage);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let sseBuffer = "";
+        const readResult = await readDomainSse({
+          body: response.body,
+          signal: abortController.signal,
+          isStale: isStaleFrameRegeneration,
+          onEvent: (parsed) => {
+            const event = parsed as FrameGenerationEvent;
 
-        const processSseLines = (lines: string[]) => {
-          for (const line of lines) {
-            if (isStaleFrameRegeneration()) {
-              return true;
-            }
-
-            if (!line.startsWith("data:")) continue;
-
-            const raw = line.slice(5).trim();
-            if (!raw) continue;
-
-            if (raw === "[DONE]") {
-              return true;
-            }
-
-            try {
-              const event = JSON.parse(raw) as FrameGenerationEvent;
-
-              if (event.type === "generation_id") {
-                resolvedGenerationId = event.generationId;
-                continue;
-              }
-
-              if (event.type === "frame_start") {
-                applyFrames((current) => {
-                  const frame = current.get(id);
-                  if (!frame) return current;
-
-                  const next = new Map(current);
-                  next.set(id, {
-                    ...frame,
-                    generationId: resolvedGenerationId,
-                    state: "streaming",
-                    content: "",
-                    editedContent: null,
-                    error: null,
-                  });
-                  return next;
-                });
-                continue;
-              }
-
-              if (event.type === "frame_reset") {
-                bufferedChunk = "";
-                streamedContent = "";
-                hasMeaningfulStream = false;
-
-                applyFrames((current) => {
-                  const frame = current.get(id);
-                  if (!frame) return current;
-
-                  const next = new Map(current);
-                  next.set(id, {
-                    ...frame,
-                    generationId: resolvedGenerationId,
-                    state: "streaming",
-                    content: "",
-                    editedContent: null,
-                    error: null,
-                  });
-                  return next;
-                });
-                continue;
-              }
-
-              if (event.type === "code_chunk") {
-                bufferedChunk += event.token;
-                if (event.token.trim()) {
-                  hasMeaningfulStream = true;
-                }
-                if (!chunkFlushInterval) {
-                  chunkFlushInterval = setInterval(flushChunk, CHUNK_FLUSH_MS);
-                }
-                continue;
-              }
-
-              if (event.type === "frame_done") {
-                flushChunk();
-                if (event.content) {
-                  streamedContent = event.content;
-                }
-                continue;
-              }
-
-              if (event.type === "done") {
-                terminalEventReceived = true;
-                flushChunk();
-                finalizeFromStream();
-                return true;
-              }
-
-              if (event.type === "error") {
-                terminalEventReceived = true;
-                flushChunk();
-                applyFallbackError(event.message);
-                return true;
-              }
-            } catch (parseError) {
-              logger.warn("Skipping malformed frame SSE payload", {
-                rawSnippet: raw.slice(0, 200),
-                parseError,
-              });
-            }
-          }
-
-          return false;
-        };
-
-        while (true) {
-          if (isStaleFrameRegeneration()) {
-            stopChunkFlush();
-            return;
-          }
-
-          const { done, value } = await reader.read();
-
-          if (isStaleFrameRegeneration()) {
-            stopChunkFlush();
-            return;
-          }
-
-          if (value) {
-            sseBuffer += decoder.decode(value, { stream: true });
-
-            const lines = sseBuffer.split(/\r?\n/);
-            sseBuffer = lines.pop() ?? "";
-
-            if (processSseLines(lines)) {
-              stopChunkFlush();
+            if (event.type === "generation_id") {
+              resolvedGenerationId = event.generationId;
               return;
             }
-          }
 
-          if (done) {
-            sseBuffer += decoder.decode();
+            if (event.type === "frame_start") {
+              applyFrames((current) => {
+                const frame = current.get(id);
+                if (!frame) return current;
 
-            if (sseBuffer) {
-              if (processSseLines(sseBuffer.split(/\r?\n/))) {
-                stopChunkFlush();
-                return;
-              }
+                const next = new Map(current);
+                next.set(id, {
+                  ...frame,
+                  generationId: resolvedGenerationId,
+                  state: "streaming",
+                  content: "",
+                  editedContent: null,
+                  error: null,
+                });
+                return next;
+              });
+              return;
             }
 
-            break;
-          }
+            if (event.type === "frame_reset") {
+              bufferedChunk = "";
+              streamedContent = "";
+              hasMeaningfulStream = false;
+
+              applyFrames((current) => {
+                const frame = current.get(id);
+                if (!frame) return current;
+
+                const next = new Map(current);
+                next.set(id, {
+                  ...frame,
+                  generationId: resolvedGenerationId,
+                  state: "streaming",
+                  content: "",
+                  editedContent: null,
+                  error: null,
+                });
+                return next;
+              });
+              return;
+            }
+
+            if (event.type === "code_chunk") {
+              bufferedChunk += event.token;
+              if (event.token.trim()) {
+                hasMeaningfulStream = true;
+              }
+              chunkFlusher.start();
+              return;
+            }
+
+            if (event.type === "frame_done") {
+              chunkFlusher.flush();
+              if (event.content) {
+                streamedContent = event.content;
+              }
+              return;
+            }
+
+            if (event.type === "done") {
+              terminalEventReceived = true;
+              chunkFlusher.flush();
+              finalizeFromStream();
+              return true;
+            }
+
+            if (event.type === "error") {
+              terminalEventReceived = true;
+              chunkFlusher.flush();
+              applyFallbackError(event.message);
+              return true;
+            }
+          },
+          onMalformed: (raw, parseError) => {
+            logger.warn("Skipping malformed frame SSE payload", {
+              rawSnippet: raw.slice(0, 200),
+              parseError,
+            });
+          },
+        });
+
+        if (readResult === "stale" || readResult === "stopped") {
+          chunkFlusher.stop();
+          return;
         }
       } catch (error) {
         if (isStaleFrameRegeneration()) {
@@ -2408,14 +2315,14 @@ npm run dev
         );
         logger.error("Error regenerating frame:", error);
       } finally {
-        stopChunkFlush();
+        chunkFlusher.stop();
 
         if (isStaleFrameRegeneration()) {
           return;
         }
 
         if (!streamFailed && !terminalEventReceived) {
-          flushChunk();
+          chunkFlusher.flush();
           finalizeFromStream();
         }
 
@@ -2543,7 +2450,18 @@ npm run dev
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFrameId, isGenerating, canGenerate, handleGenerate, undo, redo, canUndo, canRedo, deselect, handleDelete]);
+  }, [
+    selectedFrameId,
+    isGenerating,
+    canGenerate,
+    handleGenerate,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    deselect,
+    handleDelete,
+  ]);
 
   useEffect(() => {
     if (!generationRecoveryPrompt) return;
@@ -2601,17 +2519,14 @@ npm run dev
 
       // Reconnect to any running generation so mid-refresh users don't lose progress
       const runningGeneration = project.generations.find(
-        (g) => g.status === "RUNNING",
+        (g: ProjectGeneration) => g.status === "RUNNING",
       );
       if (runningGeneration && !isGenerating) {
         void reconnectToRunningGeneration();
       }
     }
 
-    if (
-      !hasInitiatedGeneration &&
-      shouldAutoStartProjectGeneration(project)
-    ) {
+    if (!hasInitiatedGeneration && shouldAutoStartProjectGeneration(project)) {
       setRuntimeInitiatedGeneration(true);
       void handleGenerateRef.current();
     }

@@ -181,6 +181,27 @@ export const webAppSpecSchema = z.object({
     .optional(),
 });
 
+/**
+ * Stage 1 model output — screens required; other fields optional so
+ * coerceSpec can fill defaults (matches prior Partial JSON parse behavior).
+ */
+export const stage1SpecOutputSchema = webAppSpecSchema.partial().extend({
+  screens: z.array(z.string().min(1)).min(1),
+});
+
+export const componentTreeNodeSchema = z.object({
+  screen: z.string().min(1),
+  components: z.array(z.string()),
+  canvasX: z.number().optional(),
+  canvasY: z.number().optional(),
+  layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
+  componentIntents: z.array(z.unknown()).optional(),
+});
+
+export const componentTreeSchema = z
+  .array(componentTreeNodeSchema)
+  .min(1);
+
 export const generationRequestBodySchema = z.object({
   projectId: projectIdSchema,
   prompt: z.string().trim().min(1).max(10000),

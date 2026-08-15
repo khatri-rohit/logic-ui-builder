@@ -16,6 +16,7 @@ import prisma from "@/lib/prisma";
 import { getGenerationBurstLimit } from "@/lib/ratelimit";
 import { buildDesignContext } from "@/lib/designContext";
 import {
+  componentTreeSchema,
   frameRegenerateRequestBodySchema,
   toValidationIssues,
 } from "@/lib/schemas/studio";
@@ -267,18 +268,7 @@ export async function POST(
     const storedTree = (() => {
       if (!sourceGeneration.tree) return null;
       try {
-        const parsed = z
-          .array(
-            z.object({
-              screen: z.string(),
-              components: z.array(z.string()),
-              canvasX: z.number().optional(),
-              canvasY: z.number().optional(),
-              layoutArchitecture: z.record(z.string(), z.unknown()).optional(),
-              componentIntents: z.array(z.unknown()).optional(),
-            }),
-          )
-          .safeParse(sourceGeneration.tree);
+        const parsed = componentTreeSchema.safeParse(sourceGeneration.tree);
         return parsed.success ? parsed.data : null;
       } catch {
         return null;

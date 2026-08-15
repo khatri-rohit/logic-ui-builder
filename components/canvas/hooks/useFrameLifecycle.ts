@@ -13,6 +13,7 @@ interface UseFrameLifecycleOptions {
   state: FrameState;
   containerRef: RefObject<HTMLDivElement | null>;
   iframeRef: RefObject<HTMLIFrameElement | null>;
+  onPreviewFailed?: () => void;
 }
 
 const DESTROY_GRACE_MS = 5000;
@@ -32,6 +33,7 @@ export function useFrameLifecycle({
   state,
   containerRef,
   iframeRef,
+  onPreviewFailed,
 }: UseFrameLifecycleOptions) {
   const clientRef = useRef<SandpackClient | null>(null);
   const isMountedRef = useRef(false);
@@ -44,11 +46,16 @@ export function useFrameLifecycle({
   const recoverWindowRef = useRef({ startedAt: 0, count: 0 });
   const originRef = useRef(getParentOrigin());
   const contentRef = useRef(content);
+  const onPreviewFailedRef = useRef(onPreviewFailed);
   const gestureStore = useCanvasGestureStore();
 
   useEffect(() => {
     contentRef.current = content;
   }, [content]);
+
+  useEffect(() => {
+    onPreviewFailedRef.current = onPreviewFailed;
+  }, [onPreviewFailed]);
 
   const clearDestroyTimer = useCallback(() => {
     if (!destroyTimerRef.current) return;
@@ -105,11 +112,13 @@ export function useFrameLifecycle({
             line: message.line,
             code: nextContent.slice(0, 200),
           });
+          onPreviewFailedRef.current?.();
         }
         if (message.type === "done" && message.compilationError) {
           logger.warn("Sandbox compilation failed", {
             code: nextContent.slice(0, 200),
           });
+          onPreviewFailedRef.current?.();
         }
       });
 
@@ -162,6 +171,7 @@ export function useFrameLifecycle({
     }
     if (recoverWindowRef.current.count >= MAX_RECOVERS_PER_WINDOW) {
       logger.warn("Sandbox iframe recover loop suppressed");
+      onPreviewFailedRef.current?.();
       return;
     }
     recoverWindowRef.current.count += 1;

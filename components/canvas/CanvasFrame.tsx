@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasScaleGetter } from "@/components/canvas/CanvasScaleContext";
 import { useCanvasGestureStore } from "@/components/canvas/CanvasGestureContext";
 import { useFrameLifecycle } from "@/components/canvas/hooks/useFrameLifecycle";
+import { FrameErrorState } from "@/components/canvas/FrameErrorState";
 import { CanvasFrameData } from "@/components/canvas/types";
 import { useStudioTheme } from "@/components/canvas/StudioThemeContext";
 import {
@@ -65,6 +66,7 @@ interface CanvasFrameProps extends CanvasFrameData {
   handleDelete: (id: string) => void;
   handleEditCode: (id: string) => void;
   onOpenHistory?: (id: string) => void;
+  onPreviewFailed?: (id: string) => void;
   canRegenerate?: boolean;
   canEditCode?: boolean;
   onLockedAction?: (featureName: string) => void;
@@ -101,6 +103,7 @@ export const CanvasFrame = memo(function CanvasFrame({
   handleDelete,
   handleEditCode,
   onOpenHistory,
+  onPreviewFailed,
   canRegenerate = true,
   canEditCode = true,
   onLockedAction,
@@ -172,6 +175,9 @@ export const CanvasFrame = memo(function CanvasFrame({
     state,
     containerRef,
     iframeRef,
+    onPreviewFailed: onPreviewFailed
+      ? () => onPreviewFailed(id)
+      : undefined,
   });
 
   const isSpaceDown = useCallback(() => {
@@ -348,6 +354,11 @@ export const CanvasFrame = memo(function CanvasFrame({
         return;
       }
 
+      if (event.data?.type === "frame-preview-failed") {
+        onPreviewFailed?.(id);
+        return;
+      }
+
       if (event.data?.type !== "frame-dimensions") return;
       if (interactionRef.current) return;
       if (readOnly) return;
@@ -379,7 +390,7 @@ export const CanvasFrame = memo(function CanvasFrame({
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [h, id, platform, readOnly, state, w]);
+  }, [h, id, onPreviewFailed, platform, readOnly, state, w]);
 
   useEffect(() => {
     const moveHandler = handleWindowPointerMove;
@@ -461,17 +472,15 @@ export const CanvasFrame = memo(function CanvasFrame({
 
             {state === "error" && (
               <div
-                className="absolute inset-0 bg-(--studio-surface) p-6"
+                className="absolute inset-0 z-30"
                 style={{ top: chromeTopHeight, height: iframeHeight }}
               >
-                <div className="h-full rounded-xl border border-(--studio-border) bg-(--frame-skeleton-bg) p-6">
-                  <div className="h-3 w-24 rounded bg-(--studio-text-muted)/20" />
-                  <div className="mt-4 h-8 w-2/3 rounded bg-(--studio-text-muted)/15" />
-                  <div className="mt-8 grid grid-cols-2 gap-3">
-                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
-                    <div className="h-24 rounded-lg bg-(--studio-text-muted)/10" />
-                  </div>
-                </div>
+                <FrameErrorState
+                  readOnly={readOnly}
+                  canRegenerate={canRegenerate}
+                  onTryAgain={() => handleFrame(id)}
+                  onLockedAction={onLockedAction}
+                />
               </div>
             )}
 

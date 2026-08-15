@@ -141,6 +141,40 @@ export async function GET(
           lastScreens = freshScreens;
         }
 
+        // Watch deadline elapsed while still RUNNING — fail the generation so
+        // project status cannot stay stuck at GENERATING forever.
+        if (running) {
+          const timeoutMessage =
+            "Generation watch timed out before the job finished.";
+          const generationRecord = await prisma.generation.findUnique({
+            where: { id: generationId },
+            select: { status: true, projectId: true },
+          });
+
+          if (generationRecord?.status === "RUNNING") {
+            await prisma.$transaction([
+              prisma.generation.update({
+                where: { id: generationId },
+                data: {
+                  status: "FAILED",
+                  terminalAt: new Date(),
+                  errorMessage: timeoutMessage,
+                  errorMeta: {
+                    source: "api/generate/watch",
+                    stage: "watch-timeout",
+                  },
+                },
+              }),
+              prisma.project.update({
+                where: { id: generationRecord.projectId },
+                data: { status: "ACTIVE" },
+              }),
+            ]);
+          }
+
+          await write({ type: "error", message: timeoutMessage });
+        }
+
         // Grace period so client receives terminal event
         await sleep(TERMINAL_GRACE_MS);
       } catch (err) {

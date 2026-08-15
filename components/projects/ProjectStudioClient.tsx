@@ -15,10 +15,7 @@ import {
 import { usePointerMode } from "@/components/canvas/hooks/usePointerMode";
 import { useStudioFrames } from "@/components/canvas/hooks/useStudioFrames";
 import { CanvasFrameData } from "@/components/canvas/types";
-import {
-  buildSandboxFallbackScreen,
-  isProbablyCompleteScreen,
-} from "@/lib/sandboxFallbackScreen";
+import { isProbablyCompleteScreen } from "@/lib/sandboxFallbackScreen";
 import { Button } from "@/components/ui/button";
 import { StudioHeader } from "@/components/projects/StudioHeader";
 import { StudioPromptBar } from "@/components/projects/StudioPromptBar";
@@ -560,14 +557,12 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       if (frame.state !== "skeleton" && frame.state !== "streaming") continue;
 
       changed = true;
-      const content = isProbablyCompleteScreen(frame.content)
-        ? frame.content
-        : buildSandboxFallbackScreen();
+      const hasComplete = isProbablyCompleteScreen(frame.content);
       next.set(frameId, {
         ...frame,
-        state: "done",
-        content,
-        error: null,
+        state: hasComplete ? "done" : "error",
+        content: hasComplete ? frame.content : frame.content,
+        error: hasComplete ? null : "Generation did not finish.",
       });
     }
 
@@ -576,6 +571,25 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     updateEphemeral(() => next);
     scheduleSnapshotPersist();
   }, [getFramesSnapshot, scheduleSnapshotPersist, updateEphemeral]);
+
+  const handlePreviewFailed = useCallback(
+    (frameId: string) => {
+      applyFrames((current) => {
+        const frame = current.get(frameId);
+        if (!frame || frame.state === "error") return current;
+
+        const next = new Map(current);
+        next.set(frameId, {
+          ...frame,
+          state: "error",
+          error: frame.error ?? "Preview failed to render.",
+        });
+        return next;
+      });
+      scheduleSnapshotPersist();
+    },
+    [applyFrames, scheduleSnapshotPersist],
+  );
 
   const syncProjectDetailCache = useCallback(
     (generationId?: string | null) => {
@@ -786,8 +800,8 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
   const finalizePendingFrames = useCallback(
     ({
-      preferError: _preferError = false,
-      errorMessage: _errorMessage,
+      preferError = false,
+      errorMessage,
     }: {
       preferError?: boolean;
       errorMessage?: string;
@@ -807,13 +821,16 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
           const frame = next.get(frameId);
           if (!frame) return;
 
-          const resolvedContent = isProbablyCompleteScreen(
-            bufferedContent ?? frame.content,
-          )
-            ? (bufferedContent ?? frame.content)
-            : buildSandboxFallbackScreen();
-          const nextState: FrameState = "done";
-          const nextError = null;
+          const candidate = bufferedContent ?? frame.content;
+          const hasComplete = isProbablyCompleteScreen(candidate);
+
+          const nextState: FrameState =
+            preferError || !hasComplete ? "error" : "done";
+          const resolvedContent = hasComplete ? candidate : frame.content;
+          const nextError =
+            nextState === "error"
+              ? (errorMessage ?? frame.error ?? "Generation did not finish.")
+              : null;
 
           if (
             frame.state === nextState &&
@@ -1140,11 +1157,15 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       // Watch stream provides content directly; live generation uses buffer
       const finalCode =
         event.content ?? runtime.screenBuffers[event.screen] ?? "";
-      const content = isProbablyCompleteScreen(finalCode)
-        ? finalCode
-        : buildSandboxFallbackScreen();
-      const nextState: FrameState = "done";
-      const nextError = null;
+      const hasComplete = isProbablyCompleteScreen(finalCode);
+      const eventFailed = Boolean(event.error);
+      const nextState: FrameState =
+        eventFailed || !hasComplete ? "error" : "done";
+      const content = hasComplete ? finalCode : "";
+      const nextError =
+        nextState === "error"
+          ? (event.error ?? "Generation did not finish.")
+          : null;
       const frame = getFramesSnapshot().get(frameId);
       const generationId =
         frame?.generationId ?? runtime.activeGenerationId ?? "unknown";
@@ -1173,7 +1194,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         next.set(frameId, {
           ...frame,
           state: nextState,
-          content,
+          content: nextState === "error" ? frame.content || content : content,
           error: nextError,
         });
         return next;
@@ -1494,8 +1515,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
         throw new Error(errorMessage);
       }
 
-      updateProjectStatus({ id: projectId, status: "GENERATING" });
-
       const readResult = await readDomainSse({
         body: response.body,
         signal: abortController.signal,
@@ -1546,13 +1565,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       logger.error("Error generating layout:", error);
       emitGenerationReviewLog("request-failed");
     } finally {
-      if (isStaleGeneration() || abortController.signal.aborted) {
-        return;
-      }
-
       if (
         !streamFailed &&
         !terminalEventReceived &&
+        !isStaleGeneration() &&
+        !abortController.signal.aborted &&
         Object.keys(getStudioRuntime().frameIdsByScreen).length > 0
       ) {
         logger.warn(
@@ -1569,7 +1586,11 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       setActiveStreamingScreen(null);
       setIsGenerating(false);
 
-      if (!streamFailed && !isStaleGeneration()) {
+      if (
+        !streamFailed &&
+        !isStaleGeneration() &&
+        !abortController.signal.aborted
+      ) {
         syncProjectDetailCache();
         void queryClient.invalidateQueries({
           queryKey: ["projects", projectId],
@@ -2115,8 +2136,12 @@ npm run dev
         CHUNK_FLUSH_MS,
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const applyFallbackError = (_message: string) => {
+      const applyFallbackError = (message: string) => {
+        logger.warn("Frame regeneration failed", {
+          frameId: id,
+          message,
+        });
+
         applyFrames((current) => {
           const frame = current.get(id);
           if (!frame) return current;
@@ -2124,44 +2149,44 @@ npm run dev
           const candidate = hasMeaningfulStream
             ? streamedContent || sourceContent
             : sourceContent;
-          const nextContent = isProbablyCompleteScreen(candidate)
+          const keepContent = isProbablyCompleteScreen(candidate)
             ? candidate
-            : buildSandboxFallbackScreen();
+            : sourceContent;
 
           const next = new Map(current);
           next.set(id, {
             ...frame,
             generationId: resolvedGenerationId,
-            state: "done",
-            content: nextContent,
+            state: "error",
+            content: keepContent,
             editedContent: hasMeaningfulStream ? null : sourceEditedContent,
-            error: null,
+            // Persist for logs/API only — never shown on the canvas.
+            error: message || "Generation did not finish.",
           });
           return next;
         });
       };
 
       const finalizeFromStream = () => {
-        const nextContent = isProbablyCompleteScreen(streamedContent)
-          ? streamedContent
-          : isProbablyCompleteScreen(sourceContent)
-            ? sourceContent
-            : buildSandboxFallbackScreen();
+        if (isProbablyCompleteScreen(streamedContent)) {
+          applyFrames((current) => {
+            const frame = current.get(id);
+            if (!frame) return current;
 
-        applyFrames((current) => {
-          const frame = current.get(id);
-          if (!frame) return current;
-
-          const next = new Map(current);
-          next.set(id, {
-            ...frame,
-            generationId: resolvedGenerationId,
-            state: "done",
-            content: nextContent,
-            error: null,
+            const next = new Map(current);
+            next.set(id, {
+              ...frame,
+              generationId: resolvedGenerationId,
+              state: "done",
+              content: streamedContent,
+              error: null,
+            });
+            return next;
           });
-          return next;
-        });
+          return;
+        }
+
+        applyFallbackError("Regeneration finished without a complete screen.");
       };
 
       try {
@@ -2721,6 +2746,7 @@ npm run dev
         onInteractionStart={handleInteractionStart}
         onInteractionEnd={handleInteractionEnd}
         onRegenerate={handleFrame}
+        onPreviewFailed={handlePreviewFailed}
         onDelete={handleDelete}
         onEditCode={handleOpenCodeEditor}
         onOpenHistory={handleOpenHistory}

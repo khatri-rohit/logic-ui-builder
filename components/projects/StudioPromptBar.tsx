@@ -95,36 +95,30 @@ export function StudioPromptBar({
   const [phase, setPhase] = React.useState<PromptBarPhase>("expanded");
   const [collapsedPromptHeadline, setCollapsedPromptHeadline] =
     React.useState("");
-  const wasGeneratingRef = React.useRef(false);
+  const [wasGenerating, setWasGenerating] = React.useState(false);
+  const [hadErrorBanner, setHadErrorBanner] = React.useState(false);
 
   const showErrorBanner =
     generationErrorMessage != null || generationRecoveryPrompt != null;
 
-  React.useEffect(() => {
+  if (isGenerating !== wasGenerating) {
+    setWasGenerating(isGenerating);
     if (isGenerating) {
-      if (!wasGeneratingRef.current) {
+      if (!wasGenerating) {
         setCollapsedPromptHeadline(toHeadline(prompt) || "Generating your UI…");
       }
-      wasGeneratingRef.current = true;
       setPhase("generating");
-      return;
+    } else if (wasGenerating) {
+      setPhase(showErrorBanner ? "expanded" : "completed");
     }
+  }
 
-    if (wasGeneratingRef.current) {
-      wasGeneratingRef.current = false;
-      if (showErrorBanner) {
-        setPhase("expanded");
-      } else {
-        setPhase("completed");
-      }
-    }
-  }, [isGenerating, prompt, showErrorBanner]);
-
-  React.useEffect(() => {
+  if (showErrorBanner !== hadErrorBanner) {
+    setHadErrorBanner(showErrorBanner);
     if (showErrorBanner && !isGenerating) {
       setPhase("expanded");
     }
-  }, [showErrorBanner, isGenerating]);
+  }
 
   React.useEffect(() => {
     if (phase !== "expanded") return;

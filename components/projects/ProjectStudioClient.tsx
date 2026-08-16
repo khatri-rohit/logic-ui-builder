@@ -387,11 +387,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const domRef = useRef<HTMLDivElement | null>(null);
 
   const flushChunkBufferRef = useRef<() => void>(() => {});
-  const fullGenChunkFlusherRef = useRef(
-    createChunkIntervalFlusher(() => {
-      flushChunkBufferRef.current();
-    }, CHUNK_FLUSH_MS),
-  );
+  const fullGenChunkFlusherRef = useRef<ReturnType<
+    typeof createChunkIntervalFlusher
+  > | null>(null);
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUploadingThumbnailRef = useRef(false);
   const generationAbortControllerRef = useRef<AbortController | null>(null);
@@ -430,6 +428,9 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     string | null
   >(null);
   const handleGenerateRef = useRef<() => Promise<void>>(async () => {});
+  const handleFrameRef = useRef<
+    (id: string, bypassBusyCheck?: boolean) => Promise<void>
+  >(async () => {});
 
   const {
     frameList,
@@ -488,10 +489,6 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
   const canGenerate = !!prompt.trim() && !isGenerating;
   const canRegenerate = usage?.frameRegenerationEnabled ?? false;
   const canEditCode = usage?.planId != null && usage.planId !== "FREE";
-
-  useEffect(() => {
-    handleGenerateRef.current = handleGenerate;
-  });
 
   const getStudioRuntime = useCallback(
     () => projectStudioStoreApi.getState().runtime,
@@ -787,14 +784,26 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     }, true);
   }, [applyFrames, getStudioRuntime, updateStudioRuntime]);
 
-  flushChunkBufferRef.current = flushChunkBuffer;
+  useEffect(() => {
+    flushChunkBufferRef.current = flushChunkBuffer;
+  });
+
+  const getFullGenChunkFlusher = () => {
+    if (!fullGenChunkFlusherRef.current) {
+      fullGenChunkFlusherRef.current = createChunkIntervalFlusher(
+        () => flushChunkBufferRef.current(),
+        CHUNK_FLUSH_MS,
+      );
+    }
+    return fullGenChunkFlusherRef.current;
+  };
 
   const startChunkFlusher = useCallback(() => {
-    fullGenChunkFlusherRef.current.start();
+    getFullGenChunkFlusher().start();
   }, []);
 
   const stopChunkFlusher = useCallback(() => {
-    fullGenChunkFlusherRef.current.stop();
+    fullGenChunkFlusherRef.current?.stop();
   }, []);
 
   const finalizePendingFrames = useCallback(
@@ -1428,7 +1437,7 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
 
     // In-place frame regeneration: delegate to handleFrame instead of cloning
     if (generationMode === "regenerate" && activeFrameId) {
-      await handleFrame(activeFrameId, true);
+      await handleFrameRef.current(activeFrameId, true);
       return;
     }
 
@@ -1598,6 +1607,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
       }
     }
   };
+
+  useEffect(() => {
+    handleGenerateRef.current = handleGenerate;
+  });
 
   const handleMoveFrame = useCallback(
     (id: string, nextX: number, nextY: number) => {
@@ -1931,7 +1944,13 @@ npm run dev
     setMetadataTitle(project?.title || "Untitled Project");
     setMetadataDescription(project?.description || "");
     setMetadataDialogOpen(true);
-  }, [project?.description, project?.title]);
+  }, [
+    project?.description,
+    project?.title,
+    setMetadataDescription,
+    setMetadataDialogOpen,
+    setMetadataTitle,
+  ]);
 
   const saveProjectMetadata = useCallback(async () => {
     const title = metadataTitle.trim();
@@ -1952,7 +1971,13 @@ npm run dev
       logger.error("Project metadata update failed", error);
       toast.error("Could not update project details.");
     }
-  }, [metadataDescription, metadataTitle, projectId, updateProjectMetadata]);
+  }, [
+    metadataDescription,
+    metadataTitle,
+    projectId,
+    setMetadataDialogOpen,
+    updateProjectMetadata,
+  ]);
 
   const handleOpenCodeEditor = useCallback(
     (frameId: string) => {
@@ -1969,7 +1994,7 @@ npm run dev
 
   const handleOpenHistory = useCallback((frameId: string) => {
     setHistoryPanelFrameId(frameId);
-  }, []);
+  }, [setHistoryPanelFrameId]);
 
   const handleLockedAction = useCallback(
     (feature: string) => {
@@ -2365,6 +2390,10 @@ npm run dev
     ],
   );
 
+  useEffect(() => {
+    handleFrameRef.current = handleFrame;
+  });
+
   const handleDelete = useCallback(
     (frameId: string) => {
       const frameToDelete = getFramesSnapshot().get(frameId);
@@ -2546,7 +2575,9 @@ npm run dev
         (g: ProjectGeneration) => g.status === "RUNNING",
       );
       if (runningGeneration && !isGenerating) {
-        void reconnectToRunningGeneration();
+        queueMicrotask(() => {
+          void reconnectToRunningGeneration();
+        });
       }
     }
 

@@ -95,6 +95,9 @@ export function useRazorpayCheckout({
   const pollIndexRef = useRef<number>(0);
   const dismissWaitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<boolean>(false);
+  const pollForActivationRef = useRef<(subscriptionId: string) => Promise<void>>(
+    async () => {},
+  );
 
   const clearAllTimers = useCallback(() => {
     if (pollingRef.current) {
@@ -162,12 +165,16 @@ export function useRazorpayCheckout({
         POLL_DELAYS[Math.min(pollIndexRef.current, POLL_DELAYS.length - 1)];
       pollIndexRef.current += 1;
       pollingRef.current = setTimeout(
-        () => pollForActivation(subscriptionId),
+        () => void pollForActivationRef.current(subscriptionId),
         delay,
       );
     },
     [queryClient, onClose],
   );
+
+  useEffect(() => {
+    pollForActivationRef.current = pollForActivation;
+  });
 
   const openCheckout = useCallback(
     async (subscriptionId: string, razorpayKeyId: string): Promise<boolean> => {

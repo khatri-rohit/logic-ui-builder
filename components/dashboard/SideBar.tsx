@@ -60,6 +60,7 @@ const SideBar = ({
   const { data: projects = [], isLoading, isFetching } = useProjectsQuery();
   const showProjectSkeletons =
     isLoading || (isFetching && projects.length === 0);
+  const [now] = useState(() => Date.now());
 
   const handleFocusPrompt = () => {
     setIsMobileMenuOpen(false);
@@ -69,7 +70,6 @@ const SideBar = ({
   };
 
   const groupedProjects = useMemo(() => {
-    const now = Date.now();
     const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
     const twoDaysAgo = new Date(now - 2 * 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
@@ -107,7 +107,7 @@ const SideBar = ({
     }
 
     return groups;
-  }, [projects]);
+  }, [now, projects]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("en-US", {

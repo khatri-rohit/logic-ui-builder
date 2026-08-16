@@ -41,7 +41,6 @@ import {
   toValidationIssues,
   webAppSpecSchema,
 } from "@/lib/schemas/studio";
-import { coerceWebAppSpec } from "@/lib/execution/coerceSpec";
 import {
   STAGE1_MODELS,
   STAGE2_MODELS,

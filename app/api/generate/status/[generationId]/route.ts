@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import prisma from "@/lib/prisma";
+import { isTerminalPersistedScreen } from "@/lib/generation/events";
 import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 
@@ -76,7 +77,7 @@ export async function GET(
 
     const terminalScreenNames = new Set(
       screens
-        .filter((s) => s.state === "done" || s.state === "error")
+        .filter((s) => isTerminalPersistedScreen(s, generation.status))
         .map((s) => s.screenName),
     );
     const pendingScreens = specScreens.filter(

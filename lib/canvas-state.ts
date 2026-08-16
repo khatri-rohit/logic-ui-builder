@@ -1,11 +1,6 @@
 import { GenerationPlatform } from "@/lib/types";
 
-export type FrameState =
-  | "skeleton"
-  | "streaming"
-  | "compiling"
-  | "done"
-  | "error";
+export type FrameState = "skeleton" | "streaming" | "done" | "error";
 
 export interface CanvasCameraSnapshot {
   x: number;
@@ -65,10 +60,20 @@ export interface CanvasSnapshotV1 extends CanvasStateMetadataV1 {
 const FRAME_STATES = new Set<FrameState>([
   "skeleton",
   "streaming",
-  "compiling",
   "done",
   "error",
 ]);
+
+export function coerceFrameState(value: unknown): FrameState | null {
+  if (value === "compiling") return "streaming";
+  if (
+    typeof value === "string" &&
+    FRAME_STATES.has(value as FrameState)
+  ) {
+    return value as FrameState;
+  }
+  return null;
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -87,7 +92,7 @@ function isStringOrNull(value: unknown): value is string | null {
 }
 
 function isFrameState(value: unknown): value is FrameState {
-  return typeof value === "string" && FRAME_STATES.has(value as FrameState);
+  return coerceFrameState(value) !== null;
 }
 
 function isGenerationPlatform(value: unknown): value is GenerationPlatform {

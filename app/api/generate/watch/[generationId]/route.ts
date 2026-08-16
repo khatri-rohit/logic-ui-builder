@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { isAuthError, requireAuthContext } from "@/lib/get-auth";
 import prisma from "@/lib/prisma";
+import { isTerminalPersistedScreen } from "@/lib/generation/events";
 import { parseGenerationScreens } from "@/lib/utils";
 import { z } from "zod";
 import logger from "@/lib/logger";
@@ -69,16 +70,19 @@ export async function GET(
         // Initial snapshot
         let lastScreens = parseGenerationScreens(generation.screens);
         for (const screen of lastScreens) {
-          if (screen.state === "done" || screen.state === "error") {
-            emittedScreenIds.add(screen.id);
-            await write({
-              type: "screen_done",
-              screen: screen.screenName,
-              frameId: screen.id,
-              content: screen.content,
-              error: screen.error,
-            });
-          }
+          if (!isTerminalPersistedScreen(screen, generation.status)) continue;
+          emittedScreenIds.add(screen.id);
+          await write({
+            type: "screen_done",
+            screen: screen.screenName,
+            frameId: screen.id,
+            content: screen.content,
+            error: screen.error,
+            x: screen.x,
+            y: screen.y,
+            w: screen.w,
+            h: screen.h,
+          });
         }
 
         if (
@@ -115,16 +119,19 @@ export async function GET(
 
           for (const screen of freshScreens) {
             if (emittedScreenIds.has(screen.id)) continue;
-            if (screen.state === "done" || screen.state === "error") {
-              emittedScreenIds.add(screen.id);
-              await write({
-                type: "screen_done",
-                screen: screen.screenName,
-                frameId: screen.id,
-                content: screen.content,
-                error: screen.error,
-              });
-            }
+            if (!isTerminalPersistedScreen(screen, fresh.status)) continue;
+            emittedScreenIds.add(screen.id);
+            await write({
+              type: "screen_done",
+              screen: screen.screenName,
+              frameId: screen.id,
+              content: screen.content,
+              error: screen.error,
+              x: screen.x,
+              y: screen.y,
+              w: screen.w,
+              h: screen.h,
+            });
           }
 
           if (fresh.status === "COMPLETED") {

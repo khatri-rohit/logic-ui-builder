@@ -56,13 +56,17 @@ function addFeedbackAttachmentTotalSizeValidation(
   }
 }
 
-const frameStateSchema = z.enum([
+const liveFrameStateSchema = z.enum([
   "skeleton",
   "streaming",
-  "compiling",
   "done",
   "error",
 ]);
+
+const frameStateSchema = z
+  .string()
+  .transform((value) => (value === "compiling" ? "streaming" : value))
+  .pipe(liveFrameStateSchema);
 
 export const generationPlatformSchema = z.enum(["web", "mobile"]);
 

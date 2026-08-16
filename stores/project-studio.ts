@@ -47,6 +47,7 @@ export interface ProjectStudioActions {
   setSelectedGenerationId: (generationId: string | null) => void;
   upsertGeneration: (generation: ProjectGeneration) => void;
   beginGenerationRun: (runId: string) => number;
+  bumpSessionToken: () => number;
   updateRuntime: (
     updater: (runtime: ProjectStudioRuntimeState) => ProjectStudioRuntimeState,
   ) => void;
@@ -187,10 +188,20 @@ export const createProjectStudioStore = () =>
       next[existingIndex] = generation;
       set({ generations: next });
     },
+    bumpSessionToken: () => {
+      const current = get().runtime;
+      const nextToken = current.generationToken + 1;
+      set({
+        runtime: {
+          ...current,
+          generationToken: nextToken,
+        },
+      });
+      return nextToken;
+    },
     beginGenerationRun: (runId) => {
       const current = get().runtime;
       const nextToken = current.generationToken + 1;
-
       set({
         runtime: {
           ...current,
@@ -205,7 +216,6 @@ export const createProjectStudioStore = () =>
           generationLogEmitted: false,
         },
       });
-
       return nextToken;
     },
     updateRuntime: (updater) => {

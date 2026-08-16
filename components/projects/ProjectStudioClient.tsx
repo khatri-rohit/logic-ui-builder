@@ -486,7 +486,10 @@ const ProjectStudioClient = ({ projectId }: ProjectStudioClientProps) => {
     deselect();
   }, [activeFrameId, deselect, exitFrame]);
 
-  const canGenerate = !!prompt.trim() && !isGenerating;
+  const canGenerate =
+    !isGenerating &&
+    (!!prompt.trim() ||
+      (generationMode === "regenerate" && !!activeFrameId));
   const canRegenerate = usage?.frameRegenerationEnabled ?? false;
   const canEditCode = usage?.planId != null && usage.planId !== "FREE";
 
@@ -2160,6 +2163,9 @@ npm run dev
         CHUNK_FLUSH_MS,
       );
 
+      setIsGenerating(true);
+      setActiveStreamingScreen(sourceFrame.screenName ?? null);
+
       const applyFallbackError = (message: string) => {
         logger.warn("Frame regeneration failed", {
           frameId: id,
@@ -2377,6 +2383,8 @@ npm run dev
 
         setActiveGenerationContext(resolvedGenerationId);
         scheduleSnapshotPersist(resolvedGenerationId);
+        setIsGenerating(false);
+        setActiveStreamingScreen(null);
       }
     },
     [

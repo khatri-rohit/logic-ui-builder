@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ArrowUp,
   Check,
-  CornerDownLeft,
   Loader2,
   Lock,
   Plus,
@@ -13,7 +12,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -39,20 +37,12 @@ interface StudioPromptBarProps {
 
 type PromptBarPhase = "expanded" | "generating" | "completed";
 
-const MAX_PROMPT_HEIGHT = 220;
-const MIN_PROMPT_HEIGHT = 52;
+const MAX_PROMPT_HEIGHT = 160;
+const MIN_PROMPT_HEIGHT = 44;
 const MOTION_EASE = [0.22, 1, 0.36, 1] as const;
 
 function toHeadline(value: string) {
   return value.replace(/\s+/g, " ").trim();
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-(--studio-border) bg-(--studio-surface-hover) px-1.5 font-sans text-[10px] font-medium text-(--studio-text-muted)">
-      {children}
-    </kbd>
-  );
 }
 
 function StreamingDots() {
@@ -105,7 +95,12 @@ export function StudioPromptBar({
     setWasGenerating(isGenerating);
     if (isGenerating) {
       if (!wasGenerating) {
-        setCollapsedPromptHeadline(toHeadline(prompt) || "Generating your UI…");
+        setCollapsedPromptHeadline(
+          toHeadline(prompt) ||
+            (generationMode === "regenerate"
+              ? "Regenerating frame…"
+              : "Generating your UI…"),
+        );
       }
       setPhase("generating");
     } else if (wasGenerating) {
@@ -166,9 +161,9 @@ export function StudioPromptBar({
 
   const placeholder = activeFrameId
     ? generationMode === "regenerate"
-      ? "Describe changes to regenerate the selected frame, or leave blank to reuse the original prompt."
-      : "Describe the new frame you want to generate."
-    : "Describe the UI you want to generate — e.g. a SaaS dashboard for managing team tasks.";
+      ? "Describe changes, or leave blank to regenerate…"
+      : "Describe the new frame…"
+    : "Describe the UI you want to generate…";
 
   const actionLabel = activeFrameId
     ? generationMode === "regenerate"
@@ -227,15 +222,13 @@ export function StudioPromptBar({
                   <p className="truncate text-[12px] font-medium tracking-tight text-(--studio-text-primary)">
                     {headline}
                   </p>
-                  {activeStreamingScreen ? (
                     <p className="truncate text-[10px] text-(--studio-text-muted)">
-                      Crafting {activeStreamingScreen}…
+                      {activeStreamingScreen
+                        ? `Crafting ${activeStreamingScreen}…`
+                        : generationMode === "regenerate"
+                          ? "Regenerating…"
+                          : "Generating…"}
                     </p>
-                  ) : (
-                    <p className="truncate text-[10px] text-(--studio-text-muted)">
-                      Generating…
-                    </p>
-                  )}
                 </div>
                 <StreamingDots />
               </div>
@@ -310,174 +303,147 @@ export function StudioPromptBar({
                   : { opacity: 0, y: 8, scale: 0.98 }
               }
               transition={motionTransition}
-              className="w-full"
+              className="flex w-full flex-col items-center gap-2"
             >
-              <GlassPanel
-                variant="elevated"
-                blur="xl"
+              {showErrorBanner && (
+                <div className="flex w-full max-w-xl items-center gap-2 rounded-full border border-(--studio-error)/25 bg-(--studio-bg)/90 px-3 py-1.5 backdrop-blur-xl">
+                  <AlertCircle className="size-3.5 shrink-0 text-(--studio-error)" />
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-(--studio-error)">
+                    {generationErrorMessage ??
+                      "Generation was interrupted before it finished."}
+                  </span>
+                  {generationRecoveryPrompt && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={onResumeGeneration}
+                      disabled={isGenerating}
+                      className="h-6 shrink-0 rounded-full px-2.5 text-[10px]"
+                    >
+                      Resume
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div
                 className={cn(
-                  "relative overflow-hidden transition-[box-shadow,border-color] duration-300",
+                  "relative w-full overflow-hidden rounded-[22px] border backdrop-blur-xl transition-[border-color,box-shadow] duration-200",
+                  "border-(--studio-border-strong) bg-(--studio-bg)/90",
+                  "shadow-[0_10px_36px_rgba(0,0,0,0.4)]",
                   isFocused &&
-                    "border-(--studio-accent)/35 shadow-[0_16px_56px_rgba(0,0,0,0.42),0_0_0_1px_var(--studio-accent-glow)]",
+                    "border-(--studio-accent)/35 shadow-[0_10px_36px_rgba(0,0,0,0.4),0_0_0_1px_var(--studio-accent-glow)]",
                 )}
               >
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-(--studio-accent)/40 to-transparent"
+                <textarea
+                  ref={commandInputRef}
+                  value={prompt}
+                  onChange={(e) => onPromptChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
+                  placeholder={placeholder}
+                  className={cn(
+                    "block w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-[14px] leading-relaxed text-(--studio-text-primary) outline-none",
+                    "placeholder:text-(--studio-text-muted)/80",
+                    "selection:bg-(--studio-accent)/25",
+                    monoClassName,
+                  )}
+                  style={{ minHeight: MIN_PROMPT_HEIGHT }}
+                  aria-label="UI generation prompt input"
+                  aria-describedby="prompt-hint"
+                  rows={1}
                 />
 
-                <div className="flex flex-col gap-2.5 p-3 sm:p-3.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {activeFrameId && (
-                      <div className="flex shrink-0 items-center rounded-full border border-(--studio-border) bg-(--studio-surface) p-0.5">
+                <div className="flex items-center gap-2 px-2.5 pb-2.5">
+                  {activeFrameId ? (
+                    <div className="flex shrink-0 items-center rounded-full border border-(--studio-border) bg-(--studio-surface) p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (generationMode !== "generate")
+                            onToggleGenerationMode();
+                        }}
+                        className={cn(
+                          "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          generationMode === "generate"
+                            ? "bg-(--studio-accent) text-white"
+                            : "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
+                        )}
+                        title="Generate a new frame (G)"
+                      >
+                        <Plus className="size-3" />
+                        Generate
+                      </button>
+                      {canRegenerate ? (
                         <button
                           type="button"
                           onClick={() => {
-                            if (generationMode !== "generate")
+                            if (generationMode !== "regenerate")
                               onToggleGenerationMode();
                           }}
                           className={cn(
-                            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all duration-200",
-                            generationMode === "generate"
-                              ? "bg-(--studio-accent) text-white shadow-[0_4px_14px_var(--studio-accent-glow)]"
+                            "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            generationMode === "regenerate"
+                              ? "bg-(--studio-accent) text-white"
                               : "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
                           )}
-                          title="Generate a new frame (G)"
+                          title="Regenerate the selected frame (R)"
                         >
-                          <Plus className="size-3" />
-                          Generate
+                          <RotateCcw className="size-3" />
+                          Regenerate
                         </button>
-                        {canRegenerate ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (generationMode !== "regenerate")
-                                onToggleGenerationMode();
-                            }}
-                            className={cn(
-                              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all duration-200",
-                              generationMode === "regenerate"
-                                ? "bg-(--studio-accent) text-white shadow-[0_4px_14px_var(--studio-accent-glow)]"
-                                : "text-(--studio-text-secondary) hover:text-(--studio-text-primary)",
-                            )}
-                            title="Regenerate the selected frame (R)"
-                          >
-                            <RotateCcw className="size-3" />
-                            Regenerate
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onLockedAction?.("Regenerate")}
-                            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-(--studio-text-secondary) transition-all hover:text-(--studio-text-primary)"
-                            title="Regeneration is a premium feature"
-                          >
-                            <Lock className="size-3 text-amber-400" />
-                            <span className="opacity-50">Regenerate</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onLockedAction?.("Regenerate")}
+                          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium text-(--studio-text-secondary) hover:text-(--studio-text-primary)"
+                          title="Regeneration is a premium feature"
+                        >
+                          <Lock className="size-3 text-amber-400" />
+                          <span className="opacity-50">Regenerate</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p
+                      id="prompt-hint"
+                      className="min-w-0 truncate px-1.5 text-[10px] text-(--studio-text-muted)"
+                    >
+                      Enter to send
+                    </p>
+                  )}
 
-                    {showErrorBanner && (
-                      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-(--studio-error)/20 bg-(--studio-error)/10 px-3 py-2">
-                        <AlertCircle className="size-3.5 shrink-0 text-(--studio-error)" />
-                        <span className="line-clamp-2 flex-1 text-[11px] text-(--studio-error)">
-                          {generationErrorMessage ??
-                            "Generation was interrupted before it finished."}
-                        </span>
-                        {generationRecoveryPrompt && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={onResumeGeneration}
-                            disabled={isGenerating}
-                            className="h-7 shrink-0 text-[11px]"
-                          >
-                            Resume
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {activeFrameId && (
+                    <p
+                      id="prompt-hint"
+                      className="min-w-0 flex-1 truncate text-[10px] text-(--studio-text-muted)"
+                    >
+                      {generationMode === "regenerate"
+                        ? "Updates this frame"
+                        : "Adds a new frame"}
+                    </p>
+                  )}
 
-                  <div
+                  {!activeFrameId && <span className="flex-1" />}
+
+                  <button
+                    type="button"
+                    onClick={onGenerate}
+                    disabled={!canGenerate || isGenerating}
+                    aria-label={actionLabel}
                     className={cn(
-                      "group/composer relative rounded-2xl border transition-[border-color,background-color,box-shadow] duration-200",
-                      "border-(--studio-border) bg-(--studio-surface)",
-                      isFocused &&
-                        "border-(--studio-accent)/40 bg-(--studio-surface-hover) shadow-[inset_0_0_0_1px_var(--studio-accent-glow)]",
+                      "flex size-8 shrink-0 items-center justify-center rounded-full transition-all duration-200",
+                      "bg-(--studio-accent) text-white shadow-[0_4px_14px_var(--studio-accent-glow)]",
+                      "hover:bg-(--studio-accent)/90 active:scale-95",
+                      "disabled:opacity-40 disabled:shadow-none disabled:active:scale-100",
                     )}
                   >
-                    <textarea
-                      ref={commandInputRef}
-                      value={prompt}
-                      onChange={(e) => onPromptChange(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      onFocus={() => setIsFocused(true)}
-                      onBlur={() => setIsFocused(false)}
-                      placeholder={placeholder}
-                      className={cn(
-                        "block w-full resize-none bg-transparent px-4 pb-2 pt-3.5 text-[14px] leading-relaxed text-(--studio-text-primary) outline-none",
-                        "placeholder:text-(--studio-text-muted)/80",
-                        "selection:bg-(--studio-accent)/25",
-                        monoClassName,
-                      )}
-                      style={{ minHeight: MIN_PROMPT_HEIGHT }}
-                      aria-label="UI generation prompt input"
-                      aria-describedby="prompt-hint"
-                      rows={2}
-                    />
-
-                    <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
-                      <div
-                        id="prompt-hint"
-                        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-(--studio-text-muted)"
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          <Kbd>
-                            <CornerDownLeft className="size-2.5" />
-                          </Kbd>
-                          <span>send</span>
-                        </span>
-                        <span className="text-(--studio-border-strong)">·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <Kbd>Shift</Kbd>
-                          <span>+</span>
-                          <Kbd>
-                            <CornerDownLeft className="size-2.5" />
-                          </Kbd>
-                          <span>newline</span>
-                        </span>
-                        {activeFrameId && (
-                          <>
-                            <span className="text-(--studio-border-strong)">
-                              ·
-                            </span>
-                            <span>Esc deselect</span>
-                          </>
-                        )}
-                      </div>
-
-                      <Button
-                        onClick={onGenerate}
-                        disabled={!canGenerate || isGenerating}
-                        aria-label={actionLabel}
-                        className={cn(
-                          "h-9 shrink-0 gap-1.5 rounded-full px-4 text-[12px] font-semibold transition-all duration-200",
-                          "bg-(--studio-accent) text-white shadow-[0_6px_20px_var(--studio-accent-glow)]",
-                          "hover:bg-(--studio-accent)/90 hover:scale-[1.02] active:scale-[0.98]",
-                          "disabled:opacity-45 disabled:hover:scale-100 disabled:shadow-none",
-                        )}
-                      >
-                        <ArrowUp className="size-3.5" />
-                        {actionLabel}
-                      </Button>
-                    </div>
-                  </div>
+                    <ArrowUp className="size-3.5" />
+                  </button>
                 </div>
-              </GlassPanel>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

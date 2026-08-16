@@ -53,6 +53,7 @@ import {
   collectBoundsFromGenerations,
   getGenerationLayout,
   getInitialDimensionsForPlatform,
+  getRegenerationClonePosition,
   mergeExistingFrameBounds,
 } from "@/lib/canvasLayout";
 import { PersistedGenerationScreen } from "@/lib/canvas-state";
@@ -669,8 +670,31 @@ export async function POST(req: NextRequest) {
           });
 
           const regenerationFrameId = targetFrameId ?? crypto.randomUUID();
-          const framePosX = sourceFrame.x + 40;
-          const framePosY = sourceFrame.y + 40;
+          const liveBounds = (body.canvasFrames ?? []).map((frame) => ({
+            id: frame.id,
+            x: frame.x,
+            y: frame.y,
+            w: frame.w,
+            h: frame.h,
+          }));
+          const sourceBounds = {
+            id: sourceFrame.id,
+            x: sourceFrame.x,
+            y: sourceFrame.y,
+            w: sourceFrame.w,
+            h: sourceFrame.h,
+          };
+          const existingFrameBounds = mergeExistingFrameBounds(
+            [sourceBounds],
+            liveBounds,
+          );
+          const sourceForLayout =
+            existingFrameBounds.find((frame) => frame.id === sourceBounds.id) ??
+            sourceBounds;
+          const { x: framePosX, y: framePosY } = getRegenerationClonePosition(
+            existingFrameBounds,
+            sourceForLayout,
+          );
 
           // Pre-populate with an error placeholder so the outer catch handler
           // always writes a valid frame record if the stream is interrupted.

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   collectBoundsFromGenerations,
   getGenerationLayout,
+  getRegenerationClonePosition,
   mergeExistingFrameBounds,
 } from "../lib/canvasLayout";
 
@@ -15,7 +16,7 @@ describe("getGenerationLayout row placement", () => {
     ]);
     assert.deepEqual(positions, [
       { x: 0, y: 0 },
-      { x: 1380, y: 0 },
+      { x: 1430, y: 0 },
     ]);
   });
 
@@ -29,7 +30,7 @@ describe("getGenerationLayout row placement", () => {
       { name: "Landing", w: 1280, h: 800 },
     ]);
     assert.equal(positions[0]?.x, 0);
-    assert.equal(positions[0]?.y, 2400 + 100);
+    assert.equal(positions[0]?.y, 2400 + 200);
   });
 
   it("prefers live canvas height over stale DB height when merging", () => {
@@ -42,7 +43,7 @@ describe("getGenerationLayout row placement", () => {
     const positions = getGenerationLayout(merged, [
       { name: "Next", w: 1024, h: 700 },
     ]);
-    assert.equal(positions[0]?.y, 2200 + 100);
+    assert.equal(positions[0]?.y, 2200 + 200);
   });
 
   it("excludes the in-progress generation when collecting bounds", () => {
@@ -65,6 +66,28 @@ describe("getGenerationLayout row placement", () => {
     const positions = getGenerationLayout(bounds, [
       { name: "Screen", w: 1280, h: 800 },
     ]);
-    assert.equal(positions[0]?.y, 2000 + 100);
+    assert.equal(positions[0]?.y, 2000 + 200);
+  });
+});
+
+describe("getRegenerationClonePosition", () => {
+  it("places the clone to the right of the source on the same row", () => {
+    const source = { id: "a", x: 0, y: 0, w: 1440, h: 800 };
+    const position = getRegenerationClonePosition([source], source);
+    assert.deepEqual(position, { x: 1590, y: 0 });
+  });
+
+  it("places past the rightmost frame already on that row", () => {
+    const source = { id: "a", x: 0, y: 0, w: 1440, h: 800 };
+    const sibling = { id: "b", x: 1590, y: 0, w: 1440, h: 800 };
+    const position = getRegenerationClonePosition([source, sibling], source);
+    assert.deepEqual(position, { x: 3180, y: 0 });
+  });
+
+  it("keeps the source row and ignores frames on other rows", () => {
+    const source = { id: "a", x: 200, y: 400, w: 1024, h: 700 };
+    const otherRow = { id: "c", x: 5000, y: 2000, w: 1024, h: 700 };
+    const position = getRegenerationClonePosition([source, otherRow], source);
+    assert.deepEqual(position, { x: 1374, y: 400 });
   });
 });

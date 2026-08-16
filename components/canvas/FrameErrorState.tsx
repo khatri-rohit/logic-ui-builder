@@ -26,13 +26,13 @@ export function FrameErrorState({
       onClick={(event) => event.stopPropagation()}
     >
       <div className="w-full max-w-sm">
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">
+        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-black">
           Canvas preview
         </p>
-        <h2 className="mt-3 text-xl font-semibold tracking-tight text-foreground/90">
+        <h2 className="mt-3 text-xl font-semibold tracking-tight text-black">
           This screen didn’t finish
         </h2>
-        <p className="mt-2 text-sm leading-relaxed text-foreground/55">
+        <p className="mt-2 text-sm leading-relaxed text-black">
           Try again to generate it with the locked design system.
         </p>
 
@@ -41,7 +41,7 @@ export function FrameErrorState({
             {canRegenerate ? (
               <button
                 type="button"
-                className="rounded-md border border-foreground/15 bg-foreground/5 px-4 py-2 text-sm font-medium text-foreground/85 transition-colors hover:bg-foreground/10"
+                className="rounded-md border border-black/15 bg-black/5 px-4 py-2 text-sm font-medium text-black/85 transition-colors hover:bg-black/10"
                 onClick={() => onTryAgain?.()}
               >
                 Try again
@@ -49,7 +49,7 @@ export function FrameErrorState({
             ) : (
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-md border border-foreground/10 bg-foreground/5 px-4 py-2 text-sm font-medium text-foreground/45"
+                className="inline-flex items-center gap-2 rounded-md border border-black/10 bg-black/5 px-4 py-2 text-sm font-medium text-black/45"
                 onClick={() => onLockedAction?.("Regenerate")}
               >
                 Try again
